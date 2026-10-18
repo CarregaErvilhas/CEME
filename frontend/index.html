@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="pt-PT">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title id="docTitle">Comparador CEME @ O Carro Elétrico</title>
+<style>
+  :root{color-scheme:light;
+    --ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f1f5f9;
+    --acc:#22c55e;--accD:#15803d;--gold:#f59e0b;--rose:#ef4444;
+    --card:#ffffff;--soft:#f8fafc;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{font-family:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  button{font-family:inherit}
+
+  /* ---------- header ---------- */
+  header.top{position:sticky;top:0;z-index:30;background:rgba(15,23,42,.92);backdrop-filter:blur(10px);color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
+  header .wrap{max-width:820px;margin:0 auto;padding:11px 16px;display:flex;gap:10px;align-items:center}
+  .logo{font-weight:800;font-size:19px;text-decoration:none;color:#fff;display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto}
+  .logo .ttl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .logo .mark{background:linear-gradient(135deg,#4ade80,#22c55e);color:#052e16;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:15px;box-shadow:0 2px 8px rgba(34,197,94,.4)}
+  nav{display:flex;gap:4px;margin-left:10px;flex:0 0 auto}
+  nav a{color:#94a3b8;text-decoration:none;font-size:13.5px;font-weight:600;padding:7px 11px;border-radius:999px;transition:.15s}
+  nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
+  /* selector de lingua: tem de anular o chrome global dos botoes (radius 11px,
+     padding 9/15) senao a bandeira fica numa caixa enorme. */
+  .langs{display:flex;gap:6px;margin-left:10px;flex:0 0 auto;align-items:center}
+  .langs button{padding:0;border:0;background:none;box-shadow:none;border-radius:3px;cursor:pointer;line-height:0;font-size:0;opacity:.45;transition:opacity .15s}
+  .langs button svg{display:block;border-radius:2px;
+    box-shadow:0 0 0 1px rgba(255,255,255,.28);transition:box-shadow .15s}
+  /* altura igual, largura pela razao oficial de cada bandeira (PT 7:4, GB 2:1) */
+  .langs button svg{height:15px}
+  .langs button[data-lang="pt"] svg{width:26.25px}
+  .langs button[data-lang="en"] svg{width:30px}
+  .langs button:hover{opacity:.9;background:none}
+  .langs button.on{opacity:1;background:none;color:inherit;border:0}
+  .langs button.on svg{box-shadow:0 0 0 1.5px #fff}
+  nav a.on{background:#22c55e;color:#052e16;font-weight:800}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;overflow:hidden;background:radial-gradient(1200px 400px at 15% -10%,#1f6f3a 0%,transparent 60%),radial-gradient(900px 300px at 95% 10%,#1e3a8a 0%,transparent 55%),linear-gradient(135deg,#052e16 0%,#0b3b20 45%,#0c2a4a 100%);color:#fff}
+  .hero .in{max-width:820px;margin:0 auto;padding:30px 16px 24px}
+  .hero h1{margin:0;font-size:30px;line-height:1.1;letter-spacing:-.6px}
+  .hero h1 span{background:linear-gradient(90deg,#4ade80,#86efac);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{margin:8px 0 0;color:#a7f3d0;font-size:14px}
+  .hero p.scope-hint{font-size:12.5px;margin-top:9px;padding:7px 11px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.24);border-radius:10px;color:#e8f5ec;display:inline-block;line-height:1.5}
+  .hero p.scope-hint u{text-decoration-color:#fbbf24;text-underline-offset:2px}
+  .live{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .pill{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:7px 13px;font-size:13px;display:flex;align-items:center;gap:6px}
+  .pill b{color:#4ade80}
+  .livedot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 3px rgba(74,222,128,.2);animation:pl 2s infinite}
+  @keyframes pl{50%{opacity:.3}}
+
+  main{max-width:820px;margin:0 auto;padding:14px 14px 70px}
+
+  /* ---------- cards ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;margin:12px 0;box-shadow:0 4px 20px rgba(15,23,42,.05);transition:box-shadow .15s}
+  .card:hover{box-shadow:0 6px 24px rgba(15,23,42,.08)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .grow{flex:1}
+  label.fl{display:flex;flex-direction:column;font-size:11px;color:var(--mut);gap:5px;font-weight:600}
+  input,select{padding:10px 12px;border-radius:11px;border:1px solid var(--line);font-size:14px;background:#fff;color:var(--ink);transition:border .15s,box-shadow .15s}
+  input:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+  input[type=range]{padding:0;accent-color:var(--acc);cursor:pointer}
+  button{border-radius:11px;border:1px solid var(--line);padding:9px 15px;background:#fff;font-size:14px;cursor:pointer;color:var(--ink);font-weight:600;transition:.15s}
+  button:hover{background:var(--soft)}
+  button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .seg{display:flex;background:#e9eef3;border-radius:13px;padding:4px;gap:3px}
+  .seg button{border:none;background:none;flex:1;padding:9px 6px;border-radius:10px;line-height:1.25;font-weight:600;color:var(--mut)}
+  .seg button small{display:block;font-size:10px;font-weight:500}
+  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(15,23,42,.12)}
+  small{color:var(--mut)}
+  .sec{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--mut);margin:20px 2px 6px}
+  /* ---------- ranking ---------- */
+  .tcard{position:relative;overflow:hidden;border-left:none;padding:16px 16px 14px 18px}
+  .tcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--brand,#666)}
+  .tcard.first{border:2px solid var(--acc);background:linear-gradient(180deg,#f0fdf4 0%,#fff 40%)}
+  .rank{font-size:12px;font-weight:800;color:#fff;background:#94a3b8;border-radius:9px;min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px}
+  .tcard.first .rank{background:var(--acc);box-shadow:0 2px 8px rgba(34,197,94,.5)}
+  .ribbon{display:inline-block;font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,#22c55e,#16a34a);border-radius:7px;padding:3px 9px;margin-left:8px;vertical-align:middle;box-shadow:0 2px 6px rgba(34,197,94,.4)}
+  .total{font-size:26px;font-weight:800;letter-spacing:-.6px}
+  .per{font-size:13px;color:var(--mut);font-weight:500}
+  .tname{font-size:14.5px;margin-top:3px}
+  .badge{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;background:#eef2f5;color:#3f4750;margin:4px 4px 0 0;white-space:nowrap}
+  .idx{background:#dbeafe;color:#1d4ed8}.grn{background:#dcfce7;color:#15803d}.bnd{background:#fef3c7;color:#92400e}
+.ac{background:#ede9fe;color:#5b21b6}
+.note-ac{margin:.5em 0 0;padding:.5em .7em;border-left:3px solid #7c3aed;background:#f5f3ff;border-radius:0 6px 6px 0;font-size:.85em;line-height:1.45}
+  .wr{background:#fee2e2;color:#b91c1c}.est{color:#a16207;background:#fef9c3}
+  .bar{height:8px;border-radius:99px;background:#edf0f3;margin-top:10px;overflow:hidden}
+  /* a cor segue o preço: verde (barato) -> vermelho (caro). O comprimento
+     continua linear/proporcional; a cor é que carrega o "quente". */
+  .bar>i{display:block;height:100%;border-radius:99px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);
+    transition:background .2s}
+  .favbtn{border:none;font-size:22px;padding:2px 8px;background:none;color:#cbd5e1}
+  .favbtn.f{color:#f59e0b}
+  details{font-size:13px;margin-top:10px}
+  summary{cursor:pointer;color:var(--mut);font-weight:600;padding:4px 0}
+  details table{border-collapse:collapse;width:100%;margin-top:8px}
+  details td,details th{border-bottom:1px solid var(--line);padding:6px 2px;text-align:right;font-variant-numeric:tabular-nums}
+  details td:first-child,details th:first-child{text-align:left}
+  a.src{font-size:12px;color:#166534;font-weight:600}
+  .kpi{display:flex;gap:10px;flex-wrap:wrap}
+  .kpi>div{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;flex:1;min-width:150px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+  .kpi b{font-size:20px}
+  svg.chart{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+  .legend{font-size:12px;color:var(--mut);margin-top:6px}
+  .qwrap{max-height:640px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+  table.q td.p-idx{font-weight:600}
+  table.q td.w{font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+  table.q tr.win-idx{background:#eef6ff}
+  table.q tr.win-idx td.w{color:#1d4ed8;font-weight:700}
+  table.q tr.win-fix{background:#f4f4f5}
+  table.q tr.win-fix td.w{color:#71717a;font-weight:700}
+  table.q tr.win-idx.cheap td:first-child,table.q tr.win-fix.cheap td:first-child{box-shadow:inset 3px 0 0 #d97706}
+  table.q{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+  table.q td,table.q th{border-bottom:1px solid var(--line);padding:6px 5px;text-align:right}
+  table.q td:first-child,table.q th:first-child{text-align:left;white-space:nowrap}
+  table.q tr.cheap td{background:#f0fdf4;font-weight:700}
+  table.q th{background:#f8fafc;position:sticky;top:0;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)}
+  footer{max-width:820px;margin:0 auto;padding:0 16px 40px;font-size:12px;color:var(--mut)}
+  .scope{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:14px;padding:13px 15px;margin-bottom:14px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+  .scope h3{margin:0 0 6px;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;cursor:pointer}
+  .scope h3 .caret{font-size:11px;color:var(--mut);transition:transform .15s}
+  .scope.closed h3 .caret{transform:rotate(-90deg)}
+  .scope.closed>div{display:none}
+  .scope h3:hover{color:var(--accD)}
+  .scope .hint{font-size:12.5px;color:var(--mut);margin:0 0 8px;line-height:1.5}
+  .scope table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0}
+  .scope td{border-bottom:1px solid var(--line);padding:6px 4px;vertical-align:top}
+  .scope td:last-child{text-align:right;white-space:nowrap;font-weight:700}
+  .scope .yes{color:#15803d}
+  .scope .no{color:#b91c1c}
+  .scope .warn{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 11px;font-size:12.5px;line-height:1.5;margin:8px 0 0}
+  .scope a{color:#166534;font-weight:600}
+  .scope .more{margin-top:9px;font-size:12.5px;display:flex;gap:14px;flex-wrap:wrap}
+  .empty{padding:26px;text-align:center;color:var(--mut)}
+  .modal{position:fixed;inset:0;background:rgba(15,23,42,.5);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal.on{display:flex}
+  .modal .mbox{background:#fff;border-radius:18px;max-width:720px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal .mhead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .modal .mbody{padding:14px 16px;overflow:auto;flex:1}
+  .modal .mfoot{padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--mut)}
+  .mg{margin-bottom:12px}
+  .mg h4{font-size:13px;font-weight:700;margin:8px 0 4px;display:flex;align-items:center;gap:6px}
+  .mg .mi{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:13px}
+  .mg .mi:hover{background:var(--soft)}
+  .mg .mi .nm{flex:1;min-width:0}
+  .mg .mi .meta{font-size:11px;color:var(--mut)}
+  .mg .mi.fav{background:#fef9c3}
+  .favside{max-width:820px;margin:0 auto 40px;padding:0 14px}
+  .favside .fs-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 4px 20px rgba(15,23,42,.05)}
+  .favside h3{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--mut);margin:0 0 8px}
+  .favside .fs-group{margin-bottom:10px}
+  .favside .fs-group h4{font-size:12px;font-weight:700;margin:6px 0 4px;display:flex;align-items:center;gap:6px}
+  .favside .fs-item{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+  .favside .fs-item:last-child{border-bottom:none}
+  .favside .fs-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .favside .fs-item .pr{font-weight:700;color:var(--accD);white-space:nowrap}
+  .favside .fs-item button{border:none;background:none;cursor:pointer;color:#cbd5e1;font-size:16px;padding:0 2px}
+  .favside .fs-item button:hover{color:#ef4444}
+  .favside .empty{font-size:12px;color:var(--mut);text-align:center;padding:14px}
+  @media (min-width: 980px) {
+    aside.favside{position:fixed;right:20px;top:70px;width:280px;max-height:calc(100vh - 80px);overflow:auto;margin:0;padding:0}
+  }
+  @media (max-width: 520px) {
+    .hero .in{padding:22px 14px 18px}
+    .hero h1{font-size:24px}
+    main{padding:10px 10px 60px}
+    .card{padding:12px;border-radius:14px}
+    .total{font-size:22px}
+    .tname{font-size:13px}
+    .rank{min-width:24px;height:24px;font-size:11px}
+    .badge{font-size:10px;padding:2px 7px}
+    .seg button{font-size:12px;padding:7px 4px}
+    .seg button small{font-size:9px}
+    input,select{font-size:13px;padding:9px 10px}
+    button{font-size:13px;padding:8px 12px}
+    nav a{font-size:12px;padding:6px 10px}
+    .logo{font-size:14px;gap:5px}
+    .logo .mark{width:22px;height:22px;font-size:12px;flex:0 0 auto}
+    nav{margin-left:6px;gap:2px}
+    table.q{font-size:12px}
+    table.q td,table.q th{padding:4px 3px}
+    .kpi>div{min-width:100%}
+    .qwrap{max-height:460px}
+    .bigkwh{font-size:26px}
+  }
+</style>
+<header class="top"><div class="wrap"><a class="logo" href="#/"><span class="mark">⚡</span><span class="ttl" id="logoTxt">Comparador CEME <b>@ O Carro Elétrico</b></span></a><nav><a href="#/" id="nHome">Simular</a><a href="#/comparar" id="nCmp">Indexado vs fixo</a><span class="langs" role="group" aria-label="Idioma / Language"><button data-lang="pt" class="on" title="Português" aria-label="Português"><svg viewBox="0 0 35 20" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="14" height="20" fill="#046A38"/><rect x="14" width="21" height="20" fill="#DA291C"/></svg></button><button data-lang="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="uJack"><path d="M0,0 H60 V30 H0 Z"/></clipPath></defs><g clip-path="url(#uJack)"><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" stroke-width="6"/><path d="M30,0 V30 M0,15 H60" stroke="#FFFFFF" stroke-width="10"/></g><path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V30 M0,15 H60" stroke="#C8102E" stroke-width="6"/></svg></button></span></nav></div></header>
+<div class="hero"><div class="in" id="hero"><h1>Quanto custa <span>carregar agora?</span></h1><p>A ligar ao simulador…</p></div></div>
+<main id="app"></main>
+<div id="favModal" class="modal">
+  <div class="mbox">
+    <div class="mhead"><b id="fmTitle">★ Gerir favoritos</b><button id="closeFavModal">✕</button></div>
+    <div class="mbody">
+      <div class="row" style="margin-bottom:10px">
+        <input id="favSearch" type="search" style="flex:1">
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <button id="fmPop"></button>
+        <button id="fmBundle"></button>
+        <button id="fmGreen"></button>
+      </div>
+      <div id="favModalList"></div>
+    </div>
+    <div class="mfoot" id="fmFoot"></div>
+  </div>
+</div>
+<footer></footer>
+<script>window.__LANG__=null;</script>
+<script>
+/* ================= i18n ================= */
+/* PT por omissão. A língua vem do cabeçalho Accept-Language (injectada pelo
+ * servidor em window.__LANG__), pode ser sobrescrita pela bandeira e persiste
+ * em localStorage — nessa ordem de precedência. */
+const STR = {
+  pt: {
+    docTitle: 'Comparador CEME @ O Carro Elétrico',
+    logoA: 'Comparador CEME', logoB: '@ O Carro Elétrico',
+    navHome: 'Simular', navCmp: 'Indexado vs fixo',
+    // hero
+    h1a: 'Quanto custa ', h1b: 'carregar agora?',
+    scopeHint: '⚠️ Simula só a <b>parcela de energia</b> (CEME + IEC + IVA + EGME). <u>Não inclui a tarifa de utilização do posto (OPC)</u>.',
+    now: 'agora:', avg: 'média:', nTariffs: 'tarifários',
+    // âmbito
+    scopeTitle: 'Isto é só uma parte do custo de carregamento',
+    scopeHint2: 'O custo de um carregamento na rede Mobi.E é composto por várias parcelas. Este simulador calcula <b>apenas a parcela de energia</b>.',
+    rowCeme: 'Tarifário do CEME (venda de electricidade)',
+    rowTar: 'TAR (Tarifas de Acesso às Redes)',
+    rowIec: 'IEC (Imposto Especial sobre o Consumo)',
+    rowVat: 'IVA ({rate} nesta região)',
+    rowEgme: 'EGME — taxa de ativação da CEME',
+    rowOpc: '<b>Tarifa OPC — utilização do posto</b>',
+    rowOpcEgme: 'EGME cobrada pelo OPC diretamente',
+    rowOther: 'Outros serviços (ex. apps, seguros)',
+    yes: 'sim', no: 'não',
+    yesTar: 'incluída no €/kWh', yesEgme: 'embutida no tarifário',
+    scopeWarn: '<b>O valor apresentado é o mínimo da parcela de energia.</b> A fatura final será maior, por causa da <b>tarifa de utilização do posto (OPC)</b> — cada operador define a sua e pode ser €/kWh, €/minuto ou €/sessão. O valor está sempre publicado no próprio posto, e varia de posto para posto dentro da mesma rede.',
+    linkCost: 'Estrutura oficial do custo ↗', linkFaq: 'FAQ da Mobi.E ↗',
+    // energia
+    energyLbl: 'Energia a carregar', modeKwh: 'kWh direto', modeBat: 'bateria %',
+    ramalTip: 'Tensão da instalação (afecta a TAR). BT = baixa tensão, MT = média tensão.',
+    kwh: 'kWh', search: 'Pesquisar', searchPh: 'ex. luzigas, ACP, EDP…',
+    capacity: 'Capacidade (kWh)', min: 'Mínimo', max: 'Máximo',
+    chargingFrom: 'Carrega de {a}% a {b}% → {c} kWh',
+    region: 'Região', fGreen: '⚡ verde', fBundle: 'sem condições',
+    fFavOn: '★ favoritos', fFavOff: '☆ favoritos', fFavMgr: '★ gerir favoritos ({n})',
+    when: 'Data/hora do carregamento', whenPh: 'aaaa/mm/dd hh:mm', nowBtn: 'Agora',
+    tFixed: 'Hora fixa seleccionada — a usar o instante indicado.',
+    tSkew: '⚠️ relógio do browser desviado >5 min do servidor — a usar hora do servidor.',
+    tBrowser: 'A usar hora do browser.', tMode: ' · modo “agora”.',
+    ranking: 'Ranking', noRes: 'Sem resultados — ajusta os filtros.',
+    // cartões
+    simple: 'Simples', biHourly: 'Bi-horária · {c}', cycDaily: 'ciclo diário',
+    cycWeekly: 'ciclo semanal', cycSimple: 'tarifa simples',
+    idxOmie: 'Indexado OMIE', fixedPrice: 'Preço fixo', green: '⚡ energia verde',
+    acOnly: 'só em AC',
+    noteACDC: 'AC = carregamento em corrente alternada. Este é o preço da energia nos postos AC. Nos postos DC a Atlante pratica um preço promocional flat, com o CEME e o OPC já incluídos — por isso não sai aqui.',
+    needsHome: 'preço com condições', bundleTip: 'Preço condicionado a ter outra relação com a CEME — contrato de electricidade doméstica, subscrição, associação, ou colaborador. Vem da coluna «Bundles» do simulador original: não significa só «cliente casa».', soldIn: 'comercializado em: {r}',
+    estTip: 'preço estimado, não retirado do tarifário publicado pelo CEME', availRegions: 'disponível em',
+    cheapest: 'MAIS BARATO', rightNowIn: 'neste momento em', inclVat: 'com IVA',
+    saveFav: 'guardar nos favoritos',
+    breakdown: 'Composição do preço', period: 'Período', noVat: '€/kWh s/ IVA*',
+    kwhVat: '{k} kWh s/ IVA', activation: 'Taxa de ativação', formula: 'Fórmula',
+    formulaVal: '(OMIE {o} + K {k} + CGS {c}) × (1 + perdas {l}) + TAR',
+    vatIncl: '{v}% incluído no total',
+    verified: 'Preços verificados em',
+    verifiedTip: 'Data em que estes dados foram capturados a partir do simulador da ERSE. Não é a data de início do contrato: a folha de origem não tem essa informação, e cada comercializador publica-a onde lhe apetece. Nos tarifários indexados o preço mostrado é recalculado agora com o OMIE do momento — esta data refere-se aos componentes (K, CGS, TAR).',
+    breakdownNote: '* fixos: preço final já com TAR incluída · indexados: calculado agora.',
+    confirmSrc: 'Confirmar na página do CEME ↗',
+    // períodos
+    pVazio: 'vazio', pFora: 'fora de vazio', pUnico: 'preço único',
+    // favoritos
+    fmTitle: '★ Gerir favoritos', fmPh: 'pesquisar tarifário ou CEME…',
+    fmPop: 'só populares', fmBundle: 'com condições', fmGreen: '⚡ verde',
+    fmFoot: 'Clica num tarifário para marcar/desmarcar como favorito. Guardado neste browser.',
+    fmNoRes: 'Sem resultados.',
+    kIndexed: 'Indexado', kFixed: 'Fixo', tagBundle: 'com condições', tagPopular: 'popular', tagGreen: 'verde',
+    fsTitle: '★ Favoritos', fsTitleN: '★ Favoritos ({n})',
+    fsEmpty: 'Marca estrelas nos tarifários para os veres aqui, agrupados por CEME.',
+    fsRemove: 'remover',
+    // comparador
+    cmpH1a: 'Indexado ', cmpH1b: 'vs fixo',
+    cmpSub: 'Histórico de 60 dias e valor actual · <b>{r}</b> <small>({v})</small>',
+    loading: 'A carregar tarifários…', lIndexed: 'Indexado', lFixed: 'Fixo',
+    omieRef: 'OMIE de referência (€/kWh)',
+    last60: 'Últimos 60 dias (€/kWh s/ IVA)', calcHist: 'A calcular histórico…',
+    whenCharge: 'Quando carregar: quarto-horário de hoje (€/kWh s/ IVA)',
+    calcQ: 'A calcular quartos-horários…',
+    chartDays: ' · {n} dias', legendIdxPeak: 'indexado fora de vazio', legendIdxOff: 'indexado vazio',
+    legendFixed: 'fixo', legendWins: 'dias em que o indexado ganha',
+    omipEst: 'estimativa OMIP', byTime: 'por hora', cheapestQ: 'mais baratos',
+    eightCheap: '8 quartos mais baratos:', thTime: 'Hora', thOmie: 'OMIE €/MWh',
+    thIdx: 'Indexado €/kWh', thFix: 'Fixo €/kWh', thWin: 'Melhor',
+    winIdx: 'indexado', winFix: 'fixo', winEq: 'empate',
+    vsFixed: 'Indexado mais barato em {w} dos {n} quartos',
+    vsFixedNone: 'Em nenhum quarto o indexado bate o fixo',
+    vsFixedNoData: 'Sem tarifário fixo escolhido para comparar',
+    qCompareNote: 'Comparação do componente de energia (s/ IVA), mesmo período, mesmo instante. A tarifa de ativação não entra: é um valor único e não se repete por quarto de hora.',
+    qUnavailable: 'Quartos-horários indisponíveis.',
+    kIdx: 'indexado', kFix: 'fixo', diffNow: 'diferença agora',
+    fixedWins: 'fixo ganha', idxWins: 'indexado ganha',
+    winsTxt: 'Em <b>{w}/{d}</b> dias o indexado teria ganho em fora de vazio. Com OMIE abaixo de <b>{be}€/kWh</b>, o indexado ganha hoje. <br>Série: {src}{cache}.',
+    histUnavail: 'Histórico indisponível. O valor actual acima continua válido.',
+    // avisos do servidor
+    warnOmieCont: 'ref. OMIE continental — ilustrativo',
+    // rodapé
+    footScope: '<b>Âmbito:</b> o simulador calcula só a parcela de energia (tarifário do CEME + TAR + IEC + IVA + EGME). <b>Não inclui a tarifa de utilização do posto (OPC)</b>, que cada operador define e publica no próprio posto — por isso o valor final na fatura será maior.',
+    footRest: 'Valores com IVA da região de carregamento. <code>~</code> marca um preço estimado. Séries OMIE via dados.tiagofelicia.pt (CC BY 4.0); produção usa omie.es. Favoritos ficam neste browser — sem conta, sem tracking.',
+    cache: ' (cache)',
+  },
+  en: {
+    docTitle: 'EV Tariff Comparison @ O Carro Elétrico',
+    logoA: 'EV Tariff Comparison', logoB: '@ O Carro Elétrico',
+    navHome: 'Simulation', navCmp: 'Indexed to OMIE vs fixed',
+    // hero
+    h1a: 'How much does it cost ', h1b: 'to charge right now?',
+    scopeHint: '⚠️ Only the <b>energy component</b> is calculated here (CEME + IEC + VAT + EGME). <u>The charging point operator tariff is not included</u>.',
+    now: 'now:', avg: 'average:', nTariffs: 'tariffs',
+    // âmbito
+    scopeTitle: 'This is only part of what a charging session costs',
+    scopeHint2: 'A charging session on the Mobi.E network is billed in several parts. This tool only works out the <b>energy component</b>.',
+    rowCeme: 'CEME tariff (the electricity itself)',
+    rowTar: 'TAR (network access tariffs)',
+    rowIec: 'IEC (special consumption tax)',
+    rowVat: 'VAT ({rate} in this region)',
+    rowEgme: 'CEME activation fee (EGME network fee)',
+    rowOpc: '<b>CPO tariff — use of the charging point</b>',
+    rowOpcEgme: 'EGME fee charged by the CPO on top',
+    rowOther: 'Other services (apps, insurance, …)',
+    yes: 'yes', no: 'not included',
+    yesTar: 'built into the €/kWh', yesEgme: 'built into the tariff',
+    scopeWarn: '<b>What you see here is the cheapest the energy component can be.</b> Your final bill will be higher, because it also includes the <b>CPO tariff for the charging point</b> — each operator sets its own, charged as €/kWh, €/minute or €/session. Every operator publishes that tariff at the charging point, and it differs from one point to the next, even within the same network.',
+    linkCost: 'Official cost breakdown ↗', linkFaq: 'Mobi.E FAQ ↗',
+    // energia
+    energyLbl: 'Energy being charged', modeKwh: 'kWh', modeBat: 'battery %',
+    ramalTip: 'Supply voltage of your installation (changes the network access tariff). BT = low voltage, MT = medium voltage.',
+    kwh: 'kWh', search: 'Search', searchPh: 'e.g. Luzigas, ACP, EDP…',
+    capacity: 'Battery capacity (kWh)', min: 'From', max: 'To',
+    chargingFrom: 'Charging from {a}% to {b}% → {c} kWh',
+    region: 'Region', fGreen: '⚡ green', fBundle: 'no conditions',
+    fFavOn: '★ saved', fFavOff: '☆ saved', fFavMgr: '★ saved tariffs ({n})',
+    when: 'When you charge', whenPh: 'yyyy/mm/dd hh:mm', nowBtn: 'Now',
+    tFixed: 'A specific time is set — pricing for that moment.',
+    tSkew: '⚠️ your device clock is more than 5 min off the server — using server time.',
+    tBrowser: 'Using your device clock.', tMode: ' · “now” mode.',
+    ranking: 'Ranking', noRes: 'No results — try relaxing the filters.',
+    // cartões
+    simple: 'Simple rate', biHourly: 'Two periods · {c}', cycDaily: 'same every day',
+    cycWeekly: 'day and night', cycSimple: 'single rate',
+    idxOmie: 'Tracks the OMIE price', fixedPrice: 'Fixed price', green: '⚡ renewable energy',
+    acOnly: 'AC only',
+    noteACDC: 'AC = alternating-current charging. This is the energy price at AC points. At DC points the retailer applies a flat promotional price with the retailer and the charging point operator already included — which is why it is not shown here.',
+    needsHome: 'conditional price', bundleTip: 'The price is conditional on having another relationship with the retailer — a home electricity contract, a subscription, a membership, or employee status. It comes from the original spreadsheet’s “Bundles” column: it does not just mean “home customer”.', soldIn: 'only sold in: {r}',
+    estTip: 'estimated — not from the retailer’s published tariff', availRegions: 'available in',
+    cheapest: 'CHEAPEST', rightNowIn: 'right now in', inclVat: 'incl. VAT',
+    saveFav: 'save this tariff',
+    breakdown: 'Breakdown of the price', period: 'Period', noVat: '€/kWh excl. VAT*',
+    kwhVat: '{k} kWh incl. VAT', activation: 'Activation fee', formula: 'Formula',
+    formulaVal: '(OMIE {o} + K {k} + CGS {c}) × (1 + losses {l}) + TAR',
+    vatIncl: '{v}% — already included above',
+    verified: 'Prices checked on',
+    verifiedTip: 'When this data was captured from the ERSE simulator. It is not the date the contract started: the source spreadsheet carries no such information, and each retailer publishes it where it sees fit. For indexed tariffs the price shown is recalculated now with the current OMIE — this date refers to the components (K, CGS, TAR).',
+    breakdownNote: '* fixed tariffs already include TAR · indexed tariffs are priced live.',
+    confirmSrc: 'Check on the retailer’s own page ↗',
+    // períodos
+    pVazio: 'off-peak', pFora: 'peak', pUnico: 'single rate',
+    // favoritos
+    fmTitle: '★ Saved tariffs', fmPh: 'search a tariff or retailer…',
+    fmPop: 'popular only', fmBundle: 'conditional', fmGreen: '⚡ green',
+    fmFoot: 'Click a tariff to save it or remove it. Your list stays in this browser.',
+    fmNoRes: 'Nothing matches.',
+    kIndexed: 'Indexed', kFixed: 'Fixed', tagBundle: 'conditional', tagPopular: 'popular', tagGreen: 'green',
+    fsTitle: '★ Saved tariffs', fsTitleN: '★ Saved tariffs ({n})',
+    fsEmpty: 'Tap the star on any tariff to build your own shortlist.',
+    fsRemove: 'remove',
+    // comparador
+    cmpH1a: 'Indexed to OMIE ', cmpH1b: 'vs fixed tariff',
+    cmpSub: 'Last 60 days and today’s price · <b>{r}</b> <small>({v})</small>',
+    loading: 'Loading tariffs…', lIndexed: 'Indexed tariff', lFixed: 'Fixed tariff',
+    omieRef: 'OMIE reference price (€/kWh)',
+    last60: 'Last 60 days (€/kWh excl. VAT)', calcHist: 'Building the 60-day history…',
+    whenCharge: 'Best times to charge: today’s quarter-hourly slots (€/kWh excl. VAT)',
+    calcQ: 'Working out the quarter-hourly slots…',
+    chartDays: ' · {n} days', legendIdxPeak: 'indexed tariff, peak', legendIdxOff: 'indexed tariff, off-peak',
+    legendFixed: 'fixed tariff', legendWins: 'days the indexed tariff was cheaper',
+    omipEst: 'OMIP estimate', byTime: 'by time', cheapestQ: 'cheapest first',
+    eightCheap: 'The 8 cheapest quarter-hour slots:', thTime: 'Time', thOmie: 'OMIE €/MWh',
+    thIdx: 'Indexed €/kWh', thFix: 'Fixed €/kWh', thWin: 'Better',
+    winIdx: 'indexed', winFix: 'fixed', winEq: 'tie',
+    vsFixed: 'Indexed is cheaper in {w} of the {n} quarter-hour slots',
+    vsFixedNone: 'The indexed tariff is not cheaper in any slot',
+    vsFixedNoData: 'No fixed tariff selected to compare against',
+    qCompareNote: 'Comparison of the energy component (excl. VAT), same period, same instant. The activation charge is excluded: it is a one-off and does not repeat every quarter of an hour.',
+    qUnavailable: 'Quarter-hourly slots are not available right now.',
+    kIdx: 'wholesale-linked', kFix: 'fixed tariff', diffNow: 'difference right now',
+    fixedWins: 'the fixed tariff is cheaper', idxWins: 'the indexed tariff is cheaper',
+    winsTxt: 'On <b>{w} of the last {d} days</b> the indexed tariff would have worked out cheaper during peak hours. It stays cheaper today whenever OMIE falls below <b>{be}€/kWh</b>. <br>Series: {src}{cache}.',
+    histUnavail: 'The 60-day history is not available. The price shown above is still correct.',
+    warnOmieCont: 'uses the mainland OMIE price — indicative only',
+    // rodapé
+    footScope: '<b>What this covers:</b> only the energy component — the CEME tariff plus TAR, IEC, VAT and the activation fee. <b>It does not include the CPO tariff for the charging point</b>, which every operator sets and publishes at the point itself, so your final bill will be higher.',
+    footRest: 'Prices include the VAT of the region where you charge. <code>~</code> marks an estimated price. OMIE price data from dados.tiagofelicia.pt (CC BY 4.0). Your saved tariffs stay in this browser — no account, no tracking.',
+    cache: ' (cached)',
+  },
+};
+
+const REG_DATA = {
+  CONT: { pt: { nome: 'Portugal Continental', vat: 23, iva: 'IVA 23%', fuso: 'hora de Lisboa' },
+          en: { nome: 'Mainland Portugal', vat: 23, iva: 'VAT 23%', fuso: 'Lisbon time' } },
+  MAD:  { pt: { nome: 'Madeira', vat: 22, iva: 'IVA 22%', fuso: 'hora do Funchal' },
+          en: { nome: 'Madeira', vat: 22, iva: 'VAT 22%', fuso: 'Funchal time' } },
+  AZO:  { pt: { nome: 'Açores', vat: 16, iva: 'IVA 16%', fuso: 'hora dos Açores (UTC−1)' },
+          en: { nome: 'Azores', vat: 16, iva: 'VAT 16%', fuso: 'Azores time (UTC−1)' } },
+};
+
+// Nomes dos tarifários: são os que o CEME publica, por isso não se traduzem
+// wholesale — traduzir "Cartão EDP Charge (Bi-Horário)" tornava-o irreconhecível
+// e impossível de conferir na página do CEME. O que se traduz é o vocabulário
+// genérico do sector; a marca fica intacta. Aplicado só em EN, por ordem
+// (frases mais longas primeiro, para não deixar sobras).
+const NAME_RULES = [
+  ['Cartão de carregamento público e privado MOBISMART', 'MOBISMART public and private charging card'],
+  ['(pré-pago)', '(prepaid)'],
+  ['(pós-pago)', '(postpaid)'],
+  ['Mobilidade Elétrica com Tarifa Dinâmica Exclusivo Clientes MEO *e* MEO Energia', 'Electric mobility, dynamic tariff — exclusive to MEO *and* MEO Energia customers'],
+  ['Mobilidade Elétrica com Tarifa Fixa Colaboradores MEO only', 'Electric mobility, fixed tariff — MEO employees only'],
+  ['Mobilidade Elétrica com Tarifa Fixa Cliente MEO Energia e tem MEO M5e/M4e', 'Electric mobility, fixed tariff — MEO Energia customer, requires MEO M5e/M4e'],
+  ['Galp Electric Energia Verde Plano Mobilidade Elétrica & Solar com Wallbox', 'Galp Electric Renewable energy — electric mobility & solar plan with wallbox'],
+  ['Galp Electric Energia Verde Plano Mobilidade Elétrica & Solar sem Wallbox', 'Galp Electric Renewable energy — electric mobility & solar plan without wallbox'],
+  ['Galp Electric Energia Verde', 'Galp Electric Renewable energy'],
+  ['Não Clientes Goldenergy Comercialização', 'Non-Goldenergy supply customers'],
+  ['Clientes Goldenergy Comercialização', 'Goldenergy supply customers'],
+  ['Cliente Eletricidade Iberdrola', 'Iberdrola electricity customer'],
+  ['Frota Clientes Energia', 'fleet, energy customers'],
+  ['Clientes energia / UVE', 'energy / UVE customers'],
+  ['Clientes Energia', 'energy customers'],
+  ['Tarifário Indexado Cliente Casa e CEME', 'indexed tariff, home & CEME customer'],
+  ['Tarifário Indexado Cliente CEME', 'indexed tariff, CEME customer'],
+  ['Cartão EDP Charge', 'EDP Charge card'],
+  ['Cartão Bluecharge', 'Bluecharge card'],
+  ['Cartão EVpower', 'EVpower card'],
+  ['Cartão Mobilidade Elétrica', 'electric mobility card'],
+  ['Cartão CEME', 'CEME card'],
+  [' - não sócio ACP', ' — not an ACP member'],
+  [' - sócio ACP', ' — ACP member'],
+  ['Pessoas Singulares', 'Individuals'],
+  ['Plano Move Base', 'Move Base plan'],
+  ['Plano Move HOME', 'Move HOME plan'],
+  ['Tarifa Simples', 'simple rate'],
+  ['Frota', 'fleet'],
+  ['Clientes energia', 'energy customers'],
+  ['Clientes', 'customers'],
+  ['Colaboradores', 'employees'],
+  ['Associados UVE', 'UVE members'],
+  ['(Bi-Horário Semanal)', '(bi-hourly weekly)'],
+  ['(Bi-Horário Diário)', '(bi-hourly daily)'],
+  ['(Bi-Horário)', '(bi-hourly)'],
+  ['(Simples)', '(simple rate)'],
+  ['Tarifário CEME', 'CEME tariff'],
+  ['Cartão', 'card'],
+  ['Mobilidade Elétrica', 'electric mobility'],
+  ['sem subscrição', 'no subscription'],
+  ['subscrição', 'subscription'],
+  ['não sócio', 'non-member'],
+  ['sócio', 'member'],
+  ['desconto', 'discount'],
+];
+// Nomes que não devem ser mexidos, mesmo se contiverem uma das frases acima.
+const NAME_KEEP = /^(myAtlante|Eco Green|VECARD|GOW|Hyundai Blue|AB Energia|Go\.Charge by EVIO)/;
+
+function tariffName(name, lang) {
+  if ((lang || L) !== 'en' || !name || NAME_KEEP.test(name)) return name;
+  let out = name;
+  for (const [pt, en] of NAME_RULES) out = out.split(pt).join(en);
+  return out;
+}
+// A pesquisa não deve depender da língua da interface: quem escreve "indexed"
+// em PT tem de encontrar o tarifário, e quem escreve "indexado" em inglês
+// também. Por isso compara sempre contra as duas formas.
+// Também ignora acentos, senão "luzigas" não encontra "LUZiGÁS".
+const deaccent = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const searchText = (tf) => deaccent(`${tf.ceme} ${tf.name} ${tariffName(tf.name)} ${tariffName(tf.name, 'en')}`);
+
+let L = 'pt';
+function i18n(k, vars) {
+  let s = (STR[L] && STR[L][k]) ?? STR.pt[k] ?? k;
+  if (vars) for (const v in vars) s = s.split('{' + v + '}').join(vars[v]);
+  return s;
+}
+const REG = () => Object.fromEntries(Object.entries(REG_DATA).map(([k, v]) => [k, v[L]]));
+const R = () => REG_DATA[S.region][L];
+const locDate = iso => new Date(iso).toLocaleString(L === 'en' ? 'en-GB' : 'pt-PT');
+const fmtNum = n => L === 'en' ? String(n) : String(n).replace('.', ',');
+
+function setLang(l, persist = true) {
+  L = l === 'en' ? 'en' : 'pt';
+  document.documentElement.lang = L === 'en' ? 'en' : 'pt-PT';
+  if (persist) { try { localStorage.setItem('ceme:lang', L); } catch (e) {} }
+  document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === L));
+  applyChrome();
+}
+function initialLang() {
+  try { const s = localStorage.getItem('ceme:lang'); if (s === 'pt' || s === 'en') return s; } catch (e) {}
+  return (typeof window.__LANG__ === 'string' && window.__LANG__ === 'en') ? 'en' : 'pt';
+}
+// Partes estáticas do chrome (fora dos views renderizados por JS)
+function applyChrome() {
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  const ph = (id, v) => { const el = document.getElementById(id); if (el) el.placeholder = v; };
+  const txt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  txt('fmPop', i18n('fmPop')); txt('fmBundle', i18n('fmBundle')); txt('fmGreen', i18n('fmGreen'));
+  document.title = i18n('docTitle');
+  set('logoTxt', i18n('logoA') + ' <b>' + i18n('logoB') + '</b>');
+  set('nHome', i18n('navHome')); set('nCmp', i18n('navCmp'));
+  set('fmTitle', i18n('fmTitle')); set('fmFoot', i18n('fmFoot'));
+  ph('favSearch', i18n('fmPh'));
+  const f = document.querySelector('footer');
+  if (f) f.innerHTML = i18n('footScope') + ' <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">' + (L === 'en' ? 'Official breakdown ↗' : 'Ver a estrutura oficial ↗') + '</a> · <a href="https://www.mobie.pt/pt/carregarveiculo/faq" target="_blank" rel="noopener">FAQ Mobi.E ↗</a><br><br>' + i18n('footRest');
+}
+
+/* ================= estado ================= */
+const API = location.origin;
+let token = sessionStorage.getItem('ceme:jwt');
+let LAST = [], AVG = null, AT = null, OMIE = 0.20;
+const favs = () => JSON.parse(localStorage.getItem('ceme:favs') || '[]');
+function loadS() { try { const r = localStorage.getItem('ceme:S'); if (r) Object.assign(S, JSON.parse(r)); } catch (e) {} }
+function saveS() { try { localStorage.setItem('ceme:S', JSON.stringify(S)); } catch (e) {} }
+const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
+  energyMode: 'kwh', batCap: 60, batMin: 20, batMax: 80,
+  chargeAt: null, forceServerTime: false, serverNow: null };
+
+async function sess() {
+  if (token) return token;
+  token = (await (await fetch(API + '/v1/session', { method: 'POST' })).json()).token;
+  sessionStorage.setItem('ceme:jwt', token);
+  return token;
+}
+async function api(path, opts = {}) {
+  const tk = await sess();
+  const r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
+  return r.json();
+}
+const eur = n => Number(n).toFixed(2) + '€';
+const kwhe = n => Number(n).toFixed(3) + '€/kWh';
+const cycName = c => (c === 'SIMPLES' ? i18n('cycSimple') : i18n(c === 'DIARIO' ? 'cycDaily' : 'cycWeekly'));
+const perName = p => ({ VAZIO: i18n('pVazio'), FORA_VAZIO: i18n('pFora'), UNICO: i18n('pUnico') }[p] || p);
+const effKwh = () => S.energyMode === 'bat' ? Math.max(0.1, S.batCap * Math.max(0, S.batMax - S.batMin) / 100) : S.kwh;
+// A energia só aparece impressa com uma casa (56,8 kWh). O valor bruto vai
+// para os cálculos — nunca para o ecrã.
+const kwhTxt = () => fmtNum(effKwh().toFixed(1));
+function toIsoDisplay(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fromIsoDisplay(v) {
+  if (!v) return null;
+  const m = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/.exec(v.trim());
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/* ================= SIMULAR ================= */
+// Notas do tarifario chegam como CODIGO (o servidor nao mete texto na UI, para
+// nao aparecer portugues em modo english). Codigo desconhecido mostra-se tal e
+// qual, para nao esconder informacao.
+const NOTE_KEY = { AC_DC_FLAT: 'noteACDC' };
+function noteText(code) { return i18n(NOTE_KEY[code] || code); }
+
+function badges(q) {
+  let b = `<span class="badge">${q.schedule === 'SIMPLES' ? i18n('simple') : i18n('biHourly', { c: cycName(q.cycle) })}</span>`;
+  b += `<span class="badge ${q.kind === 'INDEXED' ? 'idx' : ''}">${q.kind === 'INDEXED' ? i18n('idxOmie') : i18n('fixedPrice')}</span>`;
+  if (q.kind === 'INDEXED') b += `<span class="badge idx">K = ${fmtNum(q.k)}</span>`;
+  if (q.green) b += `<span class="badge grn">${i18n('green')}</span>`;
+  if (q.bundle) b += `<span class="badge bnd" title="${i18n('bundleTip')}">${i18n('needsHome')}</span>`;
+  if (q.notes) b += `<span class="badge ac" title="${noteText(q.notes)}">${i18n('acOnly')}</span>`;
+  if (q.warning) b += `<span class="badge wr">${i18n(q.warning === 'OMIE_CONT_REF' ? 'warnOmieCont' : q.warning)}</span>`;
+  if (!((',' + (q.avail || 'CONT') + ',').includes(',' + S.region + ','))) b += `<span class="badge">${i18n('soldIn', { r: q.avail })}</span>`;
+  if (q.estimated) b += `<span class="badge est" title="${i18n('estTip')}">~</span>`;
+  return b;
+}
+function detail(q) {
+  const rows = Object.entries(q.prices || {}).map(([p, v]) =>
+    `<tr><td>${perName(p)}</td><td>${kwhe(v)}</td><td>${eur(v * effKwh())}</td></tr>`).join('');
+  return `<details><summary>${i18n('breakdown')}</summary>
+    <table><tr><th>${i18n('period')}</th><th>${i18n('noVat')}</th><th>${i18n('kwhVat', { k: kwhTxt() })}</th></tr>${rows}</table>
+    <table>
+    <tr><td>${i18n('activation')}</td><td colspan="2">${eur(q.activation || 0)}</td></tr>
+    ${q.kind === 'INDEXED' ? `<tr><td>${i18n('formula')}</td><td colspan="2">${i18n('formulaVal', { o: Number(q.omieRef).toFixed(3), k: fmtNum(q.k), c: fmtNum(q.cgs), l: fmtNum(Math.round((q.loss || 0) * 10000) / 100) + '%' })}</td></tr>` : ''}
+    ${Number.isFinite(q.vat) ? `<tr><td>${i18n('rowVat', { rate: R().vat + '%' })}</td><td colspan="2">${i18n('vatIncl', { v: Math.round((q.vat - 1) * 100) })}</td></tr>` : ''}
+    <tr><td title="${i18n('verifiedTip')}">${i18n('verified')}</td><td colspan="2">${q.valid_from || '—'}</td></tr></table>
+    ${q.notes ? `<p class="note-ac">${noteText(q.notes)}</p>` : ''}
+    <small>${i18n('breakdownNote')}</small><br>
+    ${q.source_url ? `<a class="src" href="${q.source_url}" target="_blank" rel="noopener">${i18n('confirmSrc')}</a>` : ''}</details>`;
+}
+// Rampa de calor do preço: verde nos baratos, vermelho nos caros.
+// A escala e logarítmica entre o mais barato e o mais caro de toda a lista —
+// com linear quase tudo ficava verde, porque há tarifários 5x mais caros
+// que a mediana.
+const HEAT = [
+  [0.00, [21, 128, 61]],    // verde
+  [0.28, [77, 124, 15]],    // verde-oliva
+  [0.48, [202, 138, 4]],    // âmbar
+  [0.68, [234, 88, 12]],    // laranja
+  [0.86, [220, 38, 38]],    // vermelho
+  [1.00, [153, 27, 27]],    // vermelho escuro
+];
+function heatColor(f) {
+  f = Math.max(0, Math.min(1, f));
+  for (let i = 1; i < HEAT.length; i++) {
+    if (f <= HEAT[i][0]) {
+      const [p0, c0] = HEAT[i - 1], [p1, c1] = HEAT[i];
+      const k = (f - p0) / (p1 - p0 || 1);
+      return 'rgb(' + c0.map((v, j) => Math.round(v + (c1[j] - v) * k)).join(',') + ')';
+    }
+  }
+  return 'rgb(' + HEAT[HEAT.length - 1][1].join(',') + ')';
+}
+// 0 no tarifário mais barato da lista, 1 no mais caro (escala log).
+function heatOf(preco, lo, hi) {
+  if (!(hi > lo) || !(preco > 0)) return 0;
+  return Math.log(preco / lo) / Math.log(hi / lo);
+}
+
+function card(q, i, max, lo, hi) {
+  const on = favs().includes(q.id);
+  const first = i === 0;
+  return `<div class="card tcard ${first ? 'first' : ''}" style="--brand:${q.brand}">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div style="display:flex;gap:12px;align-items:flex-start;flex:1"><span class="rank">${i + 1}</span>
+      <div style="flex:1"><div><span class="total">${eur(q.totalEur)}</span>${first ? `<span class="ribbon">${i18n('cheapest')}</span>` : ''}</div>
+        <div class="per"><span class="livedot"></span>${i18n('rightNowIn')} <b>${perName(q.period)}</b> · ${kwhe(q.eurKwhNoIva)} · ${kwhTxt()} kWh ${i18n('inclVat')}</div>
+        <div class="tname"${q.notes ? ` title="${noteText(q.notes)}"` : ''}><b>${q.ceme}</b> — ${tariffName(q.name)}</div>
+        <div>${badges(q)}</div></div></div>
+      <button class="favbtn ${on ? 'f' : ''}" onclick="toggleFav('${q.id}')" title="${i18n('saveFav')}">${on ? '★' : '☆'}</button>
+    </div>
+    <div class="bar"><i style="width:${Math.max(4, Math.round(100 * q.totalEur / max))}%;background:${heatColor(heatOf(q.totalEur, lo, hi))}"></i></div>${detail(q)}</div>`;
+}
+// Um tarifário é o mesmo para BT e MT (só a TAR muda). Mostra-se uma única
+// entrada por (CEME, nome); o preço usa a variante da tensão seleccionada
+// (S.ramal), ou a variante BT/MT se não houver exacta.
+function supportsRamal(q) { return q.voltage === S.ramal || q.voltage === 'BT/MT' || String(q.voltage).includes(S.ramal); }
+// Um tarifário é um só para BT e MT (só a TAR muda), por isso a lista tem de
+// ser deduplicada por (CEME, nome), escolhendo a variante da tensão
+// seleccionada. Sem isto, o ranking e o comparador mostravam cada tarifário
+// duas vezes.
+const tariffKey = (tf) => tf.ceme + '|' + tf.name;
+function dedupByRamal(rows) {
+  const byKey = new Map();
+  for (const tf of rows) {
+    if (!supportsRamal(tf)) continue;
+    const k = tariffKey(tf);
+    const cur = byKey.get(k);
+    // preferência: tensão exacta ao ramal seleccionado
+    if (!cur || (tf.voltage === S.ramal && cur.voltage !== S.ramal)) byKey.set(k, tf);
+  }
+  return [...byKey.values()];
+}
+function filtered() {
+  const fav = favs();
+  const q = deaccent(S.q).toLowerCase();
+  return dedupByRamal(LAST).filter(tf =>
+    (!S.green || tf.green) &&
+    (!S.nobundle || !tf.bundle) &&
+    (!S.favonly || fav.includes(tf.id)) &&
+    (!q || searchText(tf).toLowerCase().includes(q)));
+}
+function heroHome(items) {
+  const best = items[0];
+  document.getElementById('hero').innerHTML = `<h1>${i18n('h1a')}<span>${i18n('h1b')}</span></h1>
+    <p>${kwhTxt()} kWh · <b>${R().nome}</b> <small style="color:#9fc3ae">(${R().iva} · ${R().fuso})</small> · ${AT ? locDate(AT) : ''}</p>
+    <p class="scope-hint" onclick="document.getElementById('scopeBox')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer">${i18n('scopeHint')}</p>
+    <div class="live">${best ? `<span class="pill"><span class="livedot"></span>${i18n('now')} <b>${best.ceme}</b> ${eur(best.totalEur)}</span>` : ''}
+    <span class="pill">${i18n('avg')} <b>${AVG != null ? eur(AVG) : '—'}</b></span>
+    <span class="pill">${items.length} ${i18n('nTariffs')}</span></div>`;
+}
+const FAQ_MOBIE = 'https://www.mobie.pt/pt/carregarveiculo/faq';
+const CUSTO_MOBIE = 'https://www.mobie.pt/custo-do-carregamento';
+
+// Aviso de âmbito: o simulador só cobre a parcela de energia. É a peça
+// mais fácil de ler à pressa e a mais fácil de interpretar mal, por isso
+// fica sempre visível (resumida no hero, detalhada aqui).
+function scopeBox() {
+  return `<div class="scope${S.scopeClosed ? ' closed' : ''}" id="scopeBox">
+    <h3 onclick="S.scopeClosed=!S.scopeClosed;saveS();document.getElementById('scopeBox').classList.toggle('closed',S.scopeClosed)">
+      <span class="caret">▼</span> ${i18n('scopeTitle')}
+    </h3>
+    <div>
+      <p class="hint">${i18n('scopeHint2')}</p>
+      <table>
+        <tr><td>${i18n('rowCeme')}</td><td class="yes">✅ ${i18n('yes')}</td></tr>
+        <tr><td>${i18n('rowTar')}</td><td class="yes">✅ ${i18n('yesTar')}</td></tr>
+        <tr><td>${i18n('rowIec')}</td><td class="yes">✅ ${i18n('yes')}</td></tr>
+        <tr><td>${i18n('rowVat', { rate: R().vat + '%' })}</td><td class="yes">✅ ${i18n('yes')}</td></tr>
+        <tr><td>${i18n('rowEgme')}</td><td class="yes">✅ ${i18n('yesEgme')}</td></tr>
+        <tr><td>${i18n('rowOpc')}</td><td class="no">❌ ${i18n('no')}</td></tr>
+        <tr><td>${i18n('rowOpcEgme')}</td><td class="no">❌ ${i18n('no')}</td></tr>
+        <tr><td>${i18n('rowOther')}</td><td class="no">❌ ${i18n('no')}</td></tr>
+      </table>
+      <div class="warn">${i18n('scopeWarn')}</div>
+      <div class="more">
+        <a href="${CUSTO_MOBIE}" target="_blank" rel="noopener">${i18n('linkCost')}</a>
+        <a href="${FAQ_MOBIE}" target="_blank" rel="noopener">${i18n('linkFaq')}</a>
+      </div>
+    </div>
+  </div>`;
+}
+
+function vHome() {
+  const items = filtered();
+  const prices = LAST.map(q => q.totalEur).filter(Number.isFinite);
+  const max = Math.max(...prices, 1), lo = Math.min(...prices), hi = Math.max(...prices);
+  heroHome(items);
+  const kwhView = S.energyMode === 'kwh';
+  return scopeBox() + `<div class="card" style="background:linear-gradient(180deg,#f0fdf4 0%,#fff 60%)">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div><small style="color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:1px">${i18n('energyLbl')}</small>
+        <div class="bigkwh" style="font-size:34px;font-weight:800;letter-spacing:-1px;color:var(--accD)">${kwhTxt()} <span style="font-size:18px;color:var(--mut)">kWh</span></div></div>
+      <div class="seg" style="min-width:220px"><button data-em="kwh" class="${S.energyMode==='kwh'?'on':''}">${i18n('modeKwh')}</button><button data-em="bat" class="${S.energyMode==='bat'?'on':''}">${i18n('modeBat')}</button></div>
+      <div class="seg" style="min-width:120px"><button data-ramal="BT" class="${S.ramal === 'BT' ? 'on' : ''}" title="${i18n('ramalTip')}">BT</button><button data-ramal="MT" class="${S.ramal === 'MT' ? 'on' : ''}" title="${i18n('ramalTip')}">MT</button></div>
+    </div>
+    ${kwhView ? `
+      <div class="row" style="margin-top:10px"><label class="fl grow">${i18n('kwh')}<input id="kwh" type="number" value="${S.kwh}" min="1" step="0.5" style="font-size:18px;font-weight:700"></label>
+      <label class="fl grow">${i18n('search')}<input id="q" type="search" value="${S.q.replace(/"/g,'&quot;')}" placeholder="${i18n('searchPh')}"></label></div>` :
+      `<div style="margin-top:10px">
+        <div class="row"><label class="fl" style="width:110px">${i18n('capacity')}<input id="batCap" type="number" value="${S.batCap}" min="1" step="1"></label>
+        <div class="grow" style="display:flex;flex-direction:column;gap:6px">
+          <label class="fl">${i18n('min')} ${S.batMin}%<input id="batMin" type="range" min="0" max="100" step="5" value="${S.batMin}"></label>
+          <label class="fl">${i18n('max')} ${S.batMax}%<input id="batMax" type="range" min="0" max="100" step="5" value="${S.batMax}"></label>
+        </div></div>
+        <small id="batNote" style="display:block;margin-top:4px">${i18n('chargingFrom', { a: S.batMin, b: S.batMax, c: kwhTxt() })}</small>
+        <div class="row" style="margin-top:6px"><label class="fl grow">${i18n('search')}<input id="q" type="search" value="${S.q.replace(/"/g,'&quot;')}" placeholder="${i18n('searchPh')}"></label></div>
+      </div>`}
+    <div class="row" style="margin-top:10px"><div class="seg grow" role="group" aria-label="${i18n('region')}">
+      ${Object.entries(REG()).map(([k, v]) => `<button data-r="${k}" class="${k === S.region ? 'on' : ''}">${v.nome}<small>${v.iva}</small></button>`).join('')}
+    </div></div>
+    <div class="row" style="margin-top:10px">
+      <button id="fGreen" class="${S.green ? 'on' : ''}">${i18n('fGreen')}</button>
+      <button id="fBundle" class="${S.nobundle ? 'on' : ''}">${i18n('fBundle')}</button>
+      <button id="fFav">${S.favonly ? i18n('fFavOn') : i18n('fFavOff')}</button>
+      <button id="openFavModal">${i18n('fFavMgr', { n: favs().length })}</button>
+    </div>
+    <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+      <label class="fl grow">${i18n('when')}<input id="when" type="text" value="${S.chargeAt ? toIsoDisplay(S.chargeAt) : toIsoDisplay(S.serverNow || new Date().toISOString())}" placeholder="${i18n('whenPh')}" pattern="\d{4}/\d{2}/\d{2} \d{2}:\d{2}" style="width:100%"></label>
+      <button id="nowBtn" style="align-self:flex-end">${i18n('nowBtn')}</button>
+    </div>
+    <small style="display:block;margin-top:4px">${S.chargeAt ? i18n('tFixed') : (S.forceServerTime ? i18n('tSkew') : i18n('tBrowser')) + i18n('tMode')}</small>
+  </div>
+    <div class="sec-t">${i18n('ranking')} · ${R().nome}</div>
+    <div id="list">${items.map((q, i) => card(q, i, max, lo, hi)).join('') || `<div class="empty">${i18n('noRes')}</div>`}</div>`;
+}
+const FM = { q: '', volt: '', pop: false, bundle: false, green: false };
+function renderFavModal() {
+  const box = document.getElementById('favModalList');
+  if (!box) return;
+  const fav = favs();
+  const q = deaccent(FM.q).toLowerCase();
+  const items = LAST.filter(tf =>
+    (!FM.pop || tf.popular) &&
+    (!FM.bundle || tf.bundle) &&
+    (!FM.green || tf.green) &&
+    (!q || searchText(tf).toLowerCase().includes(q)));
+  // de-dup por (CEME, nome), preferindo a variante da tensão seleccionada
+  const dedup = new Map();
+  for (const tf of items) {
+    const key = tariffKey(tf);
+    const cur = dedup.get(key);
+    if (!cur || (tf.voltage === S.ramal && cur.voltage !== S.ramal)) dedup.set(key, tf);
+  }
+  const groups = {};
+  for (const tf of dedup.values()) (groups[tf.ceme] = groups[tf.ceme] || []).push(tf);
+  box.innerHTML = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'pt')).map(ceme => {
+    const qs = [...groups[ceme]].sort((a, b) => a.name.localeCompare(b.name, 'pt'));
+    const color = qs[0].brand;
+    return `<div class="mg"><h4><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${color}"></span>${ceme} <small style="color:var(--mut)">(${qs.length})</small></h4>` +
+      qs.map(tf => `<div class="mi ${fav.includes(tf.id)?'fav':''}" onclick="toggleFav('${tf.id}')"><span class="nm">${tariffName(tf.name)}<br><span class="meta">${tf.kind==='INDEXED'?i18n('kIndexed'):i18n('kFixed')}${tf.bundle?' · '+i18n('tagBundle'):''}${tf.popular?' · '+i18n('tagPopular'):''}${tf.green?' · '+i18n('tagGreen'):''}</span></span><span>${fav.includes(tf.id)?'★':'☆'}</span></div>`).join('') +
+      `</div>`;
+  }).join('') || `<div class="empty">${i18n('fmNoRes')}</div>`;
+}
+window.toggleFav = id => {
+  const f = favs(), i = f.indexOf(id);
+  i >= 0 ? f.splice(i, 1) : f.push(id);
+  localStorage.setItem('ceme:favs', JSON.stringify(f));
+  saveS();
+  route();
+  if (document.getElementById('favModal')?.classList.contains('on')) renderFavModal();
+};
+
+/* ================= COMPARAR ================= */
+// Ordenação alfabética estável. Usa a collation portuguesa de propósito: os
+// nomes são os que o CEME publica, e ordenar pela língua da interface faria
+// a lista mudar de ordem ao trocar a bandeira.
+const byAlpha = (a, b) => a.ceme.localeCompare(b.ceme, 'pt') || a.name.localeCompare(b.name, 'pt');
+function opt(list, sel) {
+  return [...list].sort(byAlpha).map(q => `<option value="${q.id}" ${q.id === sel ? 'selected' : ''}>${q.ceme} — ${tariffName(q.name)}</option>`).join('');
+}
+function vCmp() {
+  document.getElementById('hero').innerHTML = `<h1>${i18n('cmpH1a')}<span>${i18n('cmpH1b')}</span></h1><p>${i18n('cmpSub', { r: R().nome, v: R().iva })}</p>`;
+  // O comparador é uma ferramenta de comparação, não uma vista filtrada: ignora
+  // pesquisa, verde, bundle e favoritos, mas respeita a tensão do ramal e
+  // deduplica — senão o dropdown mostrava cada tarifário duas vezes (BT e MT).
+  const todos = dedupByRamal(LAST);
+  const idx = todos.filter(q => q.kind === 'INDEXED'), fix = todos.filter(q => q.kind === 'FIXED');
+  if (!idx.length) return `<div class=card>${i18n('loading')}</div>`;
+  // A selecção guarda o nome (ceme|nome) e não o id: ao trocar BT<->MT o id
+  // muda mas o tarifário é o mesmo, e a escolha não deve saltar.
+  const pick = (list, wanted, fallback) => list.find(q => tariffKey(q) === wanted) || list.find(q => q.id === fallback) || list[0];
+  const a0 = pick(idx, S.idxKey, S.idx), b0 = pick(fix, S.fixKey, S.fix);
+  S.idxKey = tariffKey(a0); S.idx = a0.id;
+  S.fixKey = tariffKey(b0); S.fix = b0.id;
+  return `<div class="card"><div class="row">
+    <label class="fl grow">${i18n('lIndexed')}<select id="cmpIdx" style="width:100%">${opt(idx, S.idx)}</select></label>
+    <label class="fl grow">${i18n('lFixed')}<select id="cmpFix" style="width:100%">${opt(fix, S.fix)}</select></label></div>
+    <div class="row" style="margin-top:8px"><label class="fl grow">${i18n('omieRef')}<input id="cmpOmie" type="range" min="0.05" max="0.40" step="0.005" value="${S.omie}" style="width:100%"></label><b id="cmpOmieV">${Number(S.omie).toFixed(3)}</b></div>
+    <div class="kpi" id="cmpKpi" style="margin-top:10px"></div></div>
+    <div class="sec-t">${i18n('last60')}</div>
+    <div id="cmpChart"><div class=card>${i18n('calcHist')}</div></div>
+    <div class="sec-t">${i18n('whenCharge')}</div>
+    <div id="cmpQ"><div class=card>${i18n('calcQ')}</div></div>
+`;
+}
+function svgChart(days, a, b) {
+  const W = 680, H = 230, P = 36;
+  const all = days.flatMap(d => [d.vaz, d.fora, b.vaz, b.fora]).filter(Number.isFinite);
+  const lo = Math.min(...all), hi = Math.max(...all), span = (hi - lo) || 1;
+  const X = i => P + i * (W - 2 * P) / Math.max(days.length - 1, 1);
+  const Y = v => H - P - (v - lo) / span * (H - 2 * P);
+  const line = (f, c, dash) => `<polyline fill="none" stroke="${c}" stroke-width="2.2" ${dash ? `stroke-dasharray="${dash}"` : ''} points="${days.map((d, i) => `${X(i).toFixed(1)},${Y(f(d)).toFixed(1)}`).join(' ')}"/>`;
+  const wins = days.map((d, i) => d.fora < b.fora ? i : -1).filter(i => i >= 0);
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">
+    <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1d4ed8" stop-opacity=".35"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></linearGradient></defs>
+    <text x="${P}" y="15" font-size="11" fill="#64748b">${days[0].date} → ${days[days.length - 1].date} · ${cycName(a.cycle)}${i18n('chartDays', { n: days.length })}</text>
+    <text x="4" y="${Y(hi)}" font-size="10" fill="#64748b">${hi.toFixed(2)}</text>
+    <text x="4" y="${Y(lo) + 10}" font-size="10" fill="#64748b">${lo.toFixed(2)}</text>
+    ${[0.25, 0.5, 0.75].map(f => { const y = P + f * (H - 2 * P); return `<line x1="${P}" y1="${y}" x2="${W - 8}" y2="${y}" stroke="#eef2f5"/>`; }).join('')}
+    ${line(d => d.fora, '#1d4ed8')}${line(d => d.vaz, '#93c5fd')}
+    ${line(() => b.fora, '#16a34a', '7 4')}${line(() => b.vaz, '#86efac', '7 4')}
+    ${wins.map(i => `<circle cx="${X(i).toFixed(1)}" cy="${Y(days[i].fora).toFixed(1)}" r="3" fill="#1d4ed8"/>`).join('')}
+  </svg><div class="legend"><span style="color:#1d4ed8">━ ${i18n('legendIdxPeak')}</span> · <span style="color:#93c5fd">━ ${i18n('legendIdxOff')}</span> · <span style="color:#16a34a">┄ ${i18n('legendFixed')}</span> · <span style="color:#1d4ed8">●</span> ${i18n('legendWins')}</div>`;
+}
+// "10:30" -> "10:45". Quarter-hour arithmetic on wall-clock strings.
+function plus15(t) {
+  const [h, m] = t.split(':').map(Number);
+  const n = (h * 60 + m + 15) % 1440;
+  return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0');
+}
+// Colapsa uma lista ordenada de inicios de quarto em faixas contiguas:
+// ["10:30","10:45","11:00"] -> ["10:30-11:15"]
+function ranges(starts) {
+  const out = [];
+  let s = null, p = null;
+  for (const tt of starts) {
+    if (s === null) { s = tt; p = tt; }
+    else if (plus15(p) === tt) p = tt;
+    else { out.push(s + '–' + plus15(p)); s = tt; p = tt; }
+  }
+  if (s !== null) out.push(s + '–' + plus15(p));
+  return out;
+}
+
+async function loadQuarters(a, date) {
+  const box = document.getElementById('cmpQ');
+  if (!a) return;
+  try {
+    const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
+    const byPrice = [...q.quarters].sort((x, y) => x.price - y.price);
+    const cheapSorted = byPrice.slice(0, 8).map(x => x.start).sort();
+    const wins = ranges(cheapSorted);
+
+    // "onde o indexado ganha ao fixo" e uma coisa diferente de "os 8 mais
+    // baratos": a primeira precisa do fixo de referencia, que o cliente
+    // escolheu no comparador e nos mandou com &fixed=.
+    const temFixo = !!q.fixed;
+    const faixasIdx = temFixo ? ranges(q.quarters.filter(x => x.winner === 'IDX').map(x => x.start).sort()) : [];
+    const resumo = !temFixo ? i18n('vsFixedNoData')
+      : q.wins.idx ? i18n('vsFixed', { w: q.wins.idx, n: q.wins.total }) + (faixasIdx.length ? ' — ' + faixasIdx.join(' · ') : '')
+      : i18n('vsFixedNone');
+
+    const show = (window._qOrder === 'price' ? byPrice : q.quarters);
+    box.innerHTML = `<div class=card><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
+      <div><b style="font-size:16px">${q.date}</b> · ${a.ceme} — ${tariffName(a.name)} <small>(K=${fmtNum(q.k)}, CGS=${fmtNum(q.cgs)})</small>${q.estimated ? ` <span class="badge bnd">${i18n('omipEst')}</span>` : ''}</div>
+      <small style="color:var(--mut)">${q.source}</small></div>
+      <div class="row" style="margin:8px 0">
+        <div style="flex:1;display:flex;gap:4px;flex-wrap:wrap">${(q.days || []).map(d => `<button data-d="${d}" class="${d === q.date ? 'on' : ''}" style="padding:5px 9px;font-size:12px">${d.slice(5)}</button>`).join('')}</div>
+        <div style="display:flex;gap:4px"><button id="qTime" style="padding:5px 9px;font-size:12px" class="${window._qOrder !== 'price' ? 'on' : ''}">${i18n('byTime')}</button><button id="qPrice" style="padding:5px 9px;font-size:12px" class="${window._qOrder === 'price' ? 'on' : ''}">${i18n('cheapestQ')}</button></div>
+      </div>
+      <small style="display:block;margin-top:6px">${i18n('eightCheap')} <b>${wins.join(' · ') || '—'}</b></small>
+      <small style="display:block;margin-top:4px;color:${temFixo ? 'var(--ink)' : 'var(--mut)'}">${resumo}</small>
+      <div class="qwrap" style="margin-top:8px"><table class="q"><tr><th>${i18n('thTime')}</th><th>${i18n('period')}</th><th>${i18n('thOmie')}</th><th>${i18n('thIdx')}</th>${temFixo ? `<th>${i18n('thFix')}</th><th>${i18n('thWin')}</th>` : ''}</tr>
+      ${show.map(x => `<tr class="${x.winner === 'IDX' ? 'win-idx' : x.winner === 'FIX' ? 'win-fix' : ''}${x.cheap ? ' cheap' : ''}"><td>${x.start}–${x.end}${x.cheap ? ' ★' : ''}</td><td>${perName(x.period)}</td><td>${x.omieMwh.toFixed(1)}</td><td class="p-idx">${x.price.toFixed(4)}</td>${temFixo ? `<td class="p-fix">${x.fixed == null ? '—' : x.fixed.toFixed(4)}</td><td class="w">${x.winner === 'IDX' ? i18n('winIdx') : x.winner === 'FIX' ? i18n('winFix') : x.winner === 'EQ' ? i18n('winEq') : '—'}</td>` : ''}</tr>`).join('')}
+      </table></div>
+      ${temFixo ? `<small style="display:block;margin-top:6px">${i18n('qCompareNote')}</small>` : ''}</div>`;
+    document.getElementById('qTime').onclick = () => { window._qOrder = 'time'; loadQuarters(a, q.date); };
+    document.getElementById('qPrice').onclick = () => { window._qOrder = 'price'; loadQuarters(a, q.date); };
+    box.querySelectorAll('[data-d]').forEach(x => x.onclick = () => loadQuarters(a, x.dataset.d));
+  } catch (e) {
+    box.innerHTML = `<div class=card>${i18n('qUnavailable')}</div>`;
+  }
+}
+async function loadCmp() {
+  const a = LAST.find(q => q.id === S.idx), b = LAST.find(q => q.id === S.fix);
+  if (!a || !b) return;
+  const d = a.totalEur - b.totalEur;
+  document.getElementById('cmpKpi').innerHTML =
+    `<div><small>${a.ceme} · ${i18n('kIdx')}</small><br><b>${eur(a.totalEur)}</b> <small>· ${kwhe(a.eurKwhNoIva)}</small></div>
+     <div><small>${b.ceme} · ${i18n('kFix')}</small><br><b>${eur(b.totalEur)}</b> <small>· ${kwhe(b.eurKwhNoIva)}</small></div>
+     <div><small>${i18n('diffNow')}</small><br><b style="color:${d > 0 ? '#b45309' : '#16a34a'}">${d > 0 ? '+' + eur(d) : eur(d)}</b> <small>${d > 0 ? i18n('fixedWins') : i18n('idxWins')}</small></div>`;
+  try {
+    const [daily] = await Promise.all([api('/v1/omie/daily?days=60')]);
+    const cyc = a.cycle === 'DIARIO' ? ['bd_v', 'bd_f'] : ['bs_v', 'bs_f'];
+    const loss = 1 + (a.loss || 0);
+    const tar = await api('/v1/tar').then(j => Object.fromEntries(j.data.filter(tr => tr.region === 'CONT' && tr.voltage === a.voltage).map(tr => [tr.period, tr.price_eur_kwh])));
+    const days = daily.rows.filter(r => r[cyc[0]] != null).map(r => ({
+      date: r.date.slice(5),
+      vaz: (r[cyc[0]] / 1000 + a.k + a.cgs) * loss + (tar.VAZIO || 0),
+      fora: (r[cyc[1]] / 1000 + a.k + a.cgs) * loss + (tar.FORA_VAZIO || 0),
+    }));
+    const fixedFora = b.prices.FORA_VAZIO ?? b.prices.UNICO;
+    const wins = days.filter(x => x.fora < fixedFora).length;
+    const be = ((fixedFora - (tar.FORA_VAZIO || 0)) / loss) - a.k - a.cgs;
+    document.getElementById('cmpChart').innerHTML = svgChart(days, a, { vaz: b.prices.VAZIO ?? b.prices.UNICO, fora: fixedFora }) +
+      `<div class=card><small>${i18n('winsTxt', { w: wins, d: days.length, be: be.toFixed(3), src: daily.source, cache: daily.cached ? i18n('cache') : '' })}</small></div>`;
+  } catch (e) {
+    document.getElementById('cmpChart').innerHTML = `<div class=card>${i18n('histUnavail')}</div>`;
+  }
+  loadQuarters(a);
+}
+
+/* ================= boot ================= */
+async function refresh() {
+  const kwh = effKwh();
+  if (S.energyMode === 'kwh') S.kwh = kwh;
+  let at = null;
+  if (S.chargeAt) at = S.chargeAt;
+  else if (!S.forceServerTime) at = new Date().toISOString();
+  const body = { kwh, region: S.region, omie: S.omie, omieVazio: S.omieVazio, omieFora: S.omieFora };
+  if (at) body.at = at;
+  const j = await api('/v1/simulate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  LAST = j.data || []; AVG = j.avg; AT = j.at; OMIE = j.omieRef;
+  if (!S.chargeAt && !S.forceServerTime && j.at) {
+    const skew = Math.abs(new Date(j.at).getTime() - Date.now());
+    if (skew > 5 * 60 * 1000) { S.forceServerTime = true; S.chargeAt = null; }
+  }
+  S.serverNow = j.at;
+}
+async function route() {
+  const cmp = location.hash.startsWith('#/comparar');
+  document.getElementById('nHome').classList.toggle('on', !cmp);
+  document.getElementById('nCmp').classList.toggle('on', cmp);
+  document.getElementById('app').innerHTML = cmp ? vCmp() : vHome();
+  if (!cmp) {
+    const R2 = () => refresh().then(route);
+    // Mudar kWh <-> bateria muda a energia, logo obriga a recalcular. O botão
+    // marca-se de imediato (feedback instantâneo) e o re-render completo
+    // espera pelo refresh — senão o utilizador vê o valor velho até ao clique
+    // seguinte.
+    document.querySelectorAll('[data-em]').forEach(x => x.onclick = () => {
+      S.energyMode = x.dataset.em;
+      document.querySelectorAll('[data-em]').forEach(b => b.classList.toggle('on', b === x));
+      R2();
+    });
+    const kwhEl = document.getElementById('kwh');
+    if (kwhEl) kwhEl.onchange = e => { S.kwh = Number(e.target.value || 40); R2(); };
+    const batCapEl = document.getElementById('batCap');
+    if (batCapEl) batCapEl.onchange = e => { S.batCap = Number(e.target.value || 60); R2(); };
+    const batMinEl = document.getElementById('batMin');
+    // Durante o arrasto do slider só se mexem os números que dependem dele.
+    // Re-renderizar aqui destruía o próprio slider a meio do gesto (o rato
+    // continuava a mover-se sobre um elemento já substituído). O render
+    // completo fica para o `change`, quando o utilizador larga.
+    const liveKwh = () => {
+      const big = document.querySelector('.bigkwh');
+      if (big) big.innerHTML = `${kwhTxt()} <span style="font-size:18px;color:var(--mut)">kWh</span>`;
+      const note = document.getElementById('batNote');
+      if (note) note.textContent = i18n('chargingFrom', { a: S.batMin, b: S.batMax, c: kwhTxt() });
+    };
+    if (batMinEl) batMinEl.oninput = e => { S.batMin = Number(e.target.value); liveKwh(); };
+    const batMaxEl = document.getElementById('batMax');
+    if (batMaxEl) batMaxEl.oninput = e => { S.batMax = Number(e.target.value); liveKwh(); };
+    if (batMinEl) batMinEl.onchange = () => R2();
+    if (batMaxEl) batMaxEl.onchange = () => R2();
+    document.querySelectorAll('[data-r]').forEach(x => x.onclick = () => { S.region = x.dataset.r; R2(); });
+    const q = document.getElementById('q');
+    if (q) q.oninput = e => { S.q = e.target.value; const pos = e.target.selectionStart; route(); const q2 = document.getElementById('q'); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } };
+    document.querySelectorAll('[data-ramal]').forEach(x => x.onclick = () => { S.ramal = x.dataset.ramal; route(); });
+    const fG = document.getElementById('fGreen'); if (fG) fG.onclick = () => { S.green = !S.green; route(); };
+    const fB = document.getElementById('fBundle'); if (fB) fB.onclick = () => { S.nobundle = !S.nobundle; route(); };
+    const fF = document.getElementById('fFav'); if (fF) fF.onclick = () => { S.favonly = !S.favonly; route(); };
+    const ofm = document.getElementById('openFavModal');
+    if (ofm) ofm.onclick = () => { document.getElementById('favModal').classList.add('on'); renderFavModal(); };
+    const cfm = document.getElementById('closeFavModal');
+    if (cfm) cfm.onclick = () => { document.getElementById('favModal').classList.remove('on'); route(); };
+    const fsm = document.getElementById('favSearch');
+    if (fsm) fsm.oninput = e => { FM.q = e.target.value; renderFavModal(); };
+    const fmPop = document.getElementById('fmPop'); if (fmPop) fmPop.onclick = () => { FM.pop = !FM.pop; fmPop.classList.toggle('on', FM.pop); renderFavModal(); };
+    const fmBun = document.getElementById('fmBundle'); if (fmBun) fmBun.onclick = () => { FM.bundle = !FM.bundle; fmBun.classList.toggle('on', FM.bundle); renderFavModal(); };
+    const fmGrn = document.getElementById('fmGreen'); if (fmGrn) fmGrn.onclick = () => { FM.green = !FM.green; fmGrn.classList.toggle('on', FM.green); renderFavModal(); };
+    const whenEl = document.getElementById('when');
+    if (whenEl) whenEl.onchange = e => { S.chargeAt = fromIsoDisplay(e.target.value); R2(); };
+    const nowBtn = document.getElementById('nowBtn');
+    if (nowBtn) nowBtn.onclick = () => { S.chargeAt = null; R2(); };
+  } else {
+    document.getElementById('cmpIdx').onchange = e => { S.idx = e.target.value; loadCmp(); };
+    document.getElementById('cmpFix').onchange = e => { S.fix = e.target.value; loadCmp(); };
+    document.getElementById('cmpOmie').oninput = e => { document.getElementById('cmpOmieV').textContent = Number(e.target.value).toFixed(3); };
+    document.getElementById('cmpOmie').onchange = e => { S.omie = Number(e.target.value); S.omieVazio = S.omie; S.omieFora = S.omie; S.omieAuto = false; refresh().then(loadCmp); };
+    loadCmp();
+  }
+  saveS();
+}
+// OMIE de referência. Vai em segundo plano de propósito: o primeiro fetch
+// com cache frio pode demorar dezenas de segundos (o servidor tem timeout e
+// 3 tentativas), e a página não pode ficar em branco à espera disso.
+async function loadOmieRef() {
+  try {
+    const d = await api('/v1/omie/daily?days=2');
+    const r = (d.rows || []).slice(-1)[0];
+    if (!r) return;
+    const vals = [r.bd_v, r.bd_f, r.bs_v, r.bs_f].filter(v => Number.isFinite(v));
+    if (vals.length) S.omie = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) / 1000 * 1000) / 1000;
+    // médias vazio/fora (€/kWh) para agregação SPLIT_VAZIO_FORA
+    const toKwh = v => Number.isFinite(v) ? v / 1000 : null;
+    S.omieVazio = toKwh(r.bd_v) ?? toKwh(r.bs_v) ?? S.omie;
+    S.omieFora = toKwh(r.bd_f) ?? toKwh(r.bs_f) ?? S.omie;
+    if (S.omieAuto) { await refresh(); route(); }
+  } catch (e) { /* mantém o valor por omissão */ }
+}
+
+async function init() {
+  loadS();
+  setLang(initialLang(), false);
+  document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); route(); });
+  await refresh();   // rápido: só o simulate, com o OMIE por omissão
+  route();           // pinta já
+  loadOmieRef();     // e depois acerta o OMIE e repinta
+}
+window.addEventListener('hashchange', route);
+init();</script>
+</html>

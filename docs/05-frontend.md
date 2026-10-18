@@ -1,0 +1,382 @@
+# 05 — Frontend (POC)
+
+Implementação actual: um único ficheiro `frontend/index.html` (HTML + CSS +
+JS vanilla, sem build). Serve em `/` pelo próprio `server.js`.
+
+## Rotas (hash)
+
+- `#/` — ranking "neste momento" (`POST /v1/simulate`), com kWh ou bateria %,
+  região, pesquisa, filtros (verde, sem bundle, favoritos), data/hora do
+  carregamento configurável (ISO aaaa/mm/dd hh:mm).
+- `#/comparar` — indexado vs fixo: valor actual, gráfico SVG de 60 dias,
+  tabela de quartos-horários com o preço do indexado **e do fixo**, marcando
+  todos os quartos em que cada um ganha.
+  Os dropdowns usam `dedupByRamal(LAST)`: **sem** duplicados BT/MT (o bug
+  anterior listava cada tarifário duas vezes) e o comparador ignora os filtros
+  de cor/bundle/favoritos e a pesquisa — o comparador é uma ferramenta de
+  comparação, não uma vista filtrada. A selecção guardar-se por
+  `ceme|nome` e não por `id`, para sobreviver à troca BT ⇄ MT (o id muda, o
+  tarifário não).
+
+## Aviso de âmbito (a peça mais importante da UI)
+
+O custo de um carregamento Mobi.E tem várias parcelas; nós só calculamos a
+**parcela de energia**. Para não haver interpretação errada, o aviso aparece
+em **dois sítios**:
+
+1. **Hero**, sempre visível, uma linha (clica ⇒ faz scroll para o card):
+   "Simula só a parcela de energia (CEME + IEC + IVA + EGME). Não inclui a
+   tarifa de utilização do posto (OPC)."
+2. **Card expansível** no topo do ranking ("Isto é só uma parte do custo de
+   carregamento") com a tabela das parcelas:
+
+   | Parcela | Calculada? |
+   |---|---|
+   | Tarifário do CEME | ✅ |
+   | TAR | ✅ incluída no €/kWh |
+   | IEC | ✅ |
+   | IVA | ✅ (taxa dinâmica por região) |
+   | EGME — ativação da CEME | ✅ embutida no tarifário |
+   | **Tarifa OPC — utilização do posto** | ❌ |
+   | EGME cobrada pelo OPC | ❌ |
+   | Outros serviços | ❌ |
+
+   Com o aviso destacado ("o valor apresentado é o mínimo da parcela de
+   energia") e links para [mobie.pt/custo-do-carregamento](https://www.mobie.pt/custo-do-carregamento)
+   e para a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
+3. **Rodapé**, versão curta com os mesmos links.
+
+O estado aberto/fechado persiste em `localStorage['ceme:S'].scopeClosed`.
+
+## Funcionalidades
+
+### Quando é que cada controlo obriga a recalcular
+
+A página tem de distinguir "muda o que se mostra" de "muda o número". Regra
+usada em `route()`:
+
+| controlo | acção | porque |
+|---|---|---|
+| modo kWh ⇄ bateria | **`refresh()`** | muda a energia — o preço é todo diferente |
+| valor de kWh, capacidade | **`refresh()`** | idem |
+| slider mín/máx (arrasto) | actualiza **só** os números dependentes | durante o arrasto não se re-renderiza |
+| slider mín/máx (ao largar) | **`refresh()`** | o gesture acabou, pode re-renderizar |
+| região | **`refresh()`** | muda o IVA |
+| BT ⇄ MT | `route()` | `LAST` já traz as duas variantes; `filtered()` escolhe a da tensão. Não precisa de ir ao servidor |
+| pesquisa, filtros, favoritos | `route()` | só filtram a lista já em memória |
+
+O slider é o caso delicado: `oninput` re-renderizava a vista inteira e
+**destruía o próprio slider a meio do arrasto** — o rato continuava a mover-se
+sobre um elemento já substituído. Agora o `oninput` escreve só no número
+grande e na nota (`liveKwh()`) e o render completo fica para o `change`.
+Durante o arrasto os cartões mostram o preço antigo, mas imprimem o **seu**
+kWh, portanto estão internamente coerentes; ao largar, tudo é recalculado.
+
+- **Energia a carregar:** modo kWh direto ou bateria (capacidade + min/max %).
+  O valor efectivo (`effKwh()`) é o que aparece no hero, nas tabelas e nos
+  cartões — nunca o `S.kwh` cru, que fica desatualizado no modo bateria.
+  No ecrã sai sempre com **uma casa decimal** (`kwhTxt()` → `30,3 kWh` em PT,
+  `30.3 kWh` em EN); o valor bruto só vai para os cálculos. O campo de
+  edição fica cru, para se poder escrever `40` e não `40,0`.
+- **Data/hora:** input ISO 24h; default "agora" com base na hora do browser
+  (fallback servidor se desvio >5 min).
+- **OMIE de referência:** por omissão = último OMIE real, com médias
+  `omieVazio`/`omieFora` separadas para a agregação `SPLIT_VAZIO_FORA`.
+  Slider manual no comparador desliga o modo automático.
+- **Potência do ramal (BT/MT):** selector no cartão de energia; afecta a TAR
+  aplicada, não a lista. O dedup por `ceme|nome` (`dedupByRamal()`) é partilhado
+  entre o ranking, o modal de favoritos e o comparador — é a mesma lista nos
+  três sítios, o que evita aparecer duas vezes num sítio e não noutro.
+- **Favoritos:** estrela nos cartões, modal "Gerir favoritos" agrupado por
+  CEME com pesquisa e filtros (popular, bundle, verde). Persistido em
+  `localStorage['ceme:favs']`.
+- **Barra de preço com cor térmica:** o comprimento é proporcional e linear;
+  a cor vai de verde a vermelho numa rampa logarítmica entre o tarifário mais
+  barato e o mais caro de **toda** a lista (`heatColor()`/`heatOf()`), por isso
+  não muda ao filtrar. A escala é logarítmica porque com uma linear quase
+  tudo ficava verde — há tarifários 5× mais caros que a mediana.
+- **Pesquisa sem acentos e bilíngue:** `deaccent()` + `searchText()` — pesquisar
+  "luzigas" encontra "LUZiGÁS", e "indexed tariff" encontra o tarifário mesmo
+  em português (mostrando sempre o nome original do CEME).
+- **Mobile:** media query (≤520px) com layout compacto; o logo encolhe com
+  ellipsis para não empurrar a nav.
+
+## Internacionalização (PT / EN)
+
+Duas línguas, PT por omissão. Precedência:
+
+1. `localStorage['ceme:lang']` — escolha explícita na bandeira;
+2. cabeçalho **`Accept-Language`** — detectado pelo servidor;
+3. português.
+
+O servidor injecta o valor detectado em `window.__LANG__` e põe o `<html lang>`
+certo no HTML servido (`negotiateLang()` em `server.js`). Só passa a inglês se
+o **primeiro** tag da lista ordenada por `q` for `en*` — um `en;q=0.8` atrás
+de um `pt;q=0.9` não ganha, porque o público-alvo é português. Resposta
+inclui `Vary: Accept-Language`.
+
+No cliente:
+- `STR.pt` / `STR.en` no topo do `<script>`, com todas as strings da UI;
+  `t('chave', {vars})` faz a substituição e cai para PT se a chave faltar.
+- `setLang(id, persist)` muda a linguagem, actualiza `<html lang>`, as
+  bandeiras e o chrome estático (`applyChrome()`: `<title>`, logo, nav,
+  título/rodapé do modal de favoritos, rodapé).
+- Seletor com **bandeiras SVG** (PT e GB desenhadas em CSS/SVG — emoji não
+  renderiza em Windows) no header, ao lado da nav.
+- Persistência em `localStorage['ceme:lang']` — sem isto a bandeira parecia
+  não funcionar, porque cada visita voltava ao português.
+
+Traduzido: chrome, hero, aviso de âmbito, cartões, badges, detalhe, filtros,
+modal de favoritos, comparador, rodapé, e também os **ciclos**
+(diário/semanal/simples → same every day / day and night / single rate) e as
+**bandas** (vazio/fora de vazio → off-peak / peak).
+
+O inglês é **en-GB** (`favourites`, `colour`), por ser o contexto europeu.
+O cabeçalho HTTP também manda `en-GB` como fallback.
+
+### Lingue natural, não tradução literal
+
+As strings foram revistas uma a uma para não serem calcadas do português.
+Exemplos do que mudou e porquê:
+
+| PT | antes (calcado) | agora |
+|---|---|---|
+| Comparador CEME | CEME Comparator | **EV Tariff Comparison** |
+| Simular | Simulate | **Simulation** |
+| Quanto custa carregar agora? | What does it cost to charge now? | **How much does it cost to charge right now?** |
+| Indexado OMIE | OMIE indexed | **Tracks the OMIE price** |
+| comercializado em: | sold in: | **only sold in:** |
+| O valor apresentado é o mínimo… | The figure shown is the minimum… | **What you see here is the cheapest the energy component can be.** |
+| A fatura final será maior | Your final invoice will be higher | **Your final bill will be higher** |
+| OMIE de referência | Reference OMIE | **OMIE reference price** |
+| ~ = vazio estimado no seed do POC | estimated in the POC seed | **estimated — not from the retailer's published tariff** |
+| Favoritos | favourites | **saved** (o utilizador "guarda", não "favorita") |
+
+`OPC` aparece como `OPC / CPO`: o site da Mobi.E em inglês usa *Charging Point
+Operator*, o acrónimo português não é CRP.
+
+### A flag "Bundles" — porque é que NÃO é "cliente casa"
+
+A coluna chama-se **Bundles** e é um booleano simples do sheet (coluna `AI`
+da folha CEME).
+
+O workbook não dá mais definição: a única ocorrência de "bundle" em todas as
+folhas é o cabeçalho da coluna. Mas olhando as linhas marcadas, cobrem pelo
+menos seis relações diferentes:
+
+| marcado como `Bundles=True` | o que é na verdade |
+|---|---|
+| LUZiGÁS *Cliente Casa e CEME*, eVaz *Plano Move HOME*, GoldEnergy *Clientes Comercialização* | cliente de electricidade doméstica |
+| miio one (subscrição) | subscrição |
+| ACP *sócio ACP*, EDP *Associados UVE* | associação |
+| EDP/MEO *Colaboradores* | colaborador |
+| EDP *Clientes energia*, EVIO *Hyundai Blue* / *Go.Charge*, Galp Plano, FactorEnergia *VECARD* | desconto por já ser cliente |
+| Atlante *myAtlante Business (AC)* | ser cliente business |
+
+O único denominador é: **o preço está condicionado a ter outra relação com a
+CEME**. Para o *myAtlante Business* é quase tautológico, o que é porque
+parecia errado. Existe uma folha "Sem_Bundles__MT__Cheias", o que confirma que
+a flag existe para **filtrar** ofertas bundled.
+
+Rótulo usado, igual nos três sítios onde o conceito aparece (badge, filtro e
+modal de favoritos), com tooltip a explicar:
+
+| | |
+|---|---|
+| PT | **preço com condições** / *sem condições* / *com condições* |
+| EN | **conditional price** / *no conditions* / *conditional* |
+
+**A coluna na BD continua a ser só um booleano** (`tariff.bundle`), fiel à
+fonte. Não foi criada uma coluna por categoria.
+
+O filtro do modal de favoritos é **independente** e está correcto:
+`FM.bundle` significa "mostrar os com condições", logo `(!FM.bundle ||
+tf.bundle)`. Não confundir os dois.
+
+### Nomes dos tarifários — tradução parcial, por regras
+
+São os nomes que cada CEME publica, por isso **não se traduzem wholesale**:
+traduzir tudo tornava-os irreconhecíveis e impossíveis de conferir na página
+do CEME (que é o link de cada cartão). O que se traduz é o vocabulário
+genérico do sector; a marca fica intacta.
+
+`NAME_RULES` é uma lista de substituições aplicada **por ordem**, frases mais
+longas primeiro. 44 dos 55 nomes distintos ficam traduzidos; os restantes são marca
+pura e passam intactos (`NAME_KEEP`).
+
+| original (o que o CEME publica) | em inglês |
+|---|---|
+| Cartão EDP Charge (Bi-Horário) | EDP Charge card (bi-hourly) |
+| Cartão EDP Charge Frota (Simples) Clientes Energia | EDP Charge card fleet (simple rate) energy customers |
+| Cartão EDP Charge (Bi-Horário) Associados UVE (10%) | EDP Charge card (bi-hourly) UVE members (10%) |
+| Cartão CEME | CEME card |
+| Cartão Mobilidade Elétrica | electric mobility card |
+| Cartão Bluecharge / Cartão EVpower | Bluecharge card / EVpower card |
+| Tarifário Indexado Cliente CEME | indexed tariff, CEME customer |
+| Tarifário Indexado Cliente Casa e CEME | indexed tariff, home & CEME customer |
+| miio (Bi-Horário Diário) sem subscrição | miio (bi-hourly daily) no subscription |
+| Galp Electric Energia Verde | Galp Electric Renewable energy |
+| Clientes / Não Clientes Goldenergy Comercialização | Goldenergy / Non-Goldenergy supply customers |
+| Cartão de carregamento público e privado MOBISMART (pré-pago) | MOBISMART public and private charging card (prepaid) |
+| ACP Electric by EVIO - não sócio ACP | ACP Electric by EVIO — not an ACP member |
+| Pessoas Singulares | Individuals |
+| Mobilidade Elétrica | electric mobility |
+
+**"Cartão" muda de posição**: é prefixo em PT ("Cartão EDP Charge") e sufixo
+em EN ("EDP Charge card"). São necessárias regras explícitas por marca, não
+uma substituição genérica.
+
+Marcas que ficam intactas: `myAtlante (AC)`, `Eco Green`, `VECARD`, `GOW`,
+`Hyundai Blue`, `AB Energia`, `Via Verde Electric by ECOCHOICE`, `Prio Electric`.
+
+A **pesquisa ignora a língua da interface** (`searchText()` compara contra as
+duas formas): quem escreve "indexed tariff" em português encontra o tarifário,
+e mostra-o com o nome original do CEME. Sem isto, o utilizador ficava a
+pesquisar no escuro depois de mudar de língua.
+
+Testado em `backend/test/i18n.test.js` (7 testes): casos fixos, marcas
+intactas, nenhum nome do seed fica por traduzir, e — o mais útil —
+um teste que falha se alguém puser uma regra curta antes da frase longa que
+a contém (já apanhou uma regra morta: `Clientes Energia` antes de
+`Frota Clientes Energia`). Há também um teste que garante que PT e EN têm as
+mesmas chaves e os mesmos placeholders.
+
+### A função de tradução chama-se `i18n()`, não `t()`
+
+Porque já aconteceu duas vezes: um `.map(t => ...)` sobre um tarifário sombreava a função
+`t()` e o modal de favoritos ficava em branco com um `TypeError` silencioso.
+Quando se renomeou para `i18n()`, ficou um `t(cond ? 'a' : 'b')` por converter
+dentro de um ternário — e a página deixou de renderizar. Agora os nomes não
+colidem: `i18n()` para traduzir, `tf` para um tarifário.
+
+`backend/test/frontend-smoke.test.js` (9 testes) corre o frontend de facto num
+contexto isolado, sem browser, e chama `vHome()`, `vCmp()`, `badges()`,
+`detail()` e `renderFavModal()` — e falha se injectarmos qualquer um dos dois
+bugs. É o que apanha o que os testes de texto não apanham.
+
+### Português europeu, não brasileiro
+
+Varredura por marcadores de pt-BR (`usuário`, `tela`, `arquivo`, `celular`,
+`equipe`, `senha`, `conexão`, `você`, `atualizar`, `salvar`, `cadastro`,
+`faturamento`, `equipe`, `time`) — **zero ocorrências**. O português está em
+pt-PT pós-AO90: `fatura`, `utilizador`, `electricidade`, `ecrã`, `ficheiro`
+e **`ativação`** (não `activação`), `diretamente` (não `directamente`).
+
+O qualificador entra **uma vez**, onde não há contexto, e o resto
+fica curto:
+
+| sítio | texto |
+|---|---|
+| nav + título do comparador | **Indexed to OMIE** vs fixed tariff |
+| badge do cartão | Tracks the OMIE price *(mantido)* |
+| KPI do comparador | **wholesale-linked** (longe do título, tem de se explicar sozinho) |
+| legenda do gráfico | indexed tariff, peak / off-peak *(mantido)* |
+
+Em português fica **Indexado vs fixo** — é o termo de mercado e não precisa
+de qualificador. A assimetria com o inglês é deliberada: cada lado fica
+natural na sua língua.
+
+### O que NÃO é traduzido
+
+- As **marcas** e `@ O Carro Elétrico` (marca-irmã).
+- **`~`** e as siglas `BT`/`MT` (significado no tooltip).
+
+**Mantido por decisão:** nomes de marca dos tarifários (`myAtlante`,
+`Eco Green`, …) e topónimos — `Madeira` mantém-se, `Açores` passa a `Azores`.
+`BT`/`MT` mantêm as siglas, com o significado no tooltip do selector
+("BT = baixa tensão, MT = média tensão" / "BT = low voltage, MT = medium voltage").
+`IVA` → `VAT`, `EUR`/`€/kWh` inalterados, formato de data `aaaa/mm/dd hh:mm`
+mantido (é ISO, não é PT-PT).
+
+Avisos, notas e rótulos que chegam do servidor têm de chegar **neutros ou
+como código** — nunca como prosa num único idioma:
+
+- aviso das ilhas: `OMIE_CONT_REF` (código, traduzido no cliente);
+- nota do tarifário: `tariff_version.notes` (código, traduzido no cliente);
+- `source` do OMIE: `dados.tiagofelicia.pt (CC BY 4.0)` (sem "produção usa
+  omie.es", que era português).
+
+### Futuros OMIP: fora da interface, não fora da API
+
+A tabela de contratos OMIP (D+1/D+2) foi removida do comparador: não respondia
+a nada que o simulador calcule. O preço mostrado é sempre o do momento, e
+nenhuma previsão entra nele — mostrar OMIP ao lado dava a impressão de que a
+previsão afectava o preço apresentado.
+
+`/v1/omie/futures` **continua de pé** para consumidores da API, e `getFutures`
+continua em `omie/cache.js`. A interface deixou de o pedir, o que também tira
+uma dependência de rede ao gráfico de 60 dias — passa a depender só de
+`/v1/omie/daily` e `/v1/tar`.
+
+Teste de regressão sobre o **fonte** do frontend (não sobre o DOM): o stub de
+`getElementById` do smoke test nunca devolve `null`, portanto um
+`document.getElementById('cmpFut')` apontando para um contentor removido
+passaria despercebido. O teste verifica que não há `cmpFut`, que não há pedido
+a `/v1/omie/futures`, que as chaves `futures`/`thContract`/`thProduct` não
+sobrevivem em nenhum dos dois dicionários, e que o subtítulo já não promete os
+futuros.
+
+### Tabela de quartos — "quem ganha" é diferente de "quem é mais barato"
+
+A tabela quarto-a-hora marca duas coisas distintas:
+
+| marca | significado | quem calculava |
+|---|---|---|
+| ★ nos 8 mais baratos | os 8 quartos de OMIE mais baixo do dia | servidor (`cheap`) |
+| coluna **Fixo €/kWh** + coluna **Melhor** | se o indexado ou o fixo é mais barato **nesse quarto** | servidor (`winner`) |
+
+São coisas diferentes: num domingo de ciclo semanal o indexado ganha em 39 dos
+96 quartos e o fixo em 57 — o resumo antigo ("8 quartos mais baratos:
+10:30–12:30") não dizia nada sobre isso.
+
+O endpoint `/v1/indexed/quarters` recebe `?fixed=<id>` (o tarifário fixo que o
+cliente escolheu no comparador) e devolve, por quarto, `fixed` e `winner`
+(`IDX` / `FIX` / `EQ` / `null`). Sem `fixed`, `winner` é `null` e a UI esconde
+as duas colunas — **não há um "vencedor" por omissão**, porque um vencedor
+calculado contra o tarifário errado é pior do que nenhum.
+
+Regras que a comparação respeita, em `backend/src/engine/compare.js`:
+
+- o fixo é o **do mesmo período** (um bi-horário tem 0,1157 de vazio e 0,1812
+  de cheias; comparar os dois com um só número mentiria metade do dia);
+- um fixo **simples** só tem `UNICO`, que vale para todos os períodos;
+- os dois lados são arredondados a 4 casas **antes** de comparar, senão
+  `0.1 + 0.2 > 0.3` daria um falso empate;
+- a tarifa de ativação fica de fora: é um valor único e não se repete por
+  quarto de hora;
+- período sem preço no fixo → `null`, **nunca 0** (0 mostraria o fixo como
+  gratuito).
+
+**Notas do tarifário** (`notes`) aparecem em **três sítios** — tooltip no nome,
+**badge visível no cartão** (`só em AC` / `AC only`, roxo) e **linha dentro da
+composição do preço**. A primeira versão tinha só o tooltip, e isso não
+chegava: é uma correcção que ninguém vê. Uma nota tem de ser legível sem
+interacção.
+
+O mapeamento código → texto está em `NOTE_KEY`; um código desconhecido mostra-se
+tal e qual, para não esconder informação. Só os quatro tarifários
+`myAtlante (AC)` / `myAtlante Business (AC)` da Atlante têm nota
+(`AC_DC_FLAT`): o nome "(AC)" quer dizer **corrente alternada** — é o preço
+da energia nos postos AC. Nos postos **DC** a Atlante pratica um preço
+promocional *flat* com o CEME e o OPC já incluídos, que é precisamente o que
+este simulador não calcula.
+
+Não reintroduzir texto do servidor na UI.
+
+## Arranque sem bloquear
+
+`init()` pinta primeiro com o OMIE por omissão e só depois busca o OMIE de
+referência em segundo plano (`loadOmieRef()`). Com cache frio o primeiro
+fetch pode demorar dezenas de segundos (o servidor tem timeout de 25 s × 3
+tentativas) — se o OMIE bloqueasse o arranque, a página ficava em branco.
+
+## Favoritos sem login
+
+`localStorage['ceme:favs'] = [tariffId...]`. Sem conta, sem BD.
+
+## Evolução planeada
+
+- Migrar para Vite + React + Tailwind + PWA.
+- Portal CEME (login magic-link), sugestões, moderação admin.
+- Gestão de API keys para terceiros.
+- Decomposição completa (energia / TAR / IEC / IVA / EGME) no detalhe de cada tarifário.

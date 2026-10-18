@@ -1,0 +1,36 @@
+# Base de dados e cache OMIE — nunca versionados.
+# O seed reconstrói tudo (`rm -rf data`), e a BD tem de ser gerada na máquina
+# de cada um. Versionar um SQLite com WAL por dentro é frágil (o -wal pode não
+# ter sido checkpointed) e o cache OMIE é dados de terceiros, não nosso.
+backend/data/
+data/
+
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json.bak
+
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Segredos. `JWT_SECRET` tem de vir do ambiente — o servidor recusa arrancar
+# sem ele (ver docs/04). Mesmo assim, nunca versionar um .env.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Notas de sessão e artefactos de trabalho que vivem no directório do utilizador,
+# não no projecto.
+ADVERSARIAL_REVIEW_*.md
