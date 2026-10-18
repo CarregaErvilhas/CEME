@@ -309,6 +309,7 @@ const STR = {
     footScope: '<b>Âmbito:</b> o simulador calcula só a parcela de energia (tarifário do CEME + TAR + IEC + IVA + EGME). <b>Não inclui a tarifa de utilização do posto (OPC)</b>, que cada operador define e publica no próprio posto — por isso o valor final na fatura será maior.',
     footRest: 'Valores com IVA da região de carregamento. <code>~</code> marca um preço estimado. Séries OMIE via dados.tiagofelicia.pt (CC BY 4.0); produção usa omie.es. Favoritos ficam neste browser — sem conta, sem tracking.',
     cache: ' (cache)',
+    apiErr: 'Erro a calcular preços: {msg}',
   },
   en: {
     docTitle: 'EV Tariff Comparison @ O Carro Elétrico',
@@ -403,6 +404,7 @@ const STR = {
     footScope: '<b>What this covers:</b> only the energy component — the CEME tariff plus TAR, IEC, VAT and the activation fee. <b>It does not include the CPO tariff for the charging point</b>, which every operator sets and publishes at the point itself, so your final bill will be higher.',
     footRest: 'Prices include the VAT of the region where you charge. <code>~</code> marks an estimated price. OMIE price data from dados.tiagofelicia.pt (CC BY 4.0). Your saved tariffs stay in this browser — no account, no tracking.',
     cache: ' (cached)',
+    apiErr: 'Error calculating prices: {msg}',
   },
 };
 
@@ -523,7 +525,7 @@ function applyChrome() {
 /* ================= estado ================= */
 const API = location.origin;
 let token = sessionStorage.getItem('ceme:jwt');
-let LAST = [], AVG = null, AT = null, OMIE = 0.20;
+let LAST = [], AVG = null, AT = null, OMIE = 0.20, apiError = null;
 const favs = () => JSON.parse(localStorage.getItem('ceme:favs') || '[]');
 function loadS() { try { const r = localStorage.getItem('ceme:S'); if (r) Object.assign(S, JSON.parse(r)); } catch (e) {} }
 function saveS() { try { localStorage.setItem('ceme:S', JSON.stringify(S)); } catch (e) {} }
@@ -533,15 +535,25 @@ const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: t
 
 async function sess() {
   if (token) return token;
-  token = (await (await fetch(API + '/v1/session', { method: 'POST' })).json()).token;
+  let r;
+  try { r = await fetch(API + '/v1/session', { method: 'POST' }); } catch (e) { throw new Error('sem ligação ao servidor'); }
+  if (!r.ok) throw new Error('não foi possível criar sessão');
+  const j = await r.json();
+  token = j.token;
   sessionStorage.setItem('ceme:jwt', token);
   return token;
 }
 async function api(path, opts = {}) {
   const tk = await sess();
   const r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
+  if (r.status === 401) { sessionStorage.removeItem('ceme:jwt'); token = null; throw new Error('sessão expirada'); }
+  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error && j.error.message ? j.error.message : `erro ${r.status}`); }
   return r.json();
 }
+// escapa HTML para evitar XSS (usado em inputs que refletem texto do utilizador)
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const eur = n => Number(n).toFixed(2) + '€';
 const kwhe = n => Number(n).toFixed(3) + '€/kWh';
 const cycName = c => (c === 'SIMPLES' ? i18n('cycSimple') : i18n(c === 'DIARIO' ? 'cycDaily' : 'cycWeekly'));
@@ -715,7 +727,8 @@ function vHome() {
   const max = Math.max(...prices, 1), lo = Math.min(...prices), hi = Math.max(...prices);
   heroHome(items);
   const kwhView = S.energyMode === 'kwh';
-  return scopeBox() + `<div class="card" style="background:linear-gradient(180deg,#f0fdf4 0%,#fff 60%)">
+  const errBox = apiError ? `<div class="scope"><div class="warn">${i18n('apiErr', { msg: esc(apiError) })}</div></div>` : '';
+  return scopeBox() + errBox + `<div class="card" style="background:linear-gradient(180deg,#f0fdf4 0%,#fff 60%)">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">
       <div><small style="color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:1px">${i18n('energyLbl')}</small>
         <div class="bigkwh" style="font-size:34px;font-weight:800;letter-spacing:-1px;color:var(--accD)">${kwhTxt()} <span style="font-size:18px;color:var(--mut)">kWh</span></div></div>
@@ -724,7 +737,7 @@ function vHome() {
     </div>
     ${kwhView ? `
       <div class="row" style="margin-top:10px"><label class="fl grow">${i18n('kwh')}<input id="kwh" type="number" value="${S.kwh}" min="1" step="0.5" style="font-size:18px;font-weight:700"></label>
-      <label class="fl grow">${i18n('search')}<input id="q" type="search" value="${S.q.replace(/"/g,'&quot;')}" placeholder="${i18n('searchPh')}"></label></div>` :
+      <label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>` :
       `<div style="margin-top:10px">
         <div class="row"><label class="fl" style="width:110px">${i18n('capacity')}<input id="batCap" type="number" value="${S.batCap}" min="1" step="1"></label>
         <div class="grow" style="display:flex;flex-direction:column;gap:6px">
@@ -732,7 +745,7 @@ function vHome() {
           <label class="fl">${i18n('max')} ${S.batMax}%<input id="batMax" type="range" min="0" max="100" step="5" value="${S.batMax}"></label>
         </div></div>
         <small id="batNote" style="display:block;margin-top:4px">${i18n('chargingFrom', { a: S.batMin, b: S.batMax, c: kwhTxt() })}</small>
-        <div class="row" style="margin-top:6px"><label class="fl grow">${i18n('search')}<input id="q" type="search" value="${S.q.replace(/"/g,'&quot;')}" placeholder="${i18n('searchPh')}"></label></div>
+        <div class="row" style="margin-top:6px"><label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>
       </div>`}
     <div class="row" style="margin-top:10px"><div class="seg grow" role="group" aria-label="${i18n('region')}">
       ${Object.entries(REG()).map(([k, v]) => `<button data-r="${k}" class="${k === S.region ? 'on' : ''}">${v.nome}<small>${v.iva}</small></button>`).join('')}
@@ -931,20 +944,26 @@ async function loadCmp() {
 
 /* ================= boot ================= */
 async function refresh() {
-  const kwh = effKwh();
-  if (S.energyMode === 'kwh') S.kwh = kwh;
-  let at = null;
-  if (S.chargeAt) at = S.chargeAt;
-  else if (!S.forceServerTime) at = new Date().toISOString();
-  const body = { kwh, region: S.region, omie: S.omie, omieVazio: S.omieVazio, omieFora: S.omieFora };
-  if (at) body.at = at;
-  const j = await api('/v1/simulate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  LAST = j.data || []; AVG = j.avg; AT = j.at; OMIE = j.omieRef;
-  if (!S.chargeAt && !S.forceServerTime && j.at) {
-    const skew = Math.abs(new Date(j.at).getTime() - Date.now());
-    if (skew > 5 * 60 * 1000) { S.forceServerTime = true; S.chargeAt = null; }
+  apiError = null;
+  try {
+    const kwh = effKwh();
+    if (S.energyMode === 'kwh') S.kwh = kwh;
+    let at = null;
+    if (S.chargeAt) at = S.chargeAt;
+    else if (!S.forceServerTime) at = new Date().toISOString();
+    const body = { kwh, region: S.region, omie: S.omie, omieVazio: S.omieVazio, omieFora: S.omieFora };
+    if (at) body.at = at;
+    const j = await api('/v1/simulate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    LAST = j.data || []; AVG = j.avg; AT = j.at; OMIE = j.omieRef;
+    if (!S.chargeAt && !S.forceServerTime && j.at) {
+      const skew = Math.abs(new Date(j.at).getTime() - Date.now());
+      if (skew > 5 * 60 * 1000) { S.forceServerTime = true; S.chargeAt = null; }
+    }
+    S.serverNow = j.at;
+  } catch (e) {
+    apiError = e.message || 'erro inesperado';
+    // mantém LAST da última vez bem-sucedida para a página não ficar vazia
   }
-  S.serverNow = j.at;
 }
 async function route() {
   const cmp = location.hash.startsWith('#/comparar');

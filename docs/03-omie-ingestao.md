@@ -44,6 +44,8 @@ Casos DST (PT):
    o dia seguinte ~13h CET).
 6. Log em `audit_log` + métricas (dias, quartos, gaps).
 
+> **Estado da implementação (POC):** os passos 1 (`fetch` de omie.es com `If-Modified-Since` e guarda de `raw/`) e 4 (`upsert` em `omie_spot`) ainda não estão implementados — constam do roadmap como "Cron real de ingestão OMIE". No POC, os preços OMIE vêm do cache de `dados.tiagofelicia.pt` (`backend/src/omie/cache.js`, steps 2/3/5 reutilizados para o CSV da TF), que é o que alimenta `/v1/omie/daily`, `/v1/omie/futures` e `/v1/indexed/quarters`. A tabela `omie_spot` existe no schema mas está reservada para a fase 2.
+
 Frequência local: cron 2x/dia chega (OMIE publica 1x/dia + ajustes).
 
 ## Agregação: o "OMIE de referência" que cada CEME usa
