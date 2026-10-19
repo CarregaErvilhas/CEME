@@ -92,4 +92,23 @@ describe('quarters CSV defensivo', () => {
     assert2.equal(q.rows.length, 2);
     assert2.equal(q.rows[0].start, '00:00');
   });
+
+  // Bug real apanhado na revisão: a última linha do dia traz hora=23:59 (fim
+  // do dia de dados, não meia-noite arredondada) e o -15 cego dava
+  // 23:44–23:59. O certo é 23:45–00:00 — e o `intervalo` é a verdade.
+  it('o último quarto do dia fecha em 00:00 (23:45–00:00)', async () => {
+    const { parseQuartersCsv } = await import('../src/omie/cache.js');
+    const head = 'dia,hora,intervalo,Simples,BD,BS,TD,TS,preco_pt,preco_es';
+    const ok = parseQuartersCsv(`${head}\n15/10/2026,23:45,[23:30-23:45[,S,V,F,V,C,80.00,80.00\n15/10/2026,23:59,[23:45-00:00[,S,V,F,V,C,70.00,70.00\n`);
+    assert.equal(ok.rows[1].start, '23:45');
+    assert.equal(ok.rows[1].end, '00:00');
+    // sem a coluna intervalo, o caso especial do 23:59 mantém o mesmo resultado
+    const sem = parseQuartersCsv(`${head}\n15/10/2026,23:45,,S,V,F,V,C,80.00,80.00\n15/10/2026,23:59,,S,V,F,V,C,70.00,70.00\n`);
+    assert.equal(sem.rows[1].start, '23:45');
+    assert.equal(sem.rows[1].end, '00:00');
+    // os restantes quartos continuam a fechar na própria hora (00:15 → 00:00–00:15)
+    const normal = parseQuartersCsv(`${head}\n15/10/2026,00:15,[00:00-00:15[,S,V,V,V,V,104.70,104.70\n`);
+    assert.equal(normal.rows[0].start, '00:00');
+    assert.equal(normal.rows[0].end, '00:15');
+  });
 });
