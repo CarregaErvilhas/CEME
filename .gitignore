@@ -23,8 +23,9 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Segredos. `JWT_SECRET` tem de vir do ambiente — o servidor recusa arrancar
-# sem ele (ver docs/04). Mesmo assim, nunca versionar um .env.
+# Segredos. `JWT_SECRET` tem de vir do ambiente — o servidor arranca com a
+# secret de dev e avisa em voz alta (ver docs/04). Mesmo assim, nunca
+# versionar um .env.
 .env
 .env.*
 !.env.example

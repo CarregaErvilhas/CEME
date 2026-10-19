@@ -1,5 +1,13 @@
 # 03 — Ingestão OMIE (fonte oficial omie.es)
 
+> **Estado (POC vs produção):** o POC **não** usa este pipeline — usa
+> `dados.tiagofelicia.pt` (CC BY 4.0) vía `backend/src/omie/cache.js`:
+> CSVs de agregados diários, futuros OMIP e quartos-horários, cache JSON
+> de 6 h nas `backend/data/*.json`, recarregado a pedido (sem cron). O
+> fetch tem timeout de **25 s** × 3 tentativas (1/2/3 s de backoff), sem
+> `If-Modified-Since`, sem `raw/`, sem REN — `omie.es`, reconciliação de
+> fontes e quarentena são o desenho de produção abaixo, por implementar.
+
 ## Ficheiro
 
 `https://www.omie.es/sites/default/files/dados/NUEVA_SECCION/INT_PBC_EV_H_ACUM.TXT`
@@ -32,7 +40,7 @@ Casos DST (PT):
 - último domingo de outubro: dia de 25h → 100 quartos (hora repetida —
   distinguir pelo offset, não só pelo wall-clock).
 
-## Pipeline (`backend/src/omie/`)
+## Pipeline de produção (`omie.es` — por implementar; o POC usa `cache.js`)
 
 1. `fetch` (com `If-Modified-Since`, guarda `raw/` com data de emissão
    do cabeçalho `Fecha Emisión`).
@@ -45,9 +53,14 @@ Casos DST (PT):
 6. Log em `audit_log` + métricas (dias, quartos, gaps).
 
 Frequência local: cron 2x/dia chega (OMIE publica 1x/dia + ajustes).
+*(No POC não há cron — a cache de 6 h repõe-se a pedido.)*
 
 ## Agregação: o "OMIE de referência" que cada CEME usa
 
+**(No POC) fgets os agregados de `/v1/omie/daily`** — a resposta traz as
+quatro médias por dia (`bd_v`/`bd_f` no ciclo bi-diário, `bs_v`/`bs_f` no
+bi-semanal), calculadas pela fonte TF a partir dos quartos. A tabela
+`omie_daily` (colunas `avg_pt`/`avg_vazio_pt`/…) é da fase de produção.
 O passo 5 produz `omie_daily` com **quatro** médias por dia, porque a
 agregação é um dado por tarifário e não uma regra única:
 
@@ -63,6 +76,9 @@ CEME que separa bandas não seja comparado contra outro que não separa.
 Ver `02-motor-calculo.md`.
 
 ## Redundância (omie.es falha com frequência)
+
+*(Desenho de produção — o POC tem só a fonte TF, sem REN nem
+`omie.es`.)*
 
 Ordem de preferência por quarto-horário, com `source` guardada por linha:
 
@@ -100,6 +116,8 @@ O pipeline nunca rebenta por dados maus — quarentena em vez de crash:
 - fetch: timeout 30s, retry 3x com backoff, `If-Modified-Since`, valida
   `Content-Length` vs corpo; guarda sempre o `raw/` mesmo com erro para
   debug (com data de emissão do cabeçalho quando existir).
+  *(No POC o fetch é 25 s × 3, sem `If-Modified-Since` nem `raw/` — ver o
+  bloco de estado no topo.)*
 
 ## Backfill e validação
 
@@ -108,4 +126,6 @@ O pipeline nunca rebenta por dados maus — quarentena em vez de crash:
 - Validação cruzada opcional com `dados.tiagofelicia.pt` (CC BY 4.0) —
   fonte secundária, não primária, por decisão do dono.
 - `Perfis Perdas E-REDES` (xlsx anual) e `TAR` (despacho ERSE) entram por
-  CSV manual versionado em `backend/seed/` (não por scrape).
+  CSV manual versionado (no POC: `backend/src/db/seed.js`, não por scrape).
+  Os factores de perdas em uso estão patentes em `engine/indexed.js`
+  (`LOSS_PLACEHOLDER`) — ver a nota de verificação em `02-motor-calculo.md`.

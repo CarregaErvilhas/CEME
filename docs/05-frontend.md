@@ -131,8 +131,10 @@ modal de favoritos, comparador, rodapé, e também os **ciclos**
 (diário/semanal/simples → same every day / day and night / single rate) e as
 **bandas** (vazio/fora de vazio → off-peak / peak).
 
-O inglês é **en-GB** (`favourites`, `colour`), por ser o contexto europeu.
-O cabeçalho HTTP também manda `en-GB` como fallback.
+O inglês é **britânico** (o cabeçalho HTTP manda `en-GB` como fallback),
+por ser o contexto europeu — mas sem saudade do inglês clássico: a UI
+diz `saved`, não `favourites` (os "Favoritos" viram "saved", o que o
+utilizador faz com eles).
 
 ### Lingue natural, não tradução literal
 
@@ -249,7 +251,7 @@ Quando se renomeou para `i18n()`, ficou um `t(cond ? 'a' : 'b')` por converter
 dentro de um ternário — e a página deixou de renderizar. Agora os nomes não
 colidem: `i18n()` para traduzir, `tf` para um tarifário.
 
-`backend/test/frontend-smoke.test.js` (9 testes) corre o frontend de facto num
+`backend/test/frontend-smoke.test.js` (14 testes) corre o frontend de facto num
 contexto isolado, sem browser, e chama `vHome()`, `vCmp()`, `badges()`,
 `detail()` e `renderFavModal()` — e falha se injectarmos qualquer um dos dois
 bugs. É o que apanha o que os testes de texto não apanham.
@@ -369,6 +371,12 @@ Não reintroduzir texto do servidor na UI.
 referência em segundo plano (`loadOmieRef()`). Com cache frio o primeiro
 fetch pode demorar dezenas de segundos (o servidor tem timeout de 25 s × 3
 tentativas) — se o OMIE bloqueasse o arranque, a página ficava em branco.
+
+E se o **primeiro** `refresh()` falhar (servidor a acordar, rede caída,
+token morto), `init()` mostra cartão de erro com botão de repetição em vez
+de `#app` vazio. `api()` vem com retry de 401: limpa o token expirado,
+pede sessão nova e repete o pedido uma vez — sem isso a página dizia
+"sem resultados" para sempre após 24 h de sessionStorage.
 
 ## Favoritos sem login
 
