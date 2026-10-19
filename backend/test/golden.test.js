@@ -27,14 +27,16 @@ function seeded() {
   return db;
 }
 
-// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15
+// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15; os totais
+// Charge2Go/Via Verde reponderados em 2026-10-18 para a EGME 2026
+// (0,1088; o sheet de captura ainda tinha 0,1572 de 2025).
 const GOLDEN = [
   ['atlante-mt-myatlanteac', 9.11, 0.19],
   ['atlante-bt-myatlanteac', 10.98, 0.23],
   ['atlante-mt-myatlantebus', 8.12, 0.17],
   ['atlante-bt-myatlantebus', 9.99, 0.21],
-  ['charge2go-mt-ecogreen', 9.38, 0.19],
-  ['viaverde-mt-viaverdeelec', 8.31, 0.17],
+  ['charge2go-mt-ecogreen', 9.32, 0.19],
+  ['viaverde-mt-viaverdeelec', 8.25, 0.17],
   ['ezu-mt-abenergia', 5.84, 0.12],
   ['miio-mt-miiobihor-2', 12.64, 0.26],
 ];
