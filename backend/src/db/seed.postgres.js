@@ -2,6 +2,7 @@
 // (Okeana removida em 2026-10-18: última info de 2023, sem EGME discriminado.)
 // Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
 // act = EGME, o valor que a CEME publica (só o miio não cobra).
+import { readFile } from 'node:fs/promises';
 import { query, run } from './pg.js';
 
 const CEMES = [
@@ -193,39 +194,67 @@ export const VERSIONS = {
 };
 
 export async function seed() {
-  // ceme — idempotente com ON CONFLICT DO NOTHING
+  // Idempotente E convergente: as linhas existentes são atualizadas para o
+  // que está no código. Antes era tudo `DO NOTHING`, o que tornava o seed um
+  // no-op em qualquer BD já povoada: corrigir um preço no código e voltar a
+  // fazer deploy não mudava nada em produção, sem qualquer aviso.
+  // As chaves (id / valid_from / period) mantêm-se, portanto re-correr o
+  // seed nunca duplica linhas.
+
+  // ceme
   for (const c of CEMES) {
     await query(
       `INSERT INTO ceme (id, name, brand_color, website) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         brand_color = EXCLUDED.brand_color,
+         website = EXCLUDED.website`,
       c
     );
   }
 
-  // tariff — idempotente com ON CONFLICT DO NOTHING
+  // tariff
   for (const t of TARIFFS) {
     const [id, ceme, name, kind, volt, sched, cyc, green, access, pop, bundle, regions, prices, act, support, iec, est, url] = t;
     await query(
       `INSERT INTO tariff (id, ceme_id, name, kind, voltage, schedule, cycle, green, access, popular, bundle, regions, source_url)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET
+         ceme_id = EXCLUDED.ceme_id,
+         name = EXCLUDED.name,
+         kind = EXCLUDED.kind,
+         voltage = EXCLUDED.voltage,
+         schedule = EXCLUDED.schedule,
+         cycle = EXCLUDED.cycle,
+         green = EXCLUDED.green,
+         access = EXCLUDED.access,
+         popular = EXCLUDED.popular,
+         bundle = EXCLUDED.bundle,
+         regions = EXCLUDED.regions,
+         source_url = EXCLUDED.source_url`,
       [id, ceme, name + (est && kind === 'FIXED' ? ' ~' : ''), kind, volt, sched, cyc, green, access, pop, bundle, regions, url]
     );
   }
 
-  // tariff_version — idempotente com ON CONFLICT (tariff_id, valid_from)
+  // tariff_version
   for (const t of TARIFFS) {
     const [id] = t;
     const v = VERSIONS[id] || {};
     await query(
       `INSERT INTO tariff_version (tariff_id, valid_from, valid_to, campaign, status, origin, k_index_eur_mwh, cgs_eur_mwh, omie_aggregation, notes)
        VALUES ($1, $2, NULL, 0, 'ACTIVE', $3, $4, $5, 'SPLIT_VAZIO_FORA', $6)
-       ON CONFLICT (tariff_id, valid_from) DO NOTHING`,
+       ON CONFLICT (tariff_id, valid_from) DO UPDATE SET
+         status = EXCLUDED.status,
+         origin = EXCLUDED.origin,
+         k_index_eur_mwh = EXCLUDED.k_index_eur_mwh,
+         cgs_eur_mwh = EXCLUDED.cgs_eur_mwh,
+         omie_aggregation = EXCLUDED.omie_aggregation,
+         notes = EXCLUDED.notes`,
       [id, SHEET_SNAPSHOT, 'SEED_' + id, v.k ?? null, v.cgs ?? null, NOTES[id] ?? null]
     );
   }
 
-  // price_component — idempotente com ON CONFLICT (tariff_version_id, period)
+  // price_component
   for (const t of TARIFFS) {
     const [id, , , , , , , , , , , , prices, act, support, iec] = t;
     const v = VERSIONS[id] || {};
@@ -241,7 +270,11 @@ export async function seed() {
         await query(
           `INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh)
            VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (tariff_version_id, period) DO NOTHING`,
+           ON CONFLICT (tariff_version_id, period) DO UPDATE SET
+             energy_eur_kwh = EXCLUDED.energy_eur_kwh,
+             activation_eur = EXCLUDED.activation_eur,
+             support_eur = EXCLUDED.support_eur,
+             iec_eur_kwh = EXCLUDED.iec_eur_kwh`,
           [vid, per, val, act, support, iec]
         );
       }
@@ -249,7 +282,11 @@ export async function seed() {
       await query(
         `INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh)
          VALUES ($1, $2, NULL, $3, $4, $5)
-         ON CONFLICT (tariff_version_id, period) DO NOTHING`,
+         ON CONFLICT (tariff_version_id, period) DO UPDATE SET
+           energy_eur_kwh = EXCLUDED.energy_eur_kwh,
+           activation_eur = EXCLUDED.activation_eur,
+           support_eur = EXCLUDED.support_eur,
+           iec_eur_kwh = EXCLUDED.iec_eur_kwh`,
         [vid, 'VAZIO', act, support, iec]
       );
     }
@@ -257,7 +294,17 @@ export async function seed() {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('seed.postgres.js')) {
-  seed()
+  // Aplica o schema primeiro: correr `node seed.postgres.js` contra uma BD
+  // vazia falhava com "relation does not exist", porque o schema só era
+  // aplicado pelo server.js no arranque. Idempotente (CREATE TABLE IF NOT
+  // EXISTS), portanto correr novamente é seguro.
+  const schemaSql = await readFile(
+    new URL('./schema.postgres.sql', import.meta.url),
+    'utf8'
+  );
+
+  run(schemaSql)
+    .then(() => seed())
     .then(async () => {
       const cemeCount = await query('SELECT COUNT(*) c FROM ceme');
       const tariffCount = await query('SELECT COUNT(*) c FROM tariff');

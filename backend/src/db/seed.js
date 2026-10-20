@@ -220,17 +220,38 @@ export function seed(db) {
     (SELECT MAX(id) FROM tariff_version GROUP BY tariff_id, valid_from)`);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_tariff_version ON tariff_version(tariff_id, valid_from)');
 
-  const insCeme = db.prepare('INSERT OR IGNORE INTO ceme (id,name,brand_color,website) VALUES (?,?,?,?)');
+  // Idempotente E convergente (igual ao seed.postgres.js): as linhas
+  // existentes são atualizadas para o que está no código. Antes era
+  // INSERT OR IGNORE — um no-op em BD já povoada, portanto corrigir um preço
+  // não chegava a produção no redeploy seguinte. As chaves mantêm-se, logo
+  // re-correr o seed nunca duplica linhas.
+  const insCeme = db.prepare(`INSERT INTO ceme (id,name,brand_color,website) VALUES (?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name, brand_color=excluded.brand_color, website=excluded.website`);
   for (const c of CEMES) insCeme.run(...c);
-  const insT = db.prepare(`INSERT OR IGNORE INTO tariff
+  const insT = db.prepare(`INSERT INTO tariff
     (id,ceme_id,name,kind,voltage,schedule,cycle,green,access,popular,bundle,regions,source_url)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET
+      ceme_id=excluded.ceme_id, name=excluded.name, kind=excluded.kind,
+      voltage=excluded.voltage, schedule=excluded.schedule, cycle=excluded.cycle,
+      green=excluded.green, access=excluded.access, popular=excluded.popular,
+      bundle=excluded.bundle, regions=excluded.regions, source_url=excluded.source_url`);
   // notes = NULL por omissao (a procedencia esta em `origin`); so lleva codigo
   // onde ha mesmo algo a dizer — ver NOTES.
-  const insV = db.prepare(`INSERT OR IGNORE INTO tariff_version
+  // valid_to fica de fora do UPDATE: é NULL no seed mas pode ter sido
+  // fechado por um operador, e sobrepô-lo reabriria tarifários expirados.
+  const insV = db.prepare(`INSERT INTO tariff_version
     (id,tariff_id,valid_from,valid_to,campaign,status,origin,k_index_eur_mwh,cgs_eur_mwh,omie_aggregation,notes)
-    VALUES (NULL,?, ?, NULL, 0,'ACTIVE','SEED_' || ?,?,?, 'SPLIT_VAZIO_FORA',?)`);
-  const insP = db.prepare('INSERT OR IGNORE INTO price_component (tariff_version_id,period,energy_eur_kwh,activation_eur,support_eur,iec_eur_kwh) VALUES (?,?,?,?,?,?)');
+    VALUES (NULL,?, ?, NULL, 0,'ACTIVE','SEED_' || ?,?,?, 'SPLIT_VAZIO_FORA',?)
+    ON CONFLICT(tariff_id, valid_from) DO UPDATE SET
+      status=excluded.status, origin=excluded.origin,
+      k_index_eur_mwh=excluded.k_index_eur_mwh, cgs_eur_mwh=excluded.cgs_eur_mwh,
+      omie_aggregation=excluded.omie_aggregation, notes=excluded.notes`);
+  const insP = db.prepare(`INSERT INTO price_component (tariff_version_id,period,energy_eur_kwh,activation_eur,support_eur,iec_eur_kwh)
+    VALUES (?,?,?,?,?,?)
+    ON CONFLICT(tariff_version_id, period) DO UPDATE SET
+      energy_eur_kwh=excluded.energy_eur_kwh, activation_eur=excluded.activation_eur,
+      support_eur=excluded.support_eur, iec_eur_kwh=excluded.iec_eur_kwh`);
   try { db.exec('ALTER TABLE tariff ADD COLUMN bundle INTEGER DEFAULT 0'); } catch { /* já existe */ }
   try { db.exec('ALTER TABLE tariff ADD COLUMN regions TEXT DEFAULT \'CONT\''); } catch { /* já existe */ }
   for (const t of TARIFFS) {
