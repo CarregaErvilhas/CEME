@@ -18,7 +18,7 @@
 # JWT_SECRET: definir como env secret no serviço `api` (GUI ou
 # `zcli service env add`); nunca no repositório.
 #
-# Deploy: `zcli deploy` na raiz do repo.
+# Deploy: `zcli push api --setup api` na raiz do repo.
 zerops:
   - setup: api
     build:

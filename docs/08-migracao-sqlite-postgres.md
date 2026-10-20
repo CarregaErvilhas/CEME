@@ -264,7 +264,7 @@ No `zerops.yml` já estão mapeadas:
 2. Adaptar `server.js` para usar `pg`
 3. Adicionar `pg` ao `package.json` e `npm install`
 4. Criar DB de teste local e rodar `npm test` → 74 testes verdes
-5. `zcli deploy` → Zerops cria `api`, `db`, `cache` e injeta `DATABASE_URL`
+5. Criar os serviços `api`, `db`, `cache` no projeto Zerops (consola ou import YAML) e fazer `zcli push api --setup api` → o `db` injeta `DATABASE_URL`
 6. Verificar `GET /v1/health` e `GET /v1/tariffs` no endpoint deployado
 
 ## Rollback

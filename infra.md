@@ -29,7 +29,7 @@ Recursos (ajustáveis depois):
 
 Rede: todos os serviços estão na mesma rede privada do projeto Zerops. O `api` alcança o `db` pelo hostname interno (ex: `db`) e as credenciais são injetadas via `DATABASE_URL`.
 
-Deploy: `zcli deploy` na raiz do repo.
+Deploy: `zcli push api --setup api` na raiz do repo (CI: ver secção 4).
 
 ---
 
@@ -49,7 +49,7 @@ Quando o proxy está activo e a origem tem apenas IPv6:
 ### Passos (a executar com cf cli ou MCP Cloudflare)
 
 1. Criar registo DNS `A` ou `AAAA` no subdomínio:
-   - Tipo: `AAAA` → valor: IPv6 do serviço `api` no Zerops (obtido após `zcli deploy`).
+   - Tipo: `AAAA` → valor: IPv6 do serviço `api` no Zerops (obtido após o primeiro push/deploy).
    - Proxy: **activado** (orange cloud).
    - Se quiseres ser explícito para clientes IPv4, podes manter também um registo `A` apontando para um IP da Cloudflare, mas com proxy activo o que interessa é a origem `AAAA`.
 
@@ -63,55 +63,34 @@ Exemplo de registo desejado (ajustar o domínio real):
 ceme-beta.ocarroeletrico.com  AAAA  <IPv6-do-api-zerops>  proxy: ON
 ```
 
-> **Nota:** ainda não sabemos o IPv6 do Zerops porque não fizemos deploy. Após o primeiro `zcli deploy`, obtemos o IP/hostname do serviço e atualizamos o DNS.
+> **Nota:** ainda não sabemos o IPv6 do Zerops porque não fizemos deploy. Após o primeiro `zcli push`, obtemos o IP/hostname do serviço e atualizamos o DNS.
 
 ---
 
-## 4. CI/CD com GitHub commits
+## 4. CI/CD com GitHub Actions (implementado)
 
-O objetivo: builds automatizados por commit, ambientes de preview por PR, e promoção automática para produção no merge para `main`.
+Um único workflow, `.github/workflows/ci.yml`:
 
-### Fluxo proposto (GitHub Actions)
+- **`test`** — push para `main` e PRs: `npm ci` + `npm test` (Node 24, o mesmo que o `zerops.yml` suporta; testar noutro número daria um verde que a produção não reproduz).
+- **`deploy`** — só em push para `main` e com `needs: test`: `zcli login` + `zcli push api --setup api -w clean --version-name $GITHUB_SHA`. Um workflow só é o que garante que o deploy nunca corre com testes vermelhos; dois workflows separados correm em paralelo e o deploy disparava à mesma.
 
-#### 4.1 Push para qualquer branch (não-main)
-- Rodar `npm test` no backend.
-- Se passar, fazer `zcli deploy` num **ambiente de preview** dedicado a esse PR/branch.
+Notas de implementação:
+- `ZEROPS_CLI_TERMINAL_MODE=disabled` — o runner não tem TTY; sem isto os spinners/prompts do zcli podem travar o job.
+- `-w clean` — sobe só o HEAD do commit. Sem isto, o default `all` inclui ficheiros untracked do checkout (ex.: `node_modules` se algum pass o instalar).
+- O projeto tem os serviços managed `db` e `cache`, por isso o serviço tem de ser explícito no push (`zcli push api`). O ID do projeto (`9n1HBsuHT72ZgP2XkXXAIA`) está como env no job de deploy — não é segredo.
+- O `zcli` só conhece `login` (token como argumento posicional, não há flag `--token`) e `push` (não existe `zcli deploy`). A instalação é via `https://zerops.io/zcli/install.sh`.
 
-#### 4.2 Pull Request (abrir, sincronizar, reabrir)
-- Criar ou atualizar um projeto/ambiente de preview no Zerops (via `zcli`).
-- Comentar o PR com a URL do preview (ex: `https://pr-42.ceme-beta.ocarroeletrico.com`).
-- O preview fica online enquanto o PR estiver aberto.
-
-#### 4.3 Merge do PR (ou fechar PR sem merge)
-- **Destruir o ambiente de preview** desse PR (`zcli destroy` ou equivalente).
-- Comentar no PR que o preview foi removido.
-
-#### 4.4 Push / merge para `main`
-- Fazer `zcli deploy` no projeto de **produção**.
-- Atualizar o DNS do subdomínio de produção se o IP mudar (raro no Zerops, mas possível).
-
-### Ficheiros a criar
-
-```
-.github/
-  workflows/
-    ci.yml            # testes + deploy preview
-    deploy-prod.yml   # deploy produção no push main
-scripts/
-  zerops-preview.sh   # cria/atualiza preview para um PR
-  zerops-destroy-preview.sh  # remove preview de um PR
-```
-
-### Variáveis de ambiente necessárias nos Secrets do GitHub
+### Secret necessário no GitHub
 
 | Secret | Conteúdo |
 |---|---|
-| `ZEROPS_API_TOKEN` | Token de API do Zerops (para `zcli` autenticar na CI) |
-| `ZEROPS_PROJECT_PROD` | ID/nome do projeto de produção no Zerops |
-| `ZEROPS_PROJECT_PREVIEW_PREFIX` | Prefixo para projetos de preview (ex: `ceme-v2-pr-`) |
-| `CLOUDFLARE_API_TOKEN` | Token com permissão para editar DNS da zona (se a CI atualizar DNS) |
-| `CLOUDFLARE_ZONE_ID` | ID da zona Cloudflare do domínio |
-| `JWT_SECRET` | Segredo para JWT (mesmo valor usado no Zerops) |
+| `ZEROPS_API_TOKEN` | Token de API do Zerops — GUI → settings/token-management. É o único segredo: o ID do projeto está no próprio workflow. |
+
+`JWT_SECRET` **não** é secret do GitHub: é env do serviço `api` no Zerops (ver secção 2). O DNS continua a ser configuração única manual na Cloudflare (o IPv6 do Zerops é estático).
+
+### Preview por PR
+
+Não implementado (future improvement, ver secção 5). PRs correm apenas os testes.
 
 ---
 
@@ -121,7 +100,7 @@ scripts/
 
 1. No GitHub Actions, ao abrir um PR, executar um script que:
    - Cria um projeto (ou ambiente) novo no Zerops com nome baseado no número do PR (`ceme-v2-pr-42`).
-   - Faz `zcli deploy` desse projeto.
+   - Faz `zcli push` desse projeto.
    - Aponta um subdomínio de preview (ex: `pr-42.ceme-beta.ocarroeletrico.com`) para o IP/IPv6 desse projeto.
    - Comenta o PR com a URL.
 
@@ -130,7 +109,7 @@ scripts/
    - Remove o registo DNS do subdomínio de preview.
 
 3. Quando se faz merge para `main`:
-   - O workflow de produção faz `zcli deploy` no projeto principal (`ceme-v2`).
+   - O workflow de produção faz `zcli push` no projeto principal.
    - Atualiza o DNS do subdomínio de produção se necessário.
 
 Isso dá ambientes efémeros por PR, destruídos automaticamente, e produção atualizada no merge para `main`.
@@ -163,8 +142,9 @@ Substituição futura: MCP server para gestão de tarifários (a discutir depois
 - [ ] Criar `schema.postgres.sql` e `pg.js`.
 - [ ] Adaptar `server.js` para `pg`.
 - [ ] `npm install pg` + `npm test` verdes localmente.
-- [ ] `zcli deploy` → obter IPv6 do serviço `api`.
+- [ ] Criar serviços `api`, `db`, `cache` no projeto Zerops (`zcli service create` ou import YAML).
+- [ ] `zcli push` → obter IPv6 do serviço `api`.
 - [ ] Criar registo `AAAA` no Cloudflare com proxy activo.
-- [ ] Criar GitHub Actions (CI + deploy preview + deploy prod).
+- [x] Criar GitHub Actions (CI + deploy prod; secção 4). Falta o secret `ZEROPS_API_TOKEN` no GitHub.
 - [ ] Testar PR preview → destroy on merge.
 - [ ] Testar merge to main → update prod.
