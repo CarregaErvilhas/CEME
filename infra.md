@@ -22,10 +22,37 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 | `db` | postgresql | 18 | BD principal. Tabelas: `ceme`, `tariff`, `tariff_version`, `price_component`, `tar`, `omie_spot`, `omie_daily`, `api_client`, `api_key`, `audit_log`, etc. |
 | `cache` | valkey | 7.2 (única versão disponível no Zerops) | Cache OMIE (6h) e sessões. Opcional na fase 1. |
 
-Recursos (ajustáveis depois):
-- `api`: 0.5 GB RAM, 1 vCPU, 1 GB disco.
-- `db`: 0.5 GB RAM, 1 vCPU, 2 GB disco, backups activos.
-- `cache`: 0.25 GB RAM, 0.25 vCPU, 0.5 GB disco.
+Recursos (fixados via autoscaling, ver abaixo):
+- `api`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco, 1 container.
+- `db`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco (Postgres `:single`).
+- `cache`: 1 vCPU, 0.25–0.5 GB RAM, 1–2 GB disco.
+
+### Autoscaling (fixado por API, `PUT /service-stack/{id}/autoscaling`)
+
+Os serviços managed `db` e `cache` herdaram dos perfis `oltp-staging`/`staging` um teto de **8 vCPU / 48 GB RAM / 250 GB de disco**. São tetos e não consumo (a faturação é pelo uso), mas o **disco nunca encolhe** — por isso ficam fixados:
+
+| Serviço | max antes | max agora | min |
+|---|---|---|---|
+| `api` | 2 CPU / 1 GB / 10 GB, 1–2 containers | 2 CPU / 1 GB / 5 GB | 1 CPU / 0.25 GB / 1 GB, 1 container |
+| `db` | 8 CPU / 48 GB / 250 GB | **2 CPU / 1 GB / 5 GB** | 1 CPU / 0.25 GB / 1 GB |
+| `cache` | 8 CPU / 48 GB / 250 GB | **1 CPU / 0.5 GB / 2 GB** | 1 CPU / 0.25 GB / 1 GB |
+
+Todos em `SHARED`, `startCpuCoreCount: 1`.
+
+```json
+{ "customAutoscaling": { "verticalAutoscaling": {
+  "cpuMode": "SHARED",
+  "maxResource": { "cpuCoreCount": 2, "memoryGBytes": 1, "diskGBytes": 5 },
+  "minResource": { "cpuCoreCount": 1, "memoryGBytes": 0.25, "diskGBytes": 1 },
+  "minFreeResource": { "cpuCoreCount": 0.1, "cpuCorePercent": 0, "memoryGBytes": 0.125, "memoryPercent": 0 },
+  "startCpuCoreCount": 1, "swapEnabled": true } } }
+```
+
+Duas regras da API que custaram tempo:
+- `minFreeResource.memoryGBytes` aceita **no máximo 3 casas decimais** → `0.0625` é rejeitado, tem de ser `0.1` (ou `0.125`).
+- O Postgres tem mínimo de RAM próprio (**0.25 GB**); o `minFreeResource` do `db` tem de ser `>= 0.125`, não `0.0625`.
+
+Para ler o estado efectivo: `GET /service-stack/{id}` → `currentAutoscaling` (efectivo) vs `customAutoscaling` (o que foi pedido; `null` = herda do perfil).
 
 Rede: todos os serviços estão na mesma rede privada do projeto Zerops. O `api` alcança o `db` pelo hostname interno (ex: `db`) e as credenciais são injetadas via `DATABASE_URL`.
 
@@ -41,37 +68,94 @@ Criação dos serviços: `zerops-import.yaml` na raiz do repo + `zcli project se
 
 ---
 
-## 3. DNS e Cloudflare (subdomínio + IPv6)
+## 3. DNS e Cloudflare (domínio próprio)
 
-### Objetivo
-- Subdomínio `ceme-beta.ocarroeletrico.com` gerido no Cloudflare.
-- Proxy **activo** (orange cloud) no Cloudflare.
-- Origem: IPv6 do serviço `api` no Zerops.
-- Clientes que só têm IPv4: a Cloudflare termina IPv4 e encaminha para a origem IPv6 (IPv6 Compatibility / pseudo-IPv4).
+### Estado actual (feito e verificado)
+- Domínio: **`https://ceme-beta.ocarroeletrico.com`** → 200, serve o frontend e a API.
+- Registos Cloudflare: **só `AAAA`** → o IPv6 dedicado do projecto, **proxy activo**. O endereço **não** está neste documento (ver "Segredo: o IP da origem" abaixo).
+- Zeroops: hostname registado no L7 balancer (`public-http-routing`), com certificado Let's Encrypt **ACTIVE** para `ceme-beta.ocarroeletrico.com`.
 
-### Como funciona o IPv4 → IPv6
-Quando o proxy está activo e a origem tem apenas IPv6:
-- Um cliente com **IPv6** liga directamente ao endereço IPv6 da origem (via Cloudflare).
-- Um cliente com **apenas IPv4** liga a um endereço IPv4 da Cloudflare. A Cloudflare faz o reverse proxy e acede à origem pelo IPv6. Não é necessário configurar um “pseudo IPv4” no Zerops; a Cloudflare trata dessa tradução no edge.
+### IP da origem
 
-### Passos (a executar com cf cli ou MCP Cloudflare)
+**Regra: o IP da origem vive só na Cloudflare e na consola do Zerops — nunca no repositório.**
 
-1. Criar registo DNS `A` ou `AAAA` no subdomínio:
-   - Tipo: `AAAA` → valor: IPv6 do serviço `api` no Zerops (obtido após o primeiro push/deploy).
-   - Proxy: **activado** (orange cloud).
-   - Se quiseres ser explícito para clientes IPv4, podes manter também um registo `A` apontando para um IP da Cloudflare, mas com proxy activo o que interessa é a origem `AAAA`.
-
-2. No Cloudflare, garantir que **IPv6 Compatibility** está activado para a zona (permite que clientes IPv4 alcancem origens IPv6 através do proxy).
-
-3. No Zerops, associar o domínio ao serviço `api` (campo `domains` no `zerops.yml` ou via `zcli`).
-
-Exemplo de registo desejado (ajustar o domínio real):
-
-```
-ceme-beta.ocarroeletrico.com  AAAA  <IPv6-do-api-zerops>  proxy: ON
+Para o consultar (sem o escrever no repo):
+```bash
+TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/Library/Application Support/zerops/cli.data'))['LoginSession']['AccessToken'])")
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.app-prg1.zerops.io/api/rest/public/project/<project-id>" | python3 -c "import sys,json;print(json.load(sys.stdin)['publicIpV6'])"
 ```
 
-> **Nota:** ainda não sabemos o IPv6 do Zerops porque não fizemos deploy. Após o primeiro `zcli push`, obtemos o IP/hostname do serviço e atualizamos o DNS.
+### A ordem certa (e porque é que a ordem errada não funciona)
+
+São **dois** registos em sistemas diferentes, e o Zerops tem de ser o primeiro:
+
+1. **Zerops — registar o hostname no L7 balancer.** Sem isto, o hostname não é roteado: o balancer devolve **404** a qualquer `Host` que não esteja na tabela de routing. É esta tabela que decide que `ceme-beta.ocarroeletrico.com` → serviço `api`, porta 3001.
+
+   ```bash
+   POST /api/rest/public/project/<project-id>/public-http-routing
+   {
+     "domains": ["ceme-beta.ocarroeletrico.com"],
+     "locations": [{ "path": "/", "port": 3001, "serviceStackId": "<api-service-id>" }],
+     "sslEnabled": true,
+     "cdnEnabled": false
+   }
+   ```
+
+   A resposta fica com `dnsCheckStatus: PENDING` e `sslStatus: WAITING_FOR_DNS` — o Zerops espera pelo registo DNS antes de emitir o certificado (HTTP-01).
+
+2. **Cloudflare — o registo DNS.** Só depois de o hostname estar registado no Zerops (para o `Host` ser reconhecido) é que o AAAA faz sentido.
+
+   ```
+   ceme-beta.ocarroeletrico.com  AAAA  <IPv6 dedicado do projecto>  proxy: ON
+   ```
+
+3. **Zerops — validar o DNS.** `PUT /api/rest/public/public-http-routing/<id>/trigger-domains-dns-check` (body: `{"domains": [...]}`). Passa a `dnsCheckStatus: OK` e o certificado é emitido (`sslStatus: ACTIVE`).
+
+### Porquê só `AAAA` e não também o `A` partilhado
+O IPv4 partilhado do Zerops faz um **reverse lookup do AAAA** do domínio para decidir se o pedido pertence a este projecto. Se o `AAAA` estiver com proxy activo, o lookup vê o IP da Cloudflare em vez do IPv6 do projecto e o roteamento falha. A doc da Cloudflare é explícita: *"Do not add a proxied A record with shared IPv4"*.
+
+Com proxy activo e origem só IPv6, a Cloudflare faz a tradução IPv4→IPv6 no edge (IPv6 Compatibility da zona, que está `on`) — os clientes IPv4 chegam à mesma origem.
+
+### lockdown da origem (a defesa que não depende de segredo)
+
+Esconder o IP é defense-in-depth, não defense. O L7 balancer do Zerops aceita um `accessPolicy` com lista de CIDRs e política por omissão — usa-se para **só aceitar tráfego da Cloudflare**. Se o IP vazar, quem chegar directamente é rejeitado na origem.
+
+```json
+"config": {
+  "accessPolicy": {
+    "enabled": true,
+    "defaultPolicy": "deny",
+    "cidr": [ "<ranges IPv4 da Cloudflare>", "<ranges IPv6 da Cloudflare>" ],
+    "realIpHeader": "CF-Connecting-IP",
+    "setRealIpFrom": [ "<ranges da Cloudflare>" ]
+  }
+}
+```
+
+As listas oficiais estão em `https://www.cloudflare.com/ips-v4` e `https://www.cloudflare.com/ips-v6` (mudam de vez em quando — convém rever).
+
+> **Atenção:** o `accessPolicy` aplica-se ao balancer do projecto. Se ficar mal configurado, o tráfego legítimo também é cortado — activar e depois verificar `https://ceme-beta.ocarroeletrico.com` a responder 200.
+
+### Modo SSL/TLS na zona
+`ssl: strict` (Full strict) e `ipv6: on` — o que a doc do Zerops exige. `always_use_https: on` está activo, o que em princípio interfere com a validação HTTP-01 do Let's Encrypt; se o certificado não for emitido, criar uma Configuration Rule para desligar o *Automatic HTTPS Rewrites* em `/.well-known/acme-challenge/`.
+
+### Reproduzir por API
+```bash
+TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/Library/Application Support/zerops/cli.data'))['LoginSession']['AccessToken'])")
+API=https://api.app-prg1.zerops.io/api/rest/public
+# ver as rotas
+curl -s -H "Authorization: Bearer $TOKEN" "$API/project/<project-id>/public-http-routing"
+```
+A spec completa está em `GET $API/swagger/openapi.yml` (o `/swagger` faz 301 para o GUI, o `openapi.yml` é o JSON/YAML real).
+
+### Diagnóstico rápido do routing
+```bash
+# a origem responde com o Host certo? (usar o IP obtained da API, não um literal)
+curl -sk -H "Host: ceme-beta.ocarroeletrico.com" "https://[<IPv6 do projecto>]/" -o /dev/null -w '%{http_code}\n'
+# 200 = origem OK; 404 = hostname não registado no L7; 502 = cert/origem
+# 403 = accessPolicy a bloquear (verificar se o cliente é a Cloudflare)
+```
 
 ---
 
@@ -161,9 +245,12 @@ Substituição futura: MCP server para gestão de tarifários (a discutir depois
 - [x] `npm install pg` + `npm test` verdes localmente.
 - [x] Criar serviços `api`, `db`, `cache` no projeto Zerops (`zerops-import.yaml`).
 - [x] `zcli push api` → deploy verificado: `GET /` 200, `/v1/tariffs` com 128 tarifários e 24 CEMEs do seed.
-- [ ] Criar registo `AAAA` no Cloudflare com proxy activo.
-- [x] Criar GitHub Actions (só CI; secção 4).
+- [x] Registar `ceme-beta.ocarroeletrico.com` no L7 balancer do Zerops (`public-http-routing`), certificado Let's Encrypt ACTIVE.
+- [x] Registo `AAAA` no Cloudflare com proxy activo → `https://ceme-beta.ocarroeletrico.com` a 200.
+- [x] Desligar o subdomínio Zerops (o `api` acede ao `db` pelo hostname interno `db`).
+- [x] Fixar o autoscaling dos três serviços (tetos de 8 CPU/48 GB/250 GB → 2 CPU/1 GB/5 GB).
+- [x] GitHub Actions (só CI; secção 4).
+- [x] Ruleset do `main` com o check `test` obrigatório e PR obrigatório.
 - [ ] Ligar o webhook do Zerops ao repositório (trigger: push para `main`; secção 4.2).
-- [ ] Branch protection do `main` com o check `test` obrigatório (secção 4.3).
 - [ ] Testar merge to main → build+deploy automático pelo Zerops.
 - [ ] (futuro) Preview por PR.

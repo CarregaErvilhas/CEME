@@ -15,10 +15,30 @@ services:
     type: postgresql:single@18
     # LIGHT core (projeto é LIGHT): single é o máximo que faz sentido aqui.
     priority: 30
+    # Sem isto, o serviço herda o perfil `oltp-staging`, cujo teto é
+    # 8 vCPU / 48 GB RAM / 250 GB de disco. É um teto (a faturação é pelo
+    # uso), mas o disco nunca encolhe — melhor fixar já. Ver infra.md §2.
+    verticalAutoscaling:
+      cpuMode: SHARED
+      minCpu: 1
+      maxCpu: 2
+      minRam: 0.25
+      maxRam: 1
+      minDisk: 1
+      maxDisk: 5
 
   - hostname: cache
     type: valkey@7.2
     priority: 20
+    # Mesmo motivo: o perfil `staging` traz 8 CPU / 48 GB / 250 GB.
+    verticalAutoscaling:
+      cpuMode: SHARED
+      minCpu: 1
+      maxCpu: 1
+      minRam: 0.25
+      maxRam: 0.5
+      minDisk: 1
+      maxDisk: 2
 
   # --- Runtime da API ----------------------------------------------------
   - hostname: api
@@ -27,6 +47,18 @@ services:
     # Necessário para o primeiro deploy não bloquear à espera de código:
     # os containers sobem, e o `zcli push api` (ou o webhook) entrega a app.
     startWithoutCode: true
+    # 1 container: a app é stateless e não precisa de réplicas. O autoscaling
+    # vertical continua a tratar CPU/RAM.
+    minContainers: 1
+    maxContainers: 1
+    verticalAutoscaling:
+      cpuMode: SHARED
+      minCpu: 1
+      maxCpu: 2
+      minRam: 0.25
+      maxRam: 1
+      minDisk: 1
+      maxDisk: 5
     # JWT é obrigatório em NODE_ENV=production — o server.js recusa emitir
     # tokens com a secret de dev. Gerado aqui (uma vez, no import) e depois
     # editável na GUI; nunca no repositório.
