@@ -8,7 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
 
       - name: Install zcli
         run: |
@@ -16,8 +16,8 @@ jobs:
 
       - name: Authenticate with Zerops
         run: |
-          zcli login --token ${{ secrets.ZEROS_API_TOKEN }}
+          zcli login --token ${{ secrets.ZEROPS_API_TOKEN }}
 
       - name: Deploy to production
         run: |
-          zcli deploy --project ${{ secrets.ZEROS_PROJECT_PROD }}
+          zcli deploy --project ${{ secrets.ZEROPS_PROJECT_PROD }}
