@@ -1,40 +1,48 @@
 # CEME v2 no Zerops — configuração do serviço runtime da API.
 #
 # É um `zerops.yml` (runtime apenas): os serviços managed — PostgreSQL 18 e
-# Valkey 7.2 (única versão disponível) — NÃO se declaram aqui; criam-se na
-# consola ou por import YAML com os hostnames `db` e `cache`:
+# Valkey 7.2 — criam-se à parte (ver `zerops-import.yaml`), com os hostnames
+# `db` e `cache`, e é deles que este serviço puxa as variáveis por referência
+# `${hostname_variavel}`.
 #
-#   services:
-#     - hostname: db
-#       type: postgresql:single@18      # ou postgresql:ha@18
-#       profile: oltp-staging
-#     - hostname: cache
-#       type: valkey:ha@7.2
-#       profile: staging
-#
-# e é deles que este serviço puxa as variáveis
-# variáveis por referência `${hostname_variavel}`.
-#
-# JWT_SECRET: definir como env secret no serviço `api` (GUI ou
-# `zcli service env add`); nunca no repositório.
+# JWT_SECRET: env secret do serviço `api` (gerado no import; editável na GUI).
+# Nunca no repositório.
 #
 # Deploy: `zcli push api --setup api` na raiz do repo.
 zerops:
   - setup: api
     build:
       base: nodejs@24
+      # Os buildCommands correm em /build/source (= raiz do repo). `cd` num
+      # buildCommand funciona (é um shell), mas encadear num `-` mantém o
+      # resto do build no mesmo shell.
       buildCommands:
-        - cd backend && npm install
+        - cd backend && npm ci
       cache: backend/node_modules
       deployFiles:
         - backend
         - frontend
     run:
       base: nodejs@24
-      start: cd backend && npm start
+      # `run.start` é executado por `exec`, não por um shell — `cd backend &&`
+      # falhava com "exec: cd: not found" (exit 127) e o serviço entrava em
+      # crash loop. O directório certo vai em `workingDir` (default /var/www).
+      startCommands:
+        - command: npm start
+          name: api
+          workingDir: /var/www/backend
       ports:
         - port: 3001
           httpSupport: true
+      # Health check: a raiz serve o frontend e é pública. NÃO usar
+      # /v1/health — essa rota está atrás de auth e responde 401 sem token,
+      # o que marcaria o serviço como unhealthy para sempre.
+      healthCheck:
+        httpGet:
+          port: 3001
+          path: /
+        failureTimeout: "60s"
+        execPeriod: "10s"
       envVariables:
         PORT: 3001
         NODE_ENV: production
