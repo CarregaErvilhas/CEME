@@ -1,0 +1,38 @@
+# Import de serviços para o projeto Zerops CEME (já existente).
+#
+#   zcli project service-import zerops-import.yaml -P 9n1HBsuHT72ZgP2XkXXAIA
+#
+# Cria os três serviços que o zerops.yml pressupõe. Os hostnames não são
+# decorativos: o zerops.yml puxa `DATABASE_URL: ${db_connectionString}` do
+# serviço `db`, e o workflow/`zcli push api` endereça o runtime por hostname.
+#
+# Recriar o ambiente do zero: `zcli project delete <id> --confirm` e
+# `zcli project project-import` com o bloco `project:` abaixo.
+#yamlPreprocessor=on
+services:
+  # --- Gestão de dados, por ordem de prioridade -------------------------
+  - hostname: db
+    type: postgresql:single@18
+    # LIGHT core (projeto é LIGHT): single é o máximo que faz sentido aqui.
+    priority: 30
+
+  - hostname: cache
+    type: valkey@7.2
+    priority: 20
+
+  # --- Runtime da API ----------------------------------------------------
+  - hostname: api
+    type: nodejs@24
+    priority: 10
+    # Necessário para o primeiro deploy não bloquear à espera de código:
+    # os containers sobem, e o `zcli push api` (ou o webhook) entrega a app.
+    startWithoutCode: true
+    # JWT é obrigatório em NODE_ENV=production — o server.js recusa emitir
+    # tokens com a secret de dev. Gerado aqui (uma vez, no import) e depois
+    # editável na GUI; nunca no repositório.
+    envSecrets:
+      JWT_SECRET: <@generateRandomString(<32>)>
+    # `zeropsYaml` vazio de propósito: a configuração de build/run vive no
+    # zerops.yml do repositório (fonte única), e o import só cria o serviço.
+    # O setup usado é o `api` (nome = hostname, por isso não é preciso
+    # `zeropsSetup`).

@@ -31,6 +31,14 @@ Rede: todos os serviços estão na mesma rede privada do projeto Zerops. O `api`
 
 Deploy: `zcli push api --setup api` na raiz do repo (CI: ver secção 4).
 
+Criação dos serviços: `zerops-import.yaml` na raiz do repo + `zcli project service-import zerops-import.yaml -P <project-id>`. O `JWT_SECRET` do `api` é gerado nesse import (`<@generateRandomString(<32>)>`, precisa de `#yamlPreprocessor=on`).
+
+### Armadilhas do `run.start` (encontradas no primeiro deploy)
+
+- **`run.start` é executado por `exec`, não por um shell.** `start: cd backend && npm start` falha com `exec: cd: not found` (exit 127) e o serviço entra em crash loop. O directório vai em `startCommands[].workingDir` (default `/var/www`); o código, com `deployFiles: [backend, frontend]`, fica em `/var/www/backend`.
+- **Health check na rota errada é pior que nenhum.** `/v1/health` está atrás de auth e responde **401 sem token** — usá-la no `healthCheck` marcaria o serviço como unhealthy para sempre. O check aponta a `/`, que serve o frontend e é pública.
+- `zcli push` com o default `-w all` faz `git archive`, que falha (exit 128) quando o `zerops.yml` só existe em working tree não-commitado; commitar antes de fazer push.
+
 ---
 
 ## 3. DNS e Cloudflare (subdomínio + IPv6)
@@ -147,12 +155,12 @@ Substituição futura: MCP server para gestão de tarifários (a discutir depois
 
 ## 8. Checklist de implementação
 
-- [ ] Criar `zerops.yml` (feito).
-- [ ] Criar `schema.postgres.sql` e `pg.js`.
-- [ ] Adaptar `server.js` para `pg`.
-- [ ] `npm install pg` + `npm test` verdes localmente.
-- [ ] Criar serviços `api`, `db`, `cache` no projeto Zerops (`zcli service create` ou import YAML).
-- [ ] `zcli push` → obter IPv6 do serviço `api`.
+- [x] Criar `zerops.yml` (feito).
+- [x] Criar `schema.postgres.sql` e `pg.js`.
+- [x] Adaptar `server.js` para `pg`.
+- [x] `npm install pg` + `npm test` verdes localmente.
+- [x] Criar serviços `api`, `db`, `cache` no projeto Zerops (`zerops-import.yaml`).
+- [x] `zcli push api` → deploy verificado: `GET /` 200, `/v1/tariffs` com 128 tarifários e 24 CEMEs do seed.
 - [ ] Criar registo `AAAA` no Cloudflare com proxy activo.
 - [x] Criar GitHub Actions (só CI; secção 4).
 - [ ] Ligar o webhook do Zerops ao repositório (trigger: push para `main`; secção 4.2).
