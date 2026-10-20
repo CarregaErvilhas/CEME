@@ -256,7 +256,8 @@ No `zerops.yml` já estão mapeadas:
 | `DATABASE_URL` | injetado automaticamente pelo serviço `db` |
 | `JWT_SECRET` | definir com `zcli secret set JWT_SECRET=<valor>` |
 | `PORT` | `3001` |
-| `OMIE_URL` / `TIAGO_OMIE_CSV` | fixas no `zerops.yml` |
+
+As fontes OMIE e o TTL do cache não são env vars: estão fixas em `backend/src/omie/cache.js` (ver `docs/03` para a ingestão directa do omie.es, ainda por implementar).
 
 ## Ordem de execução recomendada
 
