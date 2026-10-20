@@ -75,11 +75,7 @@ Criação dos serviços: `zerops-import.yaml` na raiz do repo + `zcli project se
 - Registos Cloudflare: **só `AAAA`** → o IPv6 dedicado do projecto, **proxy activo**. O endereço **não** está neste documento (ver "Segredo: o IP da origem" abaixo).
 - Zeroops: hostname registado no L7 balancer (`public-http-routing`), com certificado Let's Encrypt **ACTIVE** para `ceme-beta.ocarroeletrico.com`.
 
-### Segredo: o IP da origem
-
-O IPv6 dedicado do projecto é **unicast global** (não é RFC1918) e é publicamente routável. Publicá-lo **anula a Cloudflare**: quem o tenha pode bater directamente na origem, contornando a protecção contra DDoS, o WAF, o rate limiting do edge e a terminação TLS.
-
-O IPv4 partilhado do Zerops é o mesmo para todos os clientes da plataforma e é menos sensível, mas também não deve ser publicado.
+### IP da origem
 
 **Regra: o IP da origem vive só na Cloudflare e na consola do Zerops — nunca no repositório.**
 
