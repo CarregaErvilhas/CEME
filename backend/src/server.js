@@ -1,7 +1,9 @@
 // Servidor POC (só node:* — sem deps). Serve a web em / e a API em /v1/* (tudo com auth).
 import http from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
 import { signJwt, verifyJwt, hashKey } from './auth/tokens.js';
 import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
@@ -16,9 +18,14 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET === 'dev-only-change-me') {
   throw new Error('JWT_SECRET environment variable is required (the dev-only fallback is forbidden)');
 }
-const DB_PATH = process.env.DB_PATH || './data/ceme.db';
+// Directórios resolvidos a partir do ficheiro, não do cwd: arrancar
+// `node ceme-v2/backend/src/server.js` da raiz do repo criava ./data no
+// sítio errado (BD vazia).
+const BACKEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DATA_DIR = path.join(BACKEND_DIR, 'data');
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'ceme.db');
 
-mkdirSync('./data', { recursive: true });
+mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(DB_PATH);
 db.exec(readFileSync(new URL('./db/schema.sql', import.meta.url), 'utf8'));
 
@@ -29,6 +36,15 @@ INSERT OR IGNORE INTO tar (valid_from, valid_to, region, voltage, period, price_
  ('2026-01-01', NULL, 'CONT','MT','VAZIO',0.0157), ('2026-01-01', NULL,'CONT','MT','FORA_VAZIO',0.0812);
 `);
 seed(db);
+
+// API key para terceiros: o valor claro é provido pela env (CEME_API_KEY) e
+// NUNCA fica na BD — só o sha256. Sem chave configurada, X-API-Key devolve
+// 401 (o caminho web usa Bearer JWT; a key é para consumidores externos).
+if (process.env.CEME_API_KEY) {
+  db.prepare(`INSERT OR REPLACE INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')`).run();
+  db.prepare(`INSERT OR REPLACE INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', ?, ?)`)
+    .run(hashKey(process.env.CEME_API_KEY), process.env.CEME_API_KEY.slice(0, 8));
+}
 
 function vmeta(tid) {
   const v = VERSIONS[tid] || {};
@@ -66,6 +82,14 @@ function rateBucket(key, limit) {
 function clientIp(req) {
   return (req.socket && req.socket.remoteAddress) || 'unknown';
 }
+
+// Um método por endpoint (POC): leitura para os /v1/* de dados, POST para os
+// dois que aceitam corpo. 405 antes de gastar auth.
+const METHODS = {
+  '/v1/health': 'GET', '/v1/cemes': 'GET', '/v1/tariffs': 'GET', '/v1/tar': 'GET',
+  '/v1/omie/daily': 'GET', '/v1/omie/futures': 'GET', '/v1/indexed/quarters': 'GET',
+  '/v1/session': 'POST', '/v1/simulate': 'POST',
+};
 
 function auth(req) {
   const h = req.headers.authorization || '';
@@ -105,14 +129,20 @@ function allTariffs() {
 }
 
 function comps(vid) {
+  // Os componentes têm de ser coerentes entre períodos: EGME/IEC são valores
+  // por sessão/kWh que o seed reparte por linha. Se divergirem, é erro de
+  // dados — falhar aqui em vez de silenciosamente usar o último valor.
   const rows = db.prepare('SELECT * FROM price_component WHERE tariff_version_id=?').all(vid);
   const price = {};
-  let act = 0, sup = 0, iec = 0;
+  let act = null, iec = null, sup = null;
   for (const r of rows) {
     if (r.energy_eur_kwh != null) price[r.period] = r.energy_eur_kwh;
-    act = r.activation_eur || 0; sup = r.support_eur || 0; iec = r.iec_eur_kwh || 0;
+    const same = (a, b) => a == null || b == null || a === b;
+    if (!same(act, r.activation_eur) || !same(iec, r.iec_eur_kwh) || !same(sup, r.support_eur))
+      throw new Error(`componentes divergentes na versão ${vid}: act/IEC/apoio diferem por período`);
+    act = r.activation_eur; iec = r.iec_eur_kwh; sup = r.support_eur;
   }
-  return { price, act, iec, support: sup };
+  return { price, act: act || 0, iec: iec || 0, support: sup || 0 };
 }
 
 function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
@@ -152,7 +182,7 @@ function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   }
   const omieRef = (agg === 'SPLIT_VAZIO_FORA') ? (omieVazio ?? omie) : omie;
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support, iec, region });
-  return { ...meta, activation: act, iec, prices: out, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], warning: here, avail: t.regions, ...q };
+  return { ...meta, activation: act, iec, prices: out, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...q };
 }
 
 // Negociação de idioma a partir do cabeçalho Accept-Language. Só há PT e EN:
@@ -172,8 +202,9 @@ function negotiateLang(header) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
-  // Web POC sem auth (ficheiro estático); a API continua toda com auth
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+  // Web POC sem auth (ficheiro estático); a API continua toda com auth.
+  // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
+  if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/' || url.pathname === '/index.html')) {
     try {
       const html = readFileSync(new URL('../../frontend/index.html', import.meta.url), 'utf8')
         .replace('<html lang="pt-PT">', `<html lang="${negotiateLang(req.headers['accept-language']) === 'en' ? 'en' : 'pt-PT'}">`)
@@ -181,6 +212,13 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language' });
       return res.end(html);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/index.html em falta' } }); }
+  }
+  // Um método por pathname: os handlers de leitura respondiam 200 a
+  // PUT/DELETE (não faziam nada, mas fingiam que sim). 405 com `allow`.
+  const allowed = METHODS[url.pathname];
+  if (allowed && req.method !== allowed && !(allowed === 'GET' && req.method === 'HEAD')) {
+    res.writeHead(405, { 'content-type': 'application/json', 'x-content-type-options': 'nosniff', allow: allowed });
+    return res.end(JSON.stringify({ error: { code: 'method_not_allowed', message: `${req.method} em ${url.pathname}; usar ${allowed}` } }));
   }
   if (req.method === 'POST' && url.pathname === '/v1/session') {
     const token = signJwt({ kind: 'WEB_SESSION', sid: Math.random().toString(36).slice(2) }, JWT_SECRET);
@@ -210,13 +248,13 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/v1/omie/daily' && req.method === 'GET') {
     const days = Math.min(120, Math.max(7, Number(url.searchParams.get('days') || 60)));
-    getDaily('./data', days).then(
+    getDaily(DATA_DIR, days).then(
       d => json(res, 200, d, rlHeaders),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `séries indisponíveis: ${e.message}` } }, rlHeaders));
     return;
   }
   if (url.pathname === '/v1/omie/futures' && req.method === 'GET') {
-    getFutures('./data').then(
+    getFutures(DATA_DIR).then(
       d => json(res, 200, d, rlHeaders),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `futuros indisponíveis: ${e.message}` } }, rlHeaders));
     return;
@@ -239,9 +277,15 @@ const server = http.createServer((req, res) => {
         const fv = db.prepare(`SELECT id FROM tariff_version v WHERE v.tariff_id=?
           AND v.valid_from <= date('now') AND (v.valid_to IS NULL OR v.valid_to > date('now'))
           ORDER BY v.valid_from DESC LIMIT 1`).get(ft.id);
-        fixPrice = comps(fv?.id).price;
-        const fc = db.prepare('SELECT name FROM ceme WHERE id=?').get(ft.ceme_id);
-        fixInfo = { id: ft.id, name: ft.name, ceme: fc?.name || ft.ceme_id, voltage: ft.voltage, schedule: ft.schedule };
+        const fp = fv ? comps(fv.id).price : null;
+        // Fixo sem preços de energia (ex. só EGME) não dá comparação: fica
+        // null — a UI trata como "sem fixo" e esconde colunas, em vez de
+        // mostrar uma referência vazia com nome.
+        if (fp && Object.keys(fp).length) {
+          fixPrice = fp;
+          const fc = db.prepare('SELECT name FROM ceme WHERE id=?').get(ft.ceme_id);
+          fixInfo = { id: ft.id, name: ft.name, ceme: fc?.name || ft.ceme_id, voltage: ft.voltage, schedule: ft.schedule };
+        }
       }
     }
 
@@ -250,7 +294,7 @@ const server = http.createServer((req, res) => {
         const withP = q.rows.map(r => {
           const [sh, sm] = r.start.split(':').map(Number);
           const per = periodForWall({ region, schedule: t.schedule, cycle: t.cycle, ymd: q.date, minutes: sh * 60 + sm });
-          const tar = db.prepare("SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage=? AND period=? ORDER BY valid_from DESC LIMIT 1").get(t.voltage, per)?.price_eur_kwh ?? 0;
+          const tar = db.prepare("SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage=? AND period=? AND (valid_from IS NULL OR valid_from <= date('now')) ORDER BY valid_from DESC LIMIT 1").get(t.voltage, per)?.price_eur_kwh ?? 0;
           const vm = vmeta(t.id);
           const { price } = indexedPrice({ omieEurKwh: r.priceMwh/1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tar, loss: vm.loss, formula: vm.formula });
           return { start: r.start, end: r.end, period: per, omieMwh: r.priceMwh, price: Math.round(price * 10000) / 10000 };
@@ -260,22 +304,26 @@ const server = http.createServer((req, res) => {
         const ranked = [...comp].sort((x, y) => x.price - y.price);
         const cheap = new Set(ranked.slice(0, 8).map(x => x.start));
         const vm2 = vmeta(t.id);
-        json(res, 200, { date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], cached: q.cached, source: q.source, cutoff: q.cutoff, estimated: q.estimated, days: q.days, fixed: fixInfo,
+        json(res, 200, { date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF', cached: q.cached, source: q.source, cutoff: q.cutoff, estimated: q.estimated, days: q.days, fixed: fixInfo,
           wins: tallyWinners(comp),
           quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) })) }, rlHeaders);
       } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, rlHeaders); }
     };
-    getQuarters('./data', url.searchParams.get('date')).then(finish, e => json(res, 502, { error: { code: 'omie_unavailable', message: e.message } }, rlHeaders));
+    getQuarters(DATA_DIR, url.searchParams.get('date')).then(finish, e => json(res, 502, { error: { code: 'omie_unavailable', message: e.message } }, rlHeaders));
     return;
   }
   if (url.pathname === '/v1/simulate' && req.method === 'POST') {
     const MAX_BODY = 64 * 1024;
-    let body = '';
+    let body = '', tooBig = false;
     req.on('data', c => {
+      // Cap de 64 KB: sem isto um POST de 48 MB crescia a String e rebentava
+      // no JSON.parse — memória à solta em cada conexão. O cap guarda a
+      // decisão para o `end` (linha em branco, sem parse) e responde 413.
+      if (body.length + c.length > MAX_BODY) { tooBig = true; body = ''; return; }
       body += c;
-      if (body.length > MAX_BODY) { req.destroy(); return; }
     });
     req.on('end', () => {
+      if (tooBig) return json(res, 413, { error: { code: 'payload_too_large', message: `corpo > ${MAX_BODY} bytes` } }, rlHeaders);
       try {
         let parsed;
         try { parsed = JSON.parse(body || '{}'); } catch { return json(res, 400, { error: { code: 'bad_request', message: 'corpo JSON inválido' } }, rlHeaders); }
@@ -308,3 +356,12 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => console.log(`ceme-v2 POC http://localhost:${PORT}/ db=${DB_PATH}`));
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`[ceme-v2] porta ${PORT} ocupada — outro servidor já corre aí.`);
+    console.error(`  kill $(lsof -ti tcp:${PORT})  ou  PORT=<outra> node src/server.js`);
+    process.exit(1);
+  }
+  console.error('[ceme-v2] erro no servidor:', e);
+});

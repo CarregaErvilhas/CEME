@@ -310,6 +310,9 @@ const STR = {
     footRest: 'Valores com IVA da região de carregamento. <code>~</code> marca um preço estimado. Séries OMIE via dados.tiagofelicia.pt (CC BY 4.0); produção usa omie.es. Favoritos ficam neste browser — sem conta, sem tracking.',
     cache: ' (cache)',
     apiErr: 'Erro a calcular preços: {msg}',
+    bootFail: 'Não consegui carregar a lista de tarifários.',
+    bootFailWhy: 'O servidor pode estar a acordar (o primeiro pedido com cache fria pode demorar dezenas de segundos) ou a ligação falhou.',
+    bootRetry: 'Tentar outra vez',
   },
   en: {
     docTitle: 'EV Tariff Comparison @ O Carro Elétrico',
@@ -405,6 +408,9 @@ const STR = {
     footRest: 'Prices include the VAT of the region where you charge. <code>~</code> marks an estimated price. OMIE price data from dados.tiagofelicia.pt (CC BY 4.0). Your saved tariffs stay in this browser — no account, no tracking.',
     cache: ' (cached)',
     apiErr: 'Error calculating prices: {msg}',
+    bootFail: 'Could not load the tariff list.',
+    bootFailWhy: 'The server may still be starting up (the first request with a cold cache can take tens of seconds), or the connection failed.',
+    bootRetry: 'Try again',
   },
 };
 
@@ -526,7 +532,11 @@ function applyChrome() {
 const API = location.origin;
 let token = sessionStorage.getItem('ceme:jwt');
 let LAST = [], AVG = null, AT = null, OMIE = 0.20, apiError = null;
-const favs = () => JSON.parse(localStorage.getItem('ceme:favs') || '[]');
+const favs = () => {
+  // localStorage pode ter lixo (versão antiga, edição à mão): JSON.parse
+  // solto rebentava em quem chama favs() — favoritos, favoritos só, rota.
+  try { const v = JSON.parse(localStorage.getItem('ceme:favs') || '[]'); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; } catch (e) { return []; }
+};
 function loadS() { try { const r = localStorage.getItem('ceme:S'); if (r) Object.assign(S, JSON.parse(r)); } catch (e) {} }
 function saveS() { try { localStorage.setItem('ceme:S', JSON.stringify(S)); } catch (e) {} }
 const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
@@ -540,13 +550,22 @@ async function sess() {
   if (!r.ok) throw new Error('não foi possível criar sessão');
   const j = await r.json();
   token = j.token;
-  sessionStorage.setItem('ceme:jwt', token);
+  try { sessionStorage.setItem('ceme:jwt', token); } catch (e) {} // modo privado pode recusar
   return token;
 }
 async function api(path, opts = {}) {
-  const tk = await sess();
-  const r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
-  if (r.status === 401) { sessionStorage.removeItem('ceme:jwt'); token = null; throw new Error('sessão expirada'); }
+  let tk = await sess();
+  let r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
+  // Token de 24h expira: sem isto, o 401 vinha como JSON de erro, `j.data`
+  // ficava undefined e a página dizia "sem resultados" para sempre — o token
+  // morto continuava guardado em sessionStorage. Uma vez (linear, sem
+  // recursão): limpa, manda nova sessão, repete o pedido.
+  if (r.status === 401) {
+    token = null;
+    try { sessionStorage.removeItem('ceme:jwt'); } catch (e) {}
+    tk = await sess();
+    r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
+  }
   if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error && j.error.message ? j.error.message : `erro ${r.status}`); }
   return r.json();
 }
@@ -796,7 +815,7 @@ function renderFavModal() {
 window.toggleFav = id => {
   const f = favs(), i = f.indexOf(id);
   i >= 0 ? f.splice(i, 1) : f.push(id);
-  localStorage.setItem('ceme:favs', JSON.stringify(f));
+  try { localStorage.setItem('ceme:favs', JSON.stringify(f)); } catch (e) {} // idem modo privado
   saveS();
   route();
   if (document.getElementById('favModal')?.classList.contains('on')) renderFavModal();
@@ -925,15 +944,23 @@ async function loadCmp() {
     const [daily] = await Promise.all([api('/v1/omie/daily?days=60')]);
     const cyc = a.cycle === 'DIARIO' ? ['bd_v', 'bd_f'] : ['bs_v', 'bs_f'];
     const loss = 1 + (a.loss || 0);
+    // A série segue a FÓRMULA do tarifário (`q.formula`, ver engine/indexed.js):
+    // standard: (OMIE+K+CGS)×(1+perdas)+TAR · ynerluz: (OMIE+K)×(1+perdas)+CGS+TAR.
+    // Sem isto o gráfico e o breakeven do Ynerluz seguiam a fórmula errada
+    // (CGS dentro do factor de perdas).
+    const yn = a.formula === 'ynerluz';
+    const idxPrice = (o, t) => yn ? loss * (o + a.k) + a.cgs + t : loss * (o + a.k + a.cgs) + t;
     const tar = await api('/v1/tar').then(j => Object.fromEntries(j.data.filter(tr => tr.region === 'CONT' && tr.voltage === a.voltage).map(tr => [tr.period, tr.price_eur_kwh])));
     const days = daily.rows.filter(r => r[cyc[0]] != null).map(r => ({
       date: r.date.slice(5),
-      vaz: (r[cyc[0]] / 1000 + a.k + a.cgs) * loss + (tar.VAZIO || 0),
-      fora: (r[cyc[1]] / 1000 + a.k + a.cgs) * loss + (tar.FORA_VAZIO || 0),
+      vaz: idxPrice(r[cyc[0]] / 1000, tar.VAZIO || 0),
+      fora: idxPrice(r[cyc[1]] / 1000, tar.FORA_VAZIO || 0),
     }));
     const fixedFora = b.prices.FORA_VAZIO ?? b.prices.UNICO;
     const wins = days.filter(x => x.fora < fixedFora).length;
-    const be = ((fixedFora - (tar.FORA_VAZIO || 0)) / loss) - a.k - a.cgs;
+    // breakeven: a mesma fórmula ao contrário (espelha breakevenOmie no backend)
+    const be = yn ? ((fixedFora - a.cgs - (tar.FORA_VAZIO || 0)) / loss) - a.k
+      : ((fixedFora - (tar.FORA_VAZIO || 0)) / loss) - a.k - a.cgs;
     document.getElementById('cmpChart').innerHTML = svgChart(days, a, { vaz: b.prices.VAZIO ?? b.prices.UNICO, fora: fixedFora }) +
       `<div class=card><small>${i18n('winsTxt', { w: wins, d: days.length, be: be.toFixed(3), src: daily.source, cache: daily.cached ? i18n('cache') : '' })}</small></div>`;
   } catch (e) {
@@ -1022,11 +1049,17 @@ async function route() {
     const nowBtn = document.getElementById('nowBtn');
     if (nowBtn) nowBtn.onclick = () => { S.chargeAt = null; R2(); };
   } else {
-    document.getElementById('cmpIdx').onchange = e => { S.idx = e.target.value; loadCmp(); };
-    document.getElementById('cmpFix').onchange = e => { S.fix = e.target.value; loadCmp(); };
-    document.getElementById('cmpOmie').oninput = e => { document.getElementById('cmpOmieV').textContent = Number(e.target.value).toFixed(3); };
-    document.getElementById('cmpOmie').onchange = e => { S.omie = Number(e.target.value); S.omieVazio = S.omie; S.omieFora = S.omie; S.omieAuto = false; refresh().then(loadCmp); };
-    loadCmp();
+    // Com a lista ainda a carregar, vCmp() desenha só o card "a calcular"
+    // (sem dropdowns): os getElementById abaixo podem não existir —
+    // TypeError aqui abortava route() a meio (saveS() não corria).
+    const cmpIdx = document.getElementById('cmpIdx'), cmpFix = document.getElementById('cmpFix'), cmpOmie = document.getElementById('cmpOmie');
+    if (cmpIdx) cmpIdx.onchange = e => { S.idx = e.target.value; loadCmp(); };
+    if (cmpFix) cmpFix.onchange = e => { S.fix = e.target.value; loadCmp(); };
+    if (cmpOmie) {
+      cmpOmie.oninput = e => { document.getElementById('cmpOmieV').textContent = Number(e.target.value).toFixed(3); };
+      cmpOmie.onchange = e => { S.omie = Number(e.target.value); S.omieVazio = S.omie; S.omieFora = S.omie; S.omieAuto = false; refresh().then(loadCmp); };
+    }
+    if (cmpIdx) loadCmp();
   }
   saveS();
 }
@@ -1049,10 +1082,20 @@ async function loadOmieRef() {
 }
 
 async function init() {
-  loadS();
-  setLang(initialLang(), false);
-  document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); route(); });
-  await refresh();   // rápido: só o simulate, com o OMIE por omissão
+  try {
+    loadS();
+    setLang(initialLang(), false);
+    document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); route(); });
+    await refresh();   // rápido: só o simulate, com o OMIE por omissão
+  } catch (e) {
+    // Sem isto, uma falha no primeiro fetch (servidor a acordar, rede
+    // morta, token 401) deixava `#app` vazio — página em branco, sem
+    // mensagem. Mostra o erro e permite tentar outra vez.
+    setLang(initialLang(), false);
+    const app = document.getElementById('app');
+    if (app) app.innerHTML = `<div class="card"><b>${i18n('bootFail')}</b><p>${i18n('bootFailWhy')}</p><button onclick="location.reload()">${i18n('bootRetry')}</button></div>`;
+    return;
+  }
   route();           // pinta já
   loadOmieRef();     // e depois acerta o OMIE e repinta
 }
