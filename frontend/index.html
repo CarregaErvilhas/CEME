@@ -404,7 +404,7 @@ const STR = {
     egmeStale: 'Activ. > EGME 2026',
     egmeStaleTip: 'The activation charge this CEME publishes ({act} €/session) is above the legal rate in force for 2026 ({legal} €/session, ERSE Regulation 7/2026). That is normal — several CEMEs have not yet updated the 2025 value (€0.157) or publish their own. The simulator shows what is published; updating it is on the CEME, not the calculation.',
     bootRetry: 'Try again',
-    kIdx: 'wholesale-linked', kFix: 'fixed tariff', diffNow: 'difference right now',
+    kIdx: 'indexed tariff', kFix: 'fixed tariff', diffNow: 'difference right now',
     fixedWins: 'the fixed tariff is cheaper', idxWins: 'the indexed tariff is cheaper',
     winsTxt: 'On <b>{w} of the last {d} days</b> the indexed tariff would have worked out cheaper during peak hours. It stays cheaper today whenever OMIE falls below <b>{be}€/kWh</b>. <br>Series: {src}{cache}.',
     histUnavail: 'The 60-day history is not available. The price shown above is still correct.',
@@ -539,7 +539,45 @@ const favs = () => {
   // solto rebentava em quem chama favs() — favoritos, favoritos só, rota.
   try { const v = JSON.parse(localStorage.getItem('ceme:favs') || '[]'); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; } catch (e) { return []; }
 };
-function loadS() { try { const r = localStorage.getItem('ceme:S'); if (r) Object.assign(S, JSON.parse(r)); } catch (e) {} }
+function loadS() {
+  // localStorage pode ter lixo (versão antiga, edição à mão): validar e coagir
+  // no único ponto de entrada, em vez de espalhar defesas por cada render.
+  // Sem isto, um `S.batMin = '<img src=x onerror=1>'` chega ao HTML como
+  // string e o esc() só limpa a saída, não o valor — que depois vai para
+  // Number(), effKwh(), kwhTxt() e vira NaN. A coagão aqui é a defesa de 1.ª
+  // linha; o esc() nos templates mantém-se como 2.ª.
+  try {
+    const r = localStorage.getItem('ceme:S');
+    if (!r) return;
+    const o = JSON.parse(r);
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return;
+    const num = (v, d) => (typeof v === 'number' && Number.isFinite(v)) ? v : (Number.isFinite(Number(v)) ? Number(v) : d);
+    const str = (v, d, allowed) => (typeof v === 'string' && (!allowed || allowed.includes(v))) ? v : d;
+    const bool = (v, d) => (typeof v === 'boolean') ? v : d;
+    S.kwh = num(o.kwh, S.kwh);
+    S.omie = num(o.omie, S.omie);
+    S.omieVazio = num(o.omieVazio, S.omieVazio);
+    S.omieFora = num(o.omieFora, S.omieFora);
+    S.batCap = num(o.batCap, S.batCap);
+    S.batMin = num(o.batMin, S.batMin);
+    S.batMax = num(o.batMax, S.batMax);
+    S.region = str(o.region, S.region, ['CONT', 'MAD', 'AZO']);
+    S.ramal = str(o.ramal, S.ramal, ['BT', 'MT']);
+    S.energyMode = str(o.energyMode, S.energyMode, ['kwh', 'bat']);
+    S.volt = str(o.volt, S.volt);
+    S.q = str(o.q, S.q);
+    S.idx = str(o.idx, S.idx);
+    S.fix = str(o.fix, S.fix);
+    S.scopeClosed = bool(o.scopeClosed, S.scopeClosed);
+    S.green = bool(o.green, S.green);
+    S.nobundle = bool(o.nobundle, S.nobundle);
+    S.favonly = bool(o.favonly, S.favonly);
+    S.omieAuto = bool(o.omieAuto, S.omieAuto);
+    if (typeof o.chargeAt === 'string') S.chargeAt = o.chargeAt;
+    if (typeof o.serverNow === 'string') S.serverNow = o.serverNow;
+    if (typeof o.forceServerTime === 'boolean') S.forceServerTime = o.forceServerTime;
+  } catch (e) {}
+}
 function saveS() { try { localStorage.setItem('ceme:S', JSON.stringify(S)); } catch (e) {} }
 const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
   energyMode: 'kwh', batCap: 60, batMin: 20, batMax: 80,
@@ -622,7 +660,7 @@ function badges(q) {
   // do legal. O aviso leva os números reais do tarifário.
   if (q.activation_stale) b += `<span class="badge wr" title="${i18n('egmeStaleTip', { act: fmtNum(q.activation), legal: fmtNum(q.egme_legal) })}">${i18n('egmeStale')}</span>`;
   if (q.warning) b += `<span class="badge wr">${i18n(q.warning === 'OMIE_CONT_REF' ? 'warnOmieCont' : q.warning)}</span>`;
-  if (!((',' + (q.avail || 'CONT') + ',').includes(',' + S.region + ','))) b += `<span class="badge">${i18n('soldIn', { r: q.avail })}</span>`;
+  if (!((',' + (q.avail || 'CONT') + ',').includes(',' + S.region + ','))) b += `<span class="badge">${i18n('soldIn', { r: esc(q.avail) })}</span>`;
   if (q.estimated) b += `<span class="badge est" title="${i18n('estTip')}">~</span>`;
   return b;
 }
@@ -677,9 +715,9 @@ function card(q, i, max, lo, hi) {
       <div style="display:flex;gap:12px;align-items:flex-start;flex:1"><span class="rank">${i + 1}</span>
       <div style="flex:1"><div><span class="total">${eur(q.totalEur)}</span>${first ? `<span class="ribbon">${i18n('cheapest')}</span>` : ''}</div>
         <div class="per"><span class="livedot"></span>${i18n('rightNowIn')} <b>${perName(q.period)}</b> · ${kwhe(q.eurKwhNoIva)} · ${kwhTxt()} kWh ${i18n('inclVat')}</div>
-        <div class="tname"${q.notes ? ` title="${noteText(q.notes)}"` : ''}><b>${q.ceme}</b> — ${tariffName(q.name)}</div>
+        <div class="tname"${q.notes ? ` title="${noteText(q.notes)}"` : ''}><b>${esc(q.ceme)}</b> — ${tariffName(q.name)}</div>
         <div>${badges(q)}</div></div></div>
-      <button class="favbtn ${on ? 'f' : ''}" onclick="toggleFav('${q.id}')" title="${i18n('saveFav')}">${on ? '★' : '☆'}</button>
+      <button class="favbtn ${on ? 'f' : ''}" data-id="${esc(q.id)}" onclick="toggleFav(this.dataset.id)" title="${i18n('saveFav')}">${on ? '★' : '☆'}</button>
     </div>
     <div class="bar"><i style="width:${Math.max(4, Math.round(100 * q.totalEur / max))}%;background:${heatColor(heatOf(q.totalEur, lo, hi))}"></i></div>${detail(q)}</div>`;
 }
@@ -717,7 +755,7 @@ function heroHome(items) {
   document.getElementById('hero').innerHTML = `<h1>${i18n('h1a')}<span>${i18n('h1b')}</span></h1>
     <p>${kwhTxt()} kWh · <b>${R().nome}</b> <small style="color:#9fc3ae">(${R().iva} · ${R().fuso})</small> · ${AT ? locDate(AT) : ''}</p>
     <p class="scope-hint" onclick="document.getElementById('scopeBox')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer">${i18n('scopeHint')}</p>
-    <div class="live">${best ? `<span class="pill"><span class="livedot"></span>${i18n('now')} <b>${best.ceme}</b> ${eur(best.totalEur)}</span>` : ''}
+    <div class="live">${best ? `<span class="pill"><span class="livedot"></span>${i18n('now')} <b>${esc(best.ceme)}</b> ${eur(best.totalEur)}</span>` : ''}
     <span class="pill">${i18n('avg')} <b>${AVG != null ? eur(AVG) : '—'}</b></span>
     <span class="pill">${items.length} ${i18n('nTariffs')}</span></div>`;
 }
@@ -767,15 +805,15 @@ function vHome() {
       <div class="seg" style="min-width:120px"><button data-ramal="BT" class="${S.ramal === 'BT' ? 'on' : ''}" title="${i18n('ramalTip')}">BT</button><button data-ramal="MT" class="${S.ramal === 'MT' ? 'on' : ''}" title="${i18n('ramalTip')}">MT</button></div>
     </div>
     ${kwhView ? `
-      <div class="row" style="margin-top:10px"><label class="fl grow">${i18n('kwh')}<input id="kwh" type="number" value="${S.kwh}" min="1" step="0.5" style="font-size:18px;font-weight:700"></label>
+      <div class="row" style="margin-top:10px"><label class="fl grow">${i18n('kwh')}<input id="kwh" type="number" value="${esc(S.kwh)}" min="1" step="0.5" style="font-size:18px;font-weight:700"></label>
       <label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>` :
       `<div style="margin-top:10px">
-        <div class="row"><label class="fl" style="width:110px">${i18n('capacity')}<input id="batCap" type="number" value="${S.batCap}" min="1" step="1"></label>
+        <div class="row"><label class="fl" style="width:110px">${i18n('capacity')}<input id="batCap" type="number" value="${esc(S.batCap)}" min="1" step="1"></label>
         <div class="grow" style="display:flex;flex-direction:column;gap:6px">
-          <label class="fl">${i18n('min')} ${S.batMin}%<input id="batMin" type="range" min="0" max="100" step="5" value="${S.batMin}"></label>
-          <label class="fl">${i18n('max')} ${S.batMax}%<input id="batMax" type="range" min="0" max="100" step="5" value="${S.batMax}"></label>
+          <label class="fl">${i18n('min')} ${esc(S.batMin)}%<input id="batMin" type="range" min="0" max="100" step="5" value="${esc(S.batMin)}"></label>
+          <label class="fl">${i18n('max')} ${esc(S.batMax)}%<input id="batMax" type="range" min="0" max="100" step="5" value="${esc(S.batMax)}"></label>
         </div></div>
-        <small id="batNote" style="display:block;margin-top:4px">${i18n('chargingFrom', { a: S.batMin, b: S.batMax, c: kwhTxt() })}</small>
+        <small id="batNote" style="display:block;margin-top:4px">${i18n('chargingFrom', { a: esc(S.batMin), b: esc(S.batMax), c: kwhTxt() })}</small>
         <div class="row" style="margin-top:6px"><label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>
       </div>`}
     <div class="row" style="margin-top:10px"><div class="seg grow" role="group" aria-label="${i18n('region')}">
@@ -839,7 +877,7 @@ window.toggleFav = id => {
 // a lista mudar de ordem ao trocar a bandeira.
 const byAlpha = (a, b) => a.ceme.localeCompare(b.ceme, 'pt') || a.name.localeCompare(b.name, 'pt');
 function opt(list, sel) {
-  return [...list].sort(byAlpha).map(q => `<option value="${q.id}" ${q.id === sel ? 'selected' : ''}>${q.ceme} — ${tariffName(q.name)}</option>`).join('');
+  return [...list].sort(byAlpha).map(q => `<option value="${esc(q.id)}" ${q.id === sel ? 'selected' : ''}>${esc(q.ceme)} — ${tariffName(q.name)}</option>`).join('');
 }
 function vCmp() {
   document.getElementById('hero').innerHTML = `<h1>${i18n('cmpH1a')}<span>${i18n('cmpH1b')}</span></h1><p>${i18n('cmpSub', { r: R().nome, v: R().iva })}</p>`;
@@ -858,7 +896,7 @@ function vCmp() {
   return `<div class="card"><div class="row">
     <label class="fl grow">${i18n('lIndexed')}<select id="cmpIdx" style="width:100%">${opt(idx, S.idx)}</select></label>
     <label class="fl grow">${i18n('lFixed')}<select id="cmpFix" style="width:100%">${opt(fix, S.fix)}</select></label></div>
-    <div class="row" style="margin-top:8px"><label class="fl grow">${i18n('omieRef')}<input id="cmpOmie" type="range" min="0.05" max="0.40" step="0.005" value="${S.omie}" style="width:100%"></label><b id="cmpOmieV">${Number(S.omie).toFixed(3)}</b></div>
+    <div class="row" style="margin-top:8px"><label class="fl grow">${i18n('omieRef')}<input id="cmpOmie" type="range" min="0.05" max="0.40" step="0.005" value="${esc(S.omie)}" style="width:100%"></label><b id="cmpOmieV">${esc(Number(S.omie).toFixed(3))}</b></div>
     <div class="kpi" id="cmpKpi" style="margin-top:10px"></div></div>
     <div class="sec-t">${i18n('last60')}</div>
     <div id="cmpChart"><div class=card>${i18n('calcHist')}</div></div>

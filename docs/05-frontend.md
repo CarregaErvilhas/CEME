@@ -271,7 +271,7 @@ fica curto:
 |---|---|
 | nav + título do comparador | **Indexed to OMIE** vs fixed tariff |
 | badge do cartão | Tracks the OMIE price *(mantido)* |
-| KPI do comparador | **wholesale-linked** (longe do título, tem de se explicar sozinho) |
+| KPI do comparador | **indexed tariff** (longe do título, tem de se explicar sozinho) |
 | legenda do gráfico | indexed tariff, peak / off-peak *(mantido)* |
 
 Em português fica **Indexado vs fixo** — é o termo de mercado e não precisa
