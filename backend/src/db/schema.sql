@@ -24,7 +24,11 @@ CREATE TABLE IF NOT EXISTS tariff_version (
   status TEXT DEFAULT 'DRAFT', origin TEXT,
   k_index_eur_mwh REAL, cgs_eur_mwh REAL,
   omie_aggregation TEXT DEFAULT 'SPLIT_VAZIO_FORA',
-  notes TEXT, created_by TEXT, created_at TEXT DEFAULT (datetime('now'))
+  notes TEXT, created_by TEXT, created_at TEXT DEFAULT (datetime('now')),
+  -- Uma versão por data de vigência (à paridade do schema postgres): dá
+  -- alvo real ao INSERT OR IGNORE do seed sqlite e evita versões
+  -- duplicadas da mesma folha em re-seed.
+  UNIQUE (tariff_id, valid_from)
 );
 
 CREATE TABLE IF NOT EXISTS price_component (

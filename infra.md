@@ -18,9 +18,9 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 
 | Serviço | Tipo | Versão | Função |
 |---|---|---|---|
-| `api` | nodejs | 26 | Node.js puro (`src/server.js`). Serve frontend + API. Escuta em `PORT=3001`. |
+| `api` | nodejs | 24 (topo da base list do Zerops; `nodejs@latest` = 24) | Node.js puro (`src/server.js`). Serve frontend + API. Escuta em `PORT=3001`. |
 | `db` | postgresql | 18 | BD principal. Tabelas: `ceme`, `tariff`, `tariff_version`, `price_component`, `tar`, `omie_spot`, `omie_daily`, `api_client`, `api_key`, `audit_log`, etc. |
-| `cache` | valkey | 9.1 | Cache OMIE (6h) e sessões. Opcional na fase 1. |
+| `cache` | valkey | 7.2 (única versão disponível no Zerops) | Cache OMIE (6h) e sessões. Opcional na fase 1. |
 
 Recursos (ajustáveis depois):
 - `api`: 0.5 GB RAM, 1 vCPU, 1 GB disco.
@@ -106,9 +106,9 @@ scripts/
 
 | Secret | Conteúdo |
 |---|---|
-| `ZEROS_API_TOKEN` | Token de API do Zerops (para `zcli` autenticar na CI) |
-| `ZEROS_PROJECT_PROD` | ID/nome do projeto de produção no Zerops |
-| `ZEROS_PROJECT_PREVIEW_PREFIX` | Prefixo para projetos de preview (ex: `ceme-v2-pr-`) |
+| `ZEROPS_API_TOKEN` | Token de API do Zerops (para `zcli` autenticar na CI) |
+| `ZEROPS_PROJECT_PROD` | ID/nome do projeto de produção no Zerops |
+| `ZEROPS_PROJECT_PREVIEW_PREFIX` | Prefixo para projetos de preview (ex: `ceme-v2-pr-`) |
 | `CLOUDFLARE_API_TOKEN` | Token com permissão para editar DNS da zona (se a CI atualizar DNS) |
 | `CLOUDFLARE_ZONE_ID` | ID da zona Cloudflare do domínio |
 | `JWT_SECRET` | Segredo para JWT (mesmo valor usado no Zerops) |
