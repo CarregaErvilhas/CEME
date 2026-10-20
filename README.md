@@ -1,8 +1,6 @@
 # CEME v2 — simulador moderno de mobilidade eléctrica
 
-Favor à comunidade, sem fins lucrativos. Substitui o Google Sheets
-(`1WMaiaShTwp1-QzWXi-SlcB3uTigp5nfYO-v3veCcn84`, 34 tabs) por uma BD
-versionada + motor de cálculo testável + API com auth + web mobile-friendly.
+Favor à comunidade, sem fins lucrativos. Substitui o Google Sheets por uma BD versionada + motor de cálculo testável + API com auth + web mobile-friendly.
 
 ## Âmbito (importante)
 
@@ -15,7 +13,7 @@ mostrado é o mínimo da parcela de energia; a factura final será maior.
 Ver [mobie.pt/custo-do-carregamento](https://www.mobie.pt/custo-do-carregamento)
 e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
-## Stack (POC, custo zero)
+## Stack
 
 - Backend: Node.js puro (sem deps) — `node:http`, `node:sqlite`, `node:test`.
 - Frontend: HTML + CSS + JS vanilla em `frontend/index.html` (sem build),
