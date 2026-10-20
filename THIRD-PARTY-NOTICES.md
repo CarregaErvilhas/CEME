@@ -20,17 +20,18 @@ dois projectos não deve encontrar duas maneiras de dizer a mesma coisa.
 
 ## Dependências de runtime
 
-**Nenhuma.** O backend usa só módulos do Node (`node:http`, `node:sqlite`,
-`node:test`, `node:crypto`) e o frontend é HTML/JS sem build. Não há
-`node_modules` nem `package-lock.json`, e portanto não há dependências
-transitivas para auditar.
+**Uma:** `pg` (driver PostgreSQL, em `backend/package.json` + `package-lock.json`).
+O resto do backend usa só módulos do Node (`node:http`, `node:sqlite`,
+`node:test`, `node:crypto`) e o frontend é HTML/JS sem build. A `pg` é
+usada apenas quando `DATABASE_URL` está definida (produção); em dev/teste
+corre SQLite e a dependência não é exercitada.
 
 ## O que NÃO está aqui, e porquê
 
 | Coisa | Motivo |
 |---|---|
 | `simulador-original.xlsx` e os dumps TSV | Obra de terceiro com licença própria (CC BY 4.0, autoria de terceiro). Versioná-la aqui publicaria trabalho alheio sem a atribuição que a licença exige — e num repositório privado a atribuição ficaria ainda mais invisível. Vive fora do repositório. |
-| `backend/data/` (SQLite + cache OMIE) | Gerado. `seed()` reconstrói a base do zero e o cache OMIE é re-fetchado. Está no `.gitignore`. |
+| `backend/data/` (SQLite local + cache OMIE) | Gerado. `seed()` reconstrói a base do zero e o cache OMIE é re-fetchado. Em produção a BD é PostgreSQL (serviço gerido no Zerops) e a seed é só o bootstrap do ambiente vazio. Está no `.gitignore`. |
 | Valores reais de TAR de Madeira/Açores | Ainda não semeados. Publicar preços de ilhas com o TAR do Continente seria dar um número sem base. Bloqueado, ver `docs/06`. |
 
 ## Regra de conduta para novos dados

@@ -171,6 +171,21 @@ O deploy **não** é feito pelo GitHub Actions. É o próprio Zerops que puxa o 
 
 > Serviço `api` → **Build, Deploy, Run Pipeline Settings** → **Connect with a GitHub repository** → trigger **Push to branch: `main`**.
 
+**Estado: ligado e verificado.** Webhook `701068038` no repo `CarregaErvilhas/CEME` (eventos `push`, activo, com segredo HMAC). A integração do serviço ficou:
+
+```json
+{ "repositoryFullName": "CarregaErvilhas/CEME", "eventType": "BRANCH",
+  "branchName": "main", "isActive": true, "webhookId": 701068038,
+  "zeropsYamlSetup": "api", "authorizationRequired": false }
+```
+
+Teste real (merge do PR #9 → `main`): pipeline `J7ngdRp5Q7iuAP4oSgnvuA`, "Build commands from zerops.yml ran successfully", app version `main@9ad8fcf7` criada e serviço actualizado — **1 min 11 s** do push ao deploy. O site respondeu 200 com 128 tarifários logo a seguir.
+
+Notas:
+- `zeropsYamlSetup: "api"` tem de corresponder ao `setup:` do `zerops.yml` — é isso que diz ao Zerops qual bloco do YAML usar.
+- A integração só se vê na API do **serviço** (`GET /service-stack/{id}` → `githubIntegration`). O endpoint `external-repository-integration-status` responde `githubAuthorizationRequired` a partir de uma sessão que não seja a conta OAuth autorizada — é identidade da sessão, não um sinal de falha.
+- O `redirect_uri` do OAuth da Zerops só aceita o callback registado (`https://app.zerops.io/`) — o GitHub recusa `127.0.0.1` com *"The redirect_uri is not associated with this application"*. Por isso esta parte faz-se no GUI, não por API.
+
 Porque é que não é `zcli push` na CI: essa via obrigava a guardar um **token de admin da conta Zerops** como secret do GitHub. Notas sobre o que a Zerops oferece e porque foi descartado:
 - Os tokens com escopo existem (**Settings → Access Tokens Management** → acesso *Custom per project*, limitado ao projeto CEME), o que reduz o blast radius face a *Full access to all projects*. Mas mesmo assim continua a ser uma credencial de longa duração, com acesso de leitura a env vars sensíveis (`JWT_SECRET`, `DATABASE_URL`) e a backups, guardada num sítio que qualquer pessoa com push a `main` consegue ler.
 - A Zerops não suporta (ainda) tokens efémeros/OIDC federation, portanto não dá para trocar por credenciais de curta duração.
@@ -179,9 +194,12 @@ O webhook elimina a credencial no GitHub por completo. Trade-off aceite: perdemo
 
 ### 4.3 Branch protection do `main` (pré-requisito do gating)
 
-Sem o `needs: test` do workflow, é a branch protection que impede merges com CI vermelho:
+O gating está feito por um **ruleset** (não pela branch protection clássica), porque o GitHub Free não a impõe em repos públicos de organização:
 
-- Settings → Branches → `main`: **Require status checks to pass** → check `test` (do workflow CI); **Require pull request before merging**.
+- Ruleset `25509982`, alvo `main`, `enforcement: active`.
+- `required_status_checks`: check `test`, com `strict_required_status_checks_policy: true` (o branch tem de estar actualizado com `main`).
+- `pull_request` com `required_review_thread_resolution: true` — **qualquer thread de review por resolver bloqueia o merge**. Cuidado: um *suggestion* esquecido (mesmo do próprio autor) trava o PR. Resolver com `mutation { resolveReviewThread(input:{threadId:"..."}) }` pela API.
+- `non_fast_forward` e `deletion`: sem force-push nem apagar a branch.
 
 Sem isto, um push direto a `main` (ou um merge com checks vermelhos) chega ao Zerops e é deployado.
 
@@ -251,6 +269,6 @@ Substituição futura: MCP server para gestão de tarifários (a discutir depois
 - [x] Fixar o autoscaling dos três serviços (tetos de 8 CPU/48 GB/250 GB → 2 CPU/1 GB/5 GB).
 - [x] GitHub Actions (só CI; secção 4).
 - [x] Ruleset do `main` com o check `test` obrigatório e PR obrigatório.
-- [ ] Ligar o webhook do Zerops ao repositório (trigger: push para `main`; secção 4.2).
-- [ ] Testar merge to main → build+deploy automático pelo Zerops.
+- [x] Webhook do Zerops ligado ao repo (trigger: push para `main`; secção 4.2) — webhook `701068038`.
+- [x] Merge to `main` → build+deploy automático pelo Zerops (1 min 11 s, verificado).
 - [ ] (futuro) Preview por PR.

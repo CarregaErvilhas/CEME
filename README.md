@@ -1,5 +1,7 @@
 # CEME v2 — simulador moderno de mobilidade eléctrica
 
+Site: <https://ceme-beta.ocarroeletrico.com> · Código: <https://github.com/CarregaErvilhas/CEME>
+
 Favor à comunidade, sem fins lucrativos. Substitui o Google Sheets por uma BD versionada + motor de cálculo testável + API com auth + web mobile-friendly.
 
 ## Âmbito (importante)
@@ -15,34 +17,61 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
 ## Stack
 
-- Backend: Node.js puro (sem deps) — `node:http`, `node:sqlite`, `node:test`.
+- Backend: Node.js 24 — `node:http`, `node:test`, `node:sqlite` (dev) e `pg`
+  (única dependência, para PostgreSQL em produção).
 - Frontend: HTML + CSS + JS vanilla em `frontend/index.html` (sem build),
   bilíngue PT/EN (dicionário no cliente + `Accept-Language` no servidor).
-- BD: SQLite (`backend/data/ceme.db`), schema Drizzle-migrável.
+- BD: PostgreSQL 18 em produção (serviço gerido no Zerops) e SQLite local em
+  dev/teste. Schema em SQL directo (`backend/src/db/schema.sql` e
+  `schema.postgres.sql`), sem ORM — a seed é o bootstrap do ambiente vazio.
 - Auth: HS256 JWT de sessão (24h) + API keys (sha256).
-- OMIE: dados.tiagofelicia.pt (CC BY 4.0) com cache 6h; produção usa omie.es.
+- OMIE: séries diária, de quartos-horários e futuros via
+  `dados.tiagofelicia.pt` (CC BY 4.0, com atribuição), cache local de 6h. A
+  ingestão directa do `omie.es` ainda não está implementada (ver `docs/03`
+  e `docs/06`).
+- CI: GitHub Actions (Node 24, o mesmo do deploy). O deploy **não** é feito
+  pelo GitHub — ver a secção «Deploy».
 
-## Correr o POC
+## Correr localmente
 
 ```sh
-cd ceme-v2/backend
-node --test test/*.test.js   # 106 testes
-node src/server.js           # http://localhost:3001/
+cd backend
+npm ci
+npm test        # 111 testes
+npm start       # http://localhost:3001/
 ```
+
+`npm run dev` é o `npm start` com `--watch`. Sem `DATABASE_URL` a BD é SQLite
+(`backend/data/ceme.db`); com `DATABASE_URL` (PostgreSQL) corre o mesmo
+código contra o Postgres — a escolha é do ambiente, não do código.
 
 Para consumidores da API fora do browser, uma `X-API-Key` valida contra o
 sha256 em BD: exporta `CEME_API_KEY=<valor>` antes de arrancar (o valor
-claro nunca fica na BD — ver docs/04).
+claro nunca fica na BD — ver `docs/04`). Em produção `JWT_SECRET` é
+obrigatória: sem ela o `POST /v1/session` devolve 503 em vez de emitir
+tokens fabricáveis. Ver `backend/.env.example`.
 
-Abrir http://localhost:3001/ — ranking ao vivo de **128 tarifários versionados** (55 ofertas distintas em ecrã) / 24 CEME
-(seed completo do sheet, incluindo Atlante, EDP, Galp, 6 indexados LuziGas,
-MEO Dinâmica, Ynerluz, miio, Via Verde, etc.), com kWh ou bateria %,
-região (Portugal Continental / Madeira / Açores), pesquisa, filtros (verde,
-sem bundle, favoritos), favoritos em localStorage e detalhe por tarifário.
+## API
 
-Página **Indexado vs fixo** (`#/comparar`): valor actual lado a lado,
-gráfico SVG de 60 dias e tabela de quartos-horários (os 8 mais baratos
-marcados, com as faixas em que o indexado bate o fixo de referência).
+Todos os `/v1/*` exigem `Authorization: Bearer <jwt>` ou `X-API-Key: <chave>`.
+A excepção é `POST /v1/session`, que emite o token da sessão web. Detalhe em
+`docs/04-api-auth.md`.
+
+| Método | Rota | O que devolve |
+|---|---|---|
+| POST | `/v1/session` | JWT `WEB_SESSION` (24h) — sem auth, com rate limit por IP |
+| GET | `/v1/health` | estado do serviço e o `kind` da credencial usada |
+| GET | `/v1/cemes` | comercializadores |
+| GET | `/v1/tariffs` | os 128 tarifários + a versão vigente de cada um |
+| GET | `/v1/tar` | TAR em vigor (região, tensão, período) |
+| POST | `/v1/simulate` | todos os tarifários cotados para o instante/região pedidos |
+| GET | `/v1/omie/daily?days=60` | agregados diários (7..120 dias) |
+| GET | `/v1/omie/futures` | contratos OMIP |
+| GET | `/v1/indexed/quarters` | quartos-horários de um indexado + `winner` vs. o fixo escolhido |
+
+Erros em `{error: {code, message}}`; datas em ISO UTC. Um tarifário com
+componentes divergentes entra em quarentena e sai do ranking — os restantes
+seguem (nunca um 400 vindo de um seed mau).
 
 ## Funcionalidades actuais
 
@@ -59,17 +88,78 @@ marcados, com as faixas em que o indexado bate o fixo de referência).
 - **Potência do ramal (BT/MT):** selector no cartão de energia — afecta apenas a TAR aplicada, não a lista de tarifários. O dedup por `CEME+nome` (`dedupByRamal()`) é partilhado pelo ranking, pelo modal de favoritos e pelo comparador, por isso cada tarifário aparece uma vez em todo o lado.
 - **Pesquisa tolerante:** ignora acentos (`luzigas` → `LUZiGÁS`) e não depende da língua da interface — pesquisa em inglês encontra o tarifário em PT.
 
+O ranking mostra **128 tarifários versionados** (55 ofertas distintas em ecrã) /
+24 CEME — seed completo da folha da ERSE, incluindo Atlante, EDP, Galp, 6
+indexados LuziGas, MEO Dinâmica, Ynerluz, miio, Via Verde, etc.
+
+Página **Indexado vs fixo** (`#/comparar`): valor actual lado a lado,
+gráfico SVG de 60 dias e tabela de quartos-horários (os 8 mais baratos
+marcados, com as faixas em que o indexado bate o fixo de referência).
+
+## Deploy
+
+Serviço `api` (Node.js 24, porta 3001) no Zerops, com PostgreSQL 18 e Valkey
+7.2 geridos à parte; Cloudflare à frente (só registo AAAA, proxy activo, TLS
+strict). O `JWT_SECRET` e o `DATABASE_URL` são env secrets do serviço — nunca
+no repositório.
+
+O CI (GitHub Actions) só corre os testes. O deploy é o **webhook do Zerops**:
+o serviço puxa o repositório quando o push chega ao `main`, o que evita ter
+uma credencial Zerops no GitHub. O gating de qualidade passa a ser a branch
+protection do `main` (exige o check `test` verde).
+
+Infra, DNS, armadilhas do `run.start` e o checklist de implementação estão
+em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
+
 ## Estrutura
 
 ```
-ceme-v2/
+.
   README.md
-  docs/           # 01-modelo, 02-motor, 03-omie, 04-api-auth, 05-frontend, 06-roadmap, 07-ilhas
-  backend/        # server.js, engine/, db/, omie/, test/
-  frontend/       # index.html (tudo num ficheiro)
-  scripts/
+  LICENSE                     # PolyForm Noncommercial 1.0.0
+  THIRD-PARTY-NOTICES.md      # licenças e atribuições dos dados de terceiros
+  infra.md                    # Zerops + Cloudflare + CI/CD
+  zerops.yml                  # serviço runtime `api`
+  zerops-import.yaml          # criação dos serviços geridos (db, cache)
+  backend/
+    package.json
+    src/
+      server.js               # HTTP + auth + rate limit + rotas /v1/*
+      auth/tokens.js          # JWT HS256 e hash das API keys
+      db/                     # db.js, pg.js, schema[.postgres].sql, seed[.postgres].js
+      engine/                 # quote, indexed, periods, regions, compare
+      omie/                   # cache, parse, convert, fallback
+    test/                     # 12 ficheiros, 111 testes (node:test)
+    data/                     # gerado: SQLite + cache OMIE (no .gitignore)
+  frontend/
+    index.html                # tudo num ficheiro
+  docs/                       # 01-modelo, 02-motor, 03-omie, 04-api-auth,
+                              # 05-frontend, 06-roadmap, 07-ilhas, 08-migracao-sqlite-postgres
+  scripts/etl-sheets.sh
+  .github/workflows/ci.yml
 ```
 
 ## Licença
 
-Mantém CC BY-NC 4.0 do simulador original + atribuição ERSE/Mobi.E/OMIE.
+O código, a documentação, o motor de cálculo e o seed estão sob
+**PolyForm Noncommercial 1.0.0** (`LICENSE`,
+`SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0`).
+
+> Required Notice: Copyright O Carro Elétrico / Fernando Miguel (https://ceme.ocarroeletrico.com/)
+
+- Uso **não comercial** livre (indivíduos, investigação, escolas,
+  organizações de saúde ou de ambiente, entidades públicas): usar, modificar
+  e partilhar, com a obrigação de manter o aviso e apontar para o sítio onde
+  razoável.
+- Qualquer uso **comercial** (incluindo uso por um negócio com vantagem
+  comercial, produtos/serviços pagos, ou embutir o software numa oferta
+  comercial) exige uma licença comercial separada, acordada caso a caso:
+  <info@ocarroeletrico.com>.
+- A PolyForm Noncommercial proíbe também usar o software para competir com o
+  licensor: um comercializador não pode fazer fork e vender o simulador aos
+  consumidores da sua própria energia. É deliberado — um arranjo diferente
+  pede-se e escreve-se antes, não se descobre depois.
+
+Os dados de terceiros (lista de CEME da ERSE, séries OMIE/MIBEL) **não** estão
+sob a PolyForm: mantêm as suas próprias licenças (CC BY 4.0) e as suas
+atribuições. Ver [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
