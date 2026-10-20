@@ -301,6 +301,8 @@ const STR = {
     qUnavailable: 'Quartos-horários indisponíveis.',
     bootFail: 'Não consegui carregar a lista de tarifários.',
     bootFailWhy: 'O servidor pode estar a acordar (o primeiro pedido com cache fria pode demorar dezenas de segundos) ou a ligação falhou.',
+    egmeStale: 'Activ. > EGME 2026',
+    egmeStaleTip: 'A taxa de activação publicada por este CEME ({act} €/carregamento) está acima do valor legal em vigor 2026 ({legal} €/carregamento, Regul. ERSE 7/2026). É normal — vários CEMEs ainda não actualizaram o valor de 2025 (0,157 €) ou publicam valores próprios. O simulador mostra o publicado; a actualização é do CEME, não do cálculo.',
     bootRetry: 'Tentar outra vez',
     kIdx: 'indexado', kFix: 'fixo', diffNow: 'diferença agora',
     fixedWins: 'fixo ganha', idxWins: 'indexado ganha',
@@ -399,6 +401,8 @@ const STR = {
     qUnavailable: 'Quarter-hourly slots are not available right now.',
     bootFail: 'Could not load the tariff list.',
     bootFailWhy: 'The server may still be starting up (the first request with a cold cache can take tens of seconds), or the connection failed.',
+    egmeStale: 'Activ. > EGME 2026',
+    egmeStaleTip: 'The activation charge this CEME publishes ({act} €/session) is above the legal rate in force for 2026 ({legal} €/session, ERSE Regulation 7/2026). That is normal — several CEMEs have not yet updated the 2025 value (€0.157) or publish their own. The simulator shows what is published; updating it is on the CEME, not the calculation.',
     bootRetry: 'Try again',
     kIdx: 'wholesale-linked', kFix: 'fixed tariff', diffNow: 'difference right now',
     fixedWins: 'the fixed tariff is cheaper', idxWins: 'the indexed tariff is cheaper',
@@ -613,6 +617,10 @@ function badges(q) {
   if (q.green) b += `<span class="badge grn">${i18n('green')}</span>`;
   if (q.bundle) b += `<span class="badge bnd" title="${i18n('bundleTip')}">${i18n('needsHome')}</span>`;
   if (q.notes) b += `<span class="badge ac" title="${noteText(q.notes)}">${i18n('acOnly')}</span>`;
+  // Activ. > EGME legal (publicado ≠ regulamentar): avisa, não substitui —
+  // o CEME pode estar a cobrar o valor de 2025 ou um valor próprio acima
+  // do legal. O aviso leva os números reais do tarifário.
+  if (q.activation_stale) b += `<span class="badge wr" title="${i18n('egmeStaleTip', { act: fmtNum(q.activation), legal: fmtNum(q.egme_legal) })}">${i18n('egmeStale')}</span>`;
   if (q.warning) b += `<span class="badge wr">${i18n(q.warning === 'OMIE_CONT_REF' ? 'warnOmieCont' : q.warning)}</span>`;
   if (!((',' + (q.avail || 'CONT') + ',').includes(',' + S.region + ','))) b += `<span class="badge">${i18n('soldIn', { r: q.avail })}</span>`;
   if (q.estimated) b += `<span class="badge est" title="${i18n('estTip')}">~</span>`;

@@ -28,16 +28,17 @@ function seeded() {
   return db;
 }
 
-// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15; os totais
-// Charge2Go/Via Verde reponderados em 2026-10-18 para a EGME 2026
-// (0,1088; o sheet de captura ainda tinha 0,1572 de 2025).
+// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15.
+// TODAS as âncoras são externas: vêm da folha de captura, não de qualquer
+// re-derivação no código. O cenário «E se o CEME aplicar a EGME legal
+// 2026?» fica no teste do cenário regulatório, mais abaixo.
 const GOLDEN = [
   ['atlante-mt-myatlanteac', 9.11, 0.19],
   ['atlante-bt-myatlanteac', 10.98, 0.23],
   ['atlante-mt-myatlantebus', 8.12, 0.17],
   ['atlante-bt-myatlantebus', 9.99, 0.21],
-  ['charge2go-mt-ecogreen', 9.32, 0.19],
-  ['viaverde-mt-viaverdeelec', 8.25, 0.17],
+  ['charge2go-mt-ecogreen', 9.38, 0.19],
+  ['viaverde-mt-viaverdeelec', 8.31, 0.17],
   ['ezu-mt-abenergia', 5.84, 0.12],
   ['miio-mt-miiobihor-2', 12.64, 0.26],
 ];
@@ -63,28 +64,30 @@ describe('golden: fixos a 40 kWh, 2026-10-15 22:09 (CONT)', () => {
   }
 });
 
-describe('golden: âncoras históricas do sheet (EGME 2025)', () => {
-  // Os dois totais reponderados (9,32 / 8,25) afirmam que o motor faz o que
-  // o seed diz — valor em cima do valor. O que a folha de captura dizia com
-  // a EGME de 2025 (0,1572) é uma âncora EXTERNA e fica congelado aqui: se
-  // alguém mexer na EGME outra vez, o delta tem de ser declarado
-  // (9,38 − 9,32 = 0,06 ≈ (0,1572 − 0,1088) × 1,23) em vez de absorvido.
-  const EGME_2025 = 0.1572;
-  for (const [id, sheetTotal, sheetKwh] of [
-    ['charge2go-mt-ecogreen', 9.38, 0.19],
-    ['viaverde-mt-viaverdeelec', 8.31, 0.17],
+describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
+  // Não é âncora externa: é o cenário "e se o CEME aplicar o valor legal".
+  // A EGME publicada no sheet (0,1572, valor de 2025) está acima do legal
+  // 2026 (0,1088 = Regul. ERSE 7/2026, em vigor desde 2026-01-01) — e vários
+  // CEMEs, na prática, não actualizam. O seed fica com o PUBLISHED e a API
+  // marca `activation_stale`; aqui congelam-se os totais QUE O CENÁRIO
+  // legal daria, para o delta (9,38 − 9,32 = 0,06 ≈ (0,1572 − 0,1088) ×
+  // 1,23) ser sempre verificável — em qualquer dos sentidos da actualização.
+  const EGME_2026 = 0.1088;
+  for (const [id, scenarioTotal, scenarioKwh] of [
+    ['charge2go-mt-ecogreen', 9.32, 0.19],
+    ['viaverde-mt-viaverdeelec', 8.25, 0.17],
   ]) {
-    it(`${id} voltava a ${sheetTotal.toFixed(2)} € com a EGME de 2025 (valor do sheet)`, () => {
+    it(`${id} ficaria em ${scenarioTotal.toFixed(2)} € com a EGME legal 2026`, () => {
       const db = seeded();
-      const { t, q, price, sup, iec } = quoteFromDb(db, id);
-      const comEGME2025 = quoteFixed({
+      const { t, q, price, act, sup, iec } = quoteFromDb(db, id);
+      assert.ok(act > EGME_2026, `${id} tem de estar acima do legal no seed (publicado)`);
+      const cenário = quoteFixed({
         schedule: t.schedule, cycle: t.cycle, at: AT, kwh: KWH,
-        price, activation: EGME_2025, support: sup, iec, region: 'CONT',
+        price, activation: EGME_2026, support: sup, iec, region: 'CONT',
       });
-      assert.equal(comEGME2025.totalEur.toFixed(2), sheetTotal.toFixed(2), `total histórico do sheet de ${id}`);
-      assert.equal(comEGME2025.eurKwhNoIva.toFixed(2), sheetKwh.toFixed(2), `€/kWh histórico de ${id}`);
-      // e o atual (EGME 2026) é o sheet menos o delta do reprice declarado
-      assert.ok(q.totalEur < comEGME2025.totalEur, 'o reprice 2026 tem de baixar o total (EGME baixa)');
+      assert.equal(cenário.totalEur.toFixed(2), scenarioTotal.toFixed(2), `total do cenário regulatório de ${id}`);
+      assert.equal(cenário.eurKwhNoIva.toFixed(2), scenarioKwh.toFixed(2), `€/kWh do cenário de ${id}`);
+      assert.ok(cenário.totalEur < q.totalEur, 'aplicar o legal tem de baixar o total (EGME baixa)');
     });
   }
 });

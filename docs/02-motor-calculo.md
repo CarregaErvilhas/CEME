@@ -69,14 +69,21 @@ Segue o `ROUNDUP(...)*1,23` de `CEME!AC/AD`. A tabela `tar`
 Ex. Atlante MT fora-vazio: `40*0,1812=7,25 + 0,11 + 0,04 → 7,40*1,23 =
 9,11€` (bate certo com o sheet).
 
-O `act` (tarifa de ativação) é a **EGME** — a taxa por carregamento que a
-CEME cobra ao cliente e que já cobre o seu custo junto da Mobi.E. Não é um
-valor regulado único, mas em 2026 o legal é **0,1088 €** (Regul. ERSE
-7/2026) e é esse que o seed usa para quase todos; 0,11 € Atlante, 0,15 €
-ACP e parte da EVIO (valores que publicam para os seus packs). O miio não
-cobra. Páginas de CEME com 0,1572 € (2025) ficam desactualadas — o seed foi
-reponderado em 2026-10-18. Auditado em `backend/test/poc.test.js`
-("auditoria EGME").
+O `act` (taxa de activação) **é o que a CEME publica no sheet, à data da
+captura** — um único significado, invariante: o valor entra no cálculo como
+está, sem substituição. Algumas CEMEs trocam-lhe o nome de EGME, e à conta
+disso há uma referência regulamentar útil: o valor legal em vigor 2026 é
+**0,1088 €** (Regul. ERSE 7/2026, desde 2026-01-01; os 0,1572 € do sheet são
+o valor de 2025). Vários CEMEs, na prática, não actualizam — e nenhum pode
+ser substituído pelo legal no código: se o publicado está acima do legal, a
+API marca `activation_stale: true` (e o `egme_legal` dá o valor de
+referência), o cartão mostra o aviso, e a actualização é tarefa de **nova
+captura da folha** (nova `tariff_version` — o schema já tem valid_from),
+não de re-derivar preços a cada mudança de regulamento. Valores próprios
+que a CEME publica para os seus packs ficam como estão (0,11 € Atlante,
+0,15 € ACP e parte da EVIO); o miio não cobra. Auditado em
+`backend/test/poc.test.js` ("auditoria EGME") — e o delta do cenário legal
+fica congelado no `golden.test.js` ("cenário regulatório").
 
 ## Indexados
 
@@ -116,24 +123,20 @@ regressão do motor *e* contra uma alteração acidental no seed.
 | Atlante myAtlante (AC) | BT/BS | fora-vazio | **10,98 €** | 0,23 |
 | Atlante myAtlante Business (AC) | MT/BS | fora-vazio | 8,12 € | 0,17 |
 | Atlante myAtlante Business (AC) | BT/BS | fora-vazio | 9,99 € | 0,21 |
-| Charge2Go Eco Green | MT/BD | vazio | **9,32 €**¹ | 0,19 |
-| Via Verde Electric | MT/**BD** | vazio | **8,25 €**¹ | 0,17 |
+| Charge2Go Eco Green | MT/BD | vazio | **9,38 €** | 0,19 |
+| Via Verde Electric | MT/**BD** | vazio | **8,31 €** | 0,17 |
 | EZU AB Energia | MT/**BD** | vazio | 5,84 € | 0,12 |
 | miio sem subscrição (BD) | MT/BD | vazio | 12,64 € | 0,26 |
 
-¹ Reponderados em 2026-10-18 para a EGME 2026 (0,1088 €; o sheet de captura
-tinha 0,1572 €, valor de 2025). Veja a nota de EGME acima.
-
-**Âncoras externas vs. auto-consistência.** De oito totais, seis vêm de fora
-do código (a folha de captura: os quatro da Atlante, EZU e miio) e continuam
-a validar o motor de ponta a ponta. Os dois reponderados (Charge2Go 9,32,
-Via Verde 8,25) afirmam só que o motor e o seed são consistentes entre si —
-por isso o valor do sheet de 2025 (9,38 / 8,31, com a EGME 0,1572) fica
-num teste próprio, marcado como histórico: uma mudança futura de EGME tem
-de ser declarada, não absorvida (ver `golden.test.js`).
+Todas as oito âncoras são **externas**: vêm da folha de captura
+(2026-10-15), incluem a activação publicada por cada CEME (Charge2Go e Via
+Verde ainda com o EGME 2025 de 0,1572 € — ver nota de EGME acima).
 
 O **9,11 €** é o valor que a folha dava — é o que valida o motor de ponta a
-ponta (a folha, o `ROUNDUP` por componente e o IVA a 23%).
+ponta (a folha, o `ROUNDUP` por componente e o IVA a 23%). O cenário
+«aplicada a EGME legal 2026» (0,1088 €) fica num teste separado no
+`golden.test.js`: Charge2Go **9,32 €** e Via Verde **8,25 €** — é o que a
+fatura daria se o CEME actualizar o valor; não são âncoras do seed.
 
 Testes que acompanham: o `ROUNDUP` é por componente e não no fim (sem ele o
 mesmo tarifário daria 9,10 €); os 24 CEME / 128 tarifários; nenhum fixo sem

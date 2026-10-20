@@ -147,6 +147,14 @@ function comps(vid) {
   return out;
 }
 
+// EGME: o `activation` da resposta é o que o CEME publica (sem substituição
+// silenciosa — ver seed.js). O valor legal em vigor fica como contexto no
+// lado do cliente: quando o publicado ainda é o de 2025 (acima do legal),
+// `activation_stale` assinala — actualizar é tarefa de nova captura da folha,
+// não de derivar valores no código a cada mudança de regulamento.
+const EGME_LEGAL = 0.1088; // €/carregamento, Regul. ERSE 7/2026 (em vigor 2026-01-01)
+const egmeFlags = (act) => ({ egme_legal: EGME_LEGAL, activation_stale: act > EGME_LEGAL });
+
 function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   const ver = db.prepare('SELECT * FROM tariff_version WHERE id=?').get(t.vid);
   const { price, act, iec, sup } = comps(t.vid);
@@ -160,7 +168,7 @@ function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   };
   if (t.kind === 'FIXED') {
     const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region });
-    return { ...meta, activation: act, iec, prices: price, avail: t.regions, ...q };
+    return { ...meta, activation: act, iec, prices: price, avail: t.regions, ...egmeFlags(act), ...q };
   }
   // INDEXED: PE por período com o OMIE de referência do pedido.
   // Nas ilhas usa-se a ref. continental com aviso (MIBEL não cobre as ilhas).
@@ -188,7 +196,7 @@ function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
   }
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region });
-  return { ...meta, activation: act, iec, prices: out, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...q };
+  return { ...meta, activation: act, iec, prices: out, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }
 
 // Negociação de idioma a partir do cabeçalho Accept-Language. Só há PT e EN:

@@ -92,6 +92,12 @@ região pedidos, mais `avg` e `omieRef`. A filtragem é do cliente.
 Notas:
 - `POST /v1/simulate` devolve **todos** os tarifários (24 CEME, 128
   tarifários), para qualquer região — a filtragem é do cliente.
+- `activation` da resposta é **o que o CEME publica no sheet capturado**
+  — nunca substituído pelo regulamentar. Juntamente vão `egme_legal` (o
+  valor legal 2026: 0,1088 €/carregamento, Regul. ERSE 7/2026) e
+  `activation_stale` (`true` quando o publicado ainda está acima do legal —
+  normal: CEMEs não actualizam de imediato). Actualizar é tarefa de nova
+  captura da folha, não de substituição no código (ver docs/02).
 - `omieVazio`/`omieFora` alimentam a agregação `SPLIT_VAZIO_FORA` dos
   indexados; sem eles o motor usa o `omie` único para todas as bandas.
 - Erros em `{error:{code,message}}`. As **datas devolvidas são UTC** (ISO

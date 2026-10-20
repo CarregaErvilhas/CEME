@@ -38,16 +38,18 @@ Nota: `omie_quarter` nunca existiu no schema — o nome certo é `omie_spot`.
 2. **`omie_aggregation` é dado, não constante.** Ver `02-motor-calculo.md`:
    uns CEME usam média por banda (`SPLIT_VAZIO_FORA`), outros média única
    (`UNICA`), outros o spot do quarto (`SPOT`).
-3. **A EGME (`activation_eur`) é o que a CEME publica**, não um valor
-   regulado único. Em 2026 o valor legal é **0,1088 €** (Regul. ERSE 7/2026,
-   −30,8% face a 2025) e é o que a plataforma Mobi.E fatura desde
-   2026-01-01 — quase todos os CEME ficam nele. Excepções no seed: 0,11 €
-   Atlante, 0,15 € ACP e parte da EVIO (os valores que publicam para os seus
-   packs). O miio não cobra. Páginas de CEME que ainda mostram 0,1572 € (o
-   valor de 2025 — era o caso de Charge2Go, EVPower, Via Verde e parte da
-   EVIO na data de captura) não ditam o preço: o seed fica com o valor
-   legal, reponderado em 2026-10-18. Auditado por teste — ver
-   `backend/test/poc.test.js`.
+3. **A EGME (`activation_eur`) é o que a CEME publica no sheet, à data da
+   captura** — um único significado, sem substituição no código. A
+   referência regulamentar fica em metadados: o valor legal 2026 é
+   **0,1088 €** (Regul. ERSE 7/2026, desde 2026-01-01; os 0,1572 € que
+   Charge2Go, EVPower, Via Verde e parte da EVIO ainda mostravam à data de
+   captura são o valor de 2025 — a maior parte das restantes já estava em
+   0,1088 no sheet). Quando o publicado está acima do
+   legal, a API devolve `activation_stale: true` e `egme_legal`; o cartão
+   mostra o aviso, e a actualização vem de **nova captura da folha** (nova
+   `tariff_version`), não de re-derivar preços a cada regulamento.
+   Excepções publicadas: 0,11 € Atlante, 0,15 € ACP e parte da EVIO. O miio
+   não cobra. Auditado por teste — ver `backend/test/poc.test.js`.
 4. **Fixos incluem a TAR.** O `energy_eur_kwh` do sheet é o preço final
    (energia + TAR), pelo que a tabela `tar` **não** se soma aos fixos; serve
    para auditoria e para os indexados. Só o indexado compõe

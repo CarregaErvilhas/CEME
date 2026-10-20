@@ -1,11 +1,16 @@
-// Seed completo: 24 CEME / 128 tarifários extraídos do sheet em 2026-10-15.
+// Seed completo: 24 CEME / 127 tarifários extraídos do sheet em 2026-10-15.
 // (Okeana removida em 2026-10-18: última info de 2023, sem EGME discriminado.)
 // Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
-// act = EGME. Desde 2026-01-01 o valor legal é 0,1088 (Regul. ERSE 7/2026;
-// -30,8% face aos 0,1572 de 2025). O sheet de captura ainda tinha 0,1572
-// (e páginas de CEME que mostram 0,15/0,1572 ficam desactualadas) — o
-// simulador aplica o valor que a plataforma Mobi.E fatura em 2026; o miio
-// não cobra. Ver docs/02-motor-calculo.md.
+// act = a taxa de activação PUBLICADA por cada CEME no sheet, à data da
+// captura (2026-10-15) — um único significado, invariante ao longo do tempo:
+// o que a folha diz, é isso. Quatro CEMEs ainda mostravam o EGME de 2025
+// (0,1572: Charge2Go, Via Verde, EVPower e parte da EVIO) apesar do valor
+// legal 2026 ser 0,1088 (Regul. ERSE 7/2026) — CEMEs não actualizam de
+// imediato, e o simulador mostra o publicado, não o regulamentar. O legal
+// (0,1088) fica como referência na API (`egme_legal`) + flag
+// `activation_stale` quando o publicado está acima do legal. Já em 0,1088
+// na captura: EZU, EDP, bluecharge, moeve, etc. o miio não cobra. Ver
+// docs/02-motor-calculo.md.
 import { DatabaseSync } from 'node:sqlite';
 
 const CEMES = [
@@ -49,14 +54,14 @@ const TARIFFS = [
   ["bluecharge-mt-cartobluecha-2", "bluecharge", "Cartão Bluecharge", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.249, "FORA_VAZIO": 0.269}, 0.1088, 0.0, 0.001, 0, "https://www.bluecharge.pt/cartao-bluecharge/"],
   ["moeve-bt-gow", "moeve", "GOW", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.24, "FORA_VAZIO": 0.32}, 0.1088, 0.0, 0.001, 0, "https://pt.moeveglobal.com/pt/utilizacao/produtos-servicos/carregamento-eletrico"],
   ["moeve-mt-gow", "moeve", "GOW", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.22, "FORA_VAZIO": 0.27}, 0.1088, 0.0, 0.001, 0, "https://pt.moeveglobal.com/pt/utilizacao/produtos-servicos/carregamento-eletrico"],
-  ["charge2go-bt-ecogreen", "charge2go", "Eco Green", "FIXED", "BT", "BI_HORARIA", "DIARIO", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1963, "FORA_VAZIO": 0.2889}, 0.1088, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
-  ["charge2go-bt-ecogreen-2", "charge2go", "Eco Green", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1963, "FORA_VAZIO": 0.2889}, 0.1088, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
-  ["charge2go-mt-ecogreen", "charge2go", "Eco Green", "FIXED", "MT", "BI_HORARIA", "DIARIO", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1854, "FORA_VAZIO": 0.2509}, 0.1088, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
-  ["charge2go-mt-ecogreen-2", "charge2go", "Eco Green", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1854, "FORA_VAZIO": 0.2509}, 0.1088, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
-  ["viaverde-bt-viaverdeelec", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "BT", "BI_HORARIA", "DIARIO", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1746, "FORA_VAZIO": 0.2672}, 0.1088, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
-  ["viaverde-bt-viaverdeelec-2", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1746, "FORA_VAZIO": 0.2672}, 0.1088, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
-  ["viaverde-mt-viaverdeelec", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "MT", "BI_HORARIA", "DIARIO", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1637, "FORA_VAZIO": 0.2292}, 0.1088, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
-  ["viaverde-mt-viaverdeelec-2", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1637, "FORA_VAZIO": 0.2292}, 0.1088, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
+  ["charge2go-bt-ecogreen", "charge2go", "Eco Green", "FIXED", "BT", "BI_HORARIA", "DIARIO", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1963, "FORA_VAZIO": 0.2889}, 0.1572, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
+  ["charge2go-bt-ecogreen-2", "charge2go", "Eco Green", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1963, "FORA_VAZIO": 0.2889}, 0.1572, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
+  ["charge2go-mt-ecogreen", "charge2go", "Eco Green", "FIXED", "MT", "BI_HORARIA", "DIARIO", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1854, "FORA_VAZIO": 0.2509}, 0.1572, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
+  ["charge2go-mt-ecogreen-2", "charge2go", "Eco Green", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 0, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1854, "FORA_VAZIO": 0.2509}, 0.1572, 0.0, 0.001, 0, "https://charge2go.pt/tarifarios/"],
+  ["viaverde-bt-viaverdeelec", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "BT", "BI_HORARIA", "DIARIO", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1746, "FORA_VAZIO": 0.2672}, 0.1572, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
+  ["viaverde-bt-viaverdeelec-2", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1746, "FORA_VAZIO": 0.2672}, 0.1572, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
+  ["viaverde-mt-viaverdeelec", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "MT", "BI_HORARIA", "DIARIO", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1637, "FORA_VAZIO": 0.2292}, 0.1572, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
+  ["viaverde-mt-viaverdeelec-2", "viaverde", "Via Verde Electric by ECOCHOICE", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 0, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1637, "FORA_VAZIO": 0.2292}, 0.1572, 0.0, 0.001, 0, "https://www.viaverde.pt/particulares/via-verde/servicos/via-verde-electric"],
   ["edp-bt-cartoedp", "edp", "Cartão EDP Charge (Simples)", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.2678}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
   ["edp-mt-cartoedp", "edp", "Cartão EDP Charge (Simples)", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.2678}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
   ["edp-bt-cartoedp-2", "edp", "Cartão EDP Charge (Simples) Associados UVE (10%)", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 1, "CONT", {"UNICO": 0.24102}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
@@ -85,8 +90,8 @@ const TARIFFS = [
   ["edp-mt-cartoedp-13", "edp", "Cartão EDP Charge (Bi-Horário) Frota", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.2121, "FORA_VAZIO": 0.2681}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
   ["edp-bt-cartoedp-14", "edp", "Cartão EDP Charge (Bi-Horário) Frota Clientes Energia", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.16968, "FORA_VAZIO": 0.21448}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
   ["edp-mt-cartoedp-14", "edp", "Cartão EDP Charge (Bi-Horário) Frota Clientes Energia", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.16968, "FORA_VAZIO": 0.21448}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
-  ["evpower-bt-cartoevpower", "evpower", "Cartão EVpower", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1995, "FORA_VAZIO": 0.3144}, 0.1088, 0.0, 0.001, 0, "https://www.evpower.pt/particulares/"],
-  ["evpower-mt-cartoevpower", "evpower", "Cartão EVpower", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1848, "FORA_VAZIO": 0.2696}, 0.1088, 0.0, 0.001, 0, "https://www.evpower.pt/particulares/"],
+  ["evpower-bt-cartoevpower", "evpower", "Cartão EVpower", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1995, "FORA_VAZIO": 0.3144}, 0.1572, 0.0, 0.001, 0, "https://www.evpower.pt/particulares/"],
+  ["evpower-mt-cartoevpower", "evpower", "Cartão EVpower", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1848, "FORA_VAZIO": 0.2696}, 0.1572, 0.0, 0.001, 0, "https://www.evpower.pt/particulares/"],
   ["evaz-bt-planomovebas", "evaz", "Plano Move Base", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.169, "FORA_VAZIO": 0.2635}, 0.1088, 0.0, 0.001, 0, "https://www.evaz.energy/solutions/plans/mobility/"],
   ["evaz-mt-planomovebas", "evaz", "Plano Move Base", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.169, "FORA_VAZIO": 0.2635}, 0.1088, 0.0, 0.001, 0, "https://www.evaz.energy/solutions/plans/mobility/"],
   ["evaz-bt-planomovebas-2", "evaz", "Plano Move Base", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.169, "FORA_VAZIO": 0.2635}, 0.1088, 0.0, 0.001, 0, "https://www.evaz.energy/solutions/plans/mobility/"],
@@ -101,12 +106,12 @@ const TARIFFS = [
   ["acp-mt-acpelectricb-2", "acp", "ACP Electric by EVIO - não sócio ACP", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ["enable-bt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.21215}, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
   ["enable-mt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.21215}, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
-  ["evio-bt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.1088, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
-  ["evio-mt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.1088, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
+  ["evio-bt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
+  ["evio-mt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-bt-evio", "evio", "EVIO", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.15, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-mt-evio", "evio", "EVIO", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.15, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
-  ["evio-bt-gochargeby", "evio", "Go.Charge by EVIO", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.1088, 0.0, 0.001, 0, "https://www.gocharge.pt/pt/landing-pages/app/"],
-  ["evio-mt-gochargeby", "evio", "Go.Charge by EVIO", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.1088, 0.0, 0.001, 0, "https://www.gocharge.pt/pt/landing-pages/app/"],
+  ["evio-bt-gochargeby", "evio", "Go.Charge by EVIO", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.1572, 0.0, 0.001, 0, "https://www.gocharge.pt/pt/landing-pages/app/"],
+  ["evio-mt-gochargeby", "evio", "Go.Charge by EVIO", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.1572, 0.0, 0.001, 0, "https://www.gocharge.pt/pt/landing-pages/app/"],
   ["ezu-bt-tarifrioceme", "ezu", "Tarifário CEME", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1766, "FORA_VAZIO": 0.2692}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],
   ["ezu-mt-tarifrioceme", "ezu", "Tarifário CEME", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1657, "FORA_VAZIO": 0.2312}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],
   ["ezu-bt-abenergia", "ezu", "AB Energia", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1256, "FORA_VAZIO": 0.2182}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],

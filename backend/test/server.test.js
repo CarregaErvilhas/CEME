@@ -57,6 +57,12 @@ describe('server POC: hardening HTTP', () => {
     assert.ok(r.headers.get('x-ratelimit-reset'));
     const j = await r.json();
     assert.ok(j.data.length > 100, `simulação devolve tarifários (${j.data?.length})`);
+    // EGME publicada vs legal: o seed fica com o publicado (0,1572 na maior
+    // parte), por isso tem de haver flags `activation_stale` — e o legal
+    // referenciado em todos
+    assert.equal(j.data[0].egme_legal, 0.1088);
+    assert.ok(j.data.some(q => q.activation_stale === true), 'CEMEs com o EGME de 2025 ainda acima do legal 2026');
+    assert.ok(j.data.every(q => typeof q.activation_stale === 'boolean'));
   });
 
   it('HTML também leva nosniff', async () => {
