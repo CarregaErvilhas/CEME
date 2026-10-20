@@ -74,7 +74,6 @@ Criação dos serviços: `zerops-import.yaml` na raiz do repo + `zcli project se
 - Domínio: **`https://ceme-beta.ocarroeletrico.com`** → 200, serve o frontend e a API.
 - Registos Cloudflare: **só `AAAA`** → o IPv6 dedicado do projecto, **proxy activo**. O endereço **não** está neste documento (ver "Segredo: o IP da origem" abaixo).
 - Zeroops: hostname registado no L7 balancer (`public-http-routing`), com certificado Let's Encrypt **ACTIVE** para `ceme-beta.ocarroeletrico.com`.
-- O **subdomínio Zerops foi desligado** (`api-386c-3001.prg1.zerops.app` → 502). O `api` continua a aceder ao `db` pelo **hostname interno** `db` (rede privada do projecto), por isso nada se partiu.
 
 ### Segredo: o IP da origem
 
