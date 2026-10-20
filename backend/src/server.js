@@ -135,7 +135,7 @@ async function auth(req) {
       SELECT c.id AS client, c.name AS name, c.kind AS kind, c.rate_limit AS rate_limit
         FROM api_key k JOIN api_client c ON c.id = k.client_id
        WHERE k.hash = $1 AND k.revoked_at IS NULL
-         AND (k.expires_at IS NULL OR k.expires_at > CURRENT_DATE)`, [hashKey(String(k))]);
+         AND (k.expires_at IS NULL OR k.expires_at > CURRENT_TIMESTAMP)`, [hashKey(String(k))]);
     if (!row) return { ok: false, error: 'invalid_key' };
     return { ok: true, payload: { kind: row.kind, client: row.name, key: String(k).slice(0, 8), rate_limit: row.rate_limit } };
   }
@@ -296,7 +296,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/v1/tariffs') {
     const rows = await allTariffs();
     const enriched = await Promise.all(rows.map(async t => ({ ...t, version: await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]) })));
-    return json(res, 200, { data: enriched });
+    return json(res, 200, { data: enriched }, headers);
   }
   if (url.pathname === '/v1/tar') {
     return json(res, 200, { data: await query("SELECT * FROM tar WHERE valid_from <= CURRENT_DATE AND (valid_to IS NULL OR valid_to > CURRENT_DATE)") }, headers);
@@ -426,16 +426,35 @@ const server = http.createServer(async (req, res) => {
         // não pode derrubar os 128 — quarentena em vez de 400 (princípio do
         // docs/03). O tarifário a mais sai fora do ranking; a lista mantém
         // os restantes.
-        const data = [];
-        for (const t of tariffs) {
-          try {
-            const q = await quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora });
-            data.push(q);
-          } catch (e) {
-            // com identidade, para quem lê os logs/BD saber o que foi posto de lado
-            console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
+        //
+        // Em paralelo com concorrência limitada: cada quoteOne faz várias
+        // queries, e em pg cada uma é um round-trip pela rede. Em série, 128
+        // tarifários x ~4 queries ficavam ~500 round-trips encadeados e o
+        // pool (max 10) nunca era aproveitado. O limite fica abaixo do pool
+        // para não ocupar todas as ligações e deixar pedidos concorrentes à
+        // espera; 8 mantém folga e ainda paraleliza.
+        const CONCURRENCY = 8;
+        const results = new Array(tariffs.length);
+        let next = 0;
+        const worker = async () => {
+          while (true) {
+            const i = next++;
+            if (i >= tariffs.length) return;
+            const t = tariffs[i];
+            try {
+              results[i] = await quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora });
+            } catch (e) {
+              // com identidade, para quem lê os logs/BD saber o que foi posto de lado
+              console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
+            }
           }
-        }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(CONCURRENCY, tariffs.length) }, worker)
+        );
+        // Ordem de resultados independente da ordem de conclusão; a lista de
+        // saída tem de continuar determinística.
+        const data = results.filter(Boolean);
         data.sort((x, y) => x.totalEur - y.totalEur);
         const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
         json(res, 200, { at: now.toISOString(), kwh, region, omieRef: omie, avg: Math.round(avg * 100) / 100, data }, headers);

@@ -6,7 +6,17 @@
 // abre ligações; só a primeira query fá-lo, e nessa altura DATABASE_URL
 // tem de estar definida.
 // As queries usam placeholders $1, $2 ... em vez de ?.
-import { Pool } from 'pg';
+import { Pool, types } from 'pg';
+
+// Colunas DATE/TIMESTAMP guardam datas civis (início/fim de validade de
+// tarifário), não instantes. Por omissão o pg converte-as em `Date` (meia-
+// noite local), e o JSON.stringify serializa em UTC — '2026-10-15' sairia
+// como '2026-10-14T23:00:00.000Z', ou seja o dia anterior e dependente do
+// fuso do servidor. O SQLite devolvia a string tal como está, por isso
+// repor a string é o que mantém os dois modos equivalentes.
+// OIDs: 1082 = date, 1114 = timestamp without time zone.
+types.setTypeParser(1082, (v) => v);
+types.setTypeParser(1114, (v) => v);
 
 let pool = null;
 const getPool = () => {
