@@ -21,12 +21,24 @@ token.
 O `X-API-Key` é **validado** contra o hash em BD (chaves revogadas ou
 expiradas excluem) — qualquer string desconhecida recebe 401.
 
-O `POST /v1/simulate` rejeita corpos acima de **64 KB** (413) e cada endpoint
-aceita só o seu método (405 com `Allow`).
+O `POST /v1/simulate` rejeita corpos acima de **64 KB** (413), JSON
+inválido/não-objecto (400), `kwh` fora de (0, 1000], `at` não-ISO e rates
+`omie*` não numéricas ou ≤ 0 (400 com `error.code` explícito), e cada
+endpoint aceita só o seu método (405 com `Allow`).
 
-Rate-limit por cliente (ex. sessão 60/min, third-party 600/min —
-configurável em env) **não está implementado no POC** — é a regra a aplicar
-em produção; as colunas `api_client.rate_limit` e `audit_log` já existem.
+## Rate limit (POC, em memória)
+
+Janela fixa de 60 s, por processo — em produção, um limitador à frente do
+server. Sessão web (Bearer) conta por IP: 60/min. `POST /v1/session` conta
+por IP à parte: 10/min (é pré-auth; sem teto era a rota barata para
+martelar JWT). Terceiros (X-API-Key) contam pela chave: 60/min ou o
+`api_client.rate_limit` da BD. Exceder devolve **429** com
+`x-ratelimit-limit/remaining/reset` e `retry-after`. O mapa de buckets é
+podado e tem teto (10 000 chaves) — IPs distintos em enxurrada não crescem
+memória sem limite.
+
+`x-content-type-options: nosniff` vai em todas as respostas JSON e no HTML
+da UI.
 
 ## Endpoints (MVP)
 

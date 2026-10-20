@@ -51,10 +51,49 @@ function vmeta(tid) {
   return { loss, formula: v.formula || 'standard' };
 }
 
-const json = (res, code, obj) => {
-  res.writeHead(code, { 'content-type': 'application/json' });
+const json = (res, code, obj, extraHeaders = {}) => {
+  // nosniff: sem isto, um JSON reflectido podia ser interpretado como
+  // text/html em browsers antigos — resposta barata para um ataque real.
+  res.writeHead(code, { 'content-type': 'application/json', 'x-content-type-options': 'nosniff', ...extraHeaders });
   res.end(JSON.stringify(obj));
 };
+
+// Rate limiting: janela fixa, em memória — suficiente para um POC de nó
+// único (em produção, um limitador à frente do server). Sessão web conta
+// por IP; terceiros contam pela chave de API. O mapa é podado
+// preguiçosamente e tem teto: sem isso, uma enxurrada de IPs distintos
+// cresce memória sem limite — DoS do próprio limitador.
+const RATE_WINDOW_MS = 60_000;
+const RATE_DEFAULT = 60;        // requisições/minuto de API web (Bearer)
+const RATE_SESSION = 10;        // /v1/session por IP por minuto (pré-auth!)
+const RATE_MAX_BUCKETS = 10_000;
+const buckets = new Map();      // chave -> { count, resetAt }
+function rateBucket(key, limit) {
+  const now = Date.now();
+  let b = buckets.get(key);
+  if (!b || now > b.resetAt) {
+    if (buckets.size >= RATE_MAX_BUCKETS) {
+      // poda: largar o que já expirou; se ainda estiver cheio, largar o mais antigo
+      for (const [k, v] of buckets) { if (now > v.resetAt) buckets.delete(k); }
+      if (buckets.size >= RATE_MAX_BUCKETS) buckets.delete(buckets.keys().next().value);
+    }
+    b = { count: 0, resetAt: now + RATE_WINDOW_MS };
+    buckets.set(key, b);
+  }
+  b.count += 1;
+  return { allowed: b.count <= limit, remaining: Math.max(0, limit - b.count), reset: b.resetAt };
+}
+const rlHeaders = (rl, limit) => ({
+  'x-ratelimit-limit': String(limit),
+  'x-ratelimit-remaining': String(rl.remaining),
+  'x-ratelimit-reset': String(Math.ceil(rl.reset / 1000)),
+  'retry-after': String(Math.max(1, Math.ceil((rl.reset - Date.now()) / 1000))),
+});
+const rateLimited = (res, rl, limit) => json(res, 429, {
+  error: { code: 'rate_limited', message: 'limite de requisições excedido; repetir depois de Retry-After' },
+}, rlHeaders(rl, limit));
+
+const clientIp = (req) => (req.socket && req.socket.remoteAddress) || 'unknown';
 
 function auth(req) {
   const h = req.headers.authorization || '';
@@ -64,12 +103,12 @@ function auth(req) {
     // Valida contra o hash em BD (revogada/expirada exclui). Antes aceitava
     // qualquer string — o endpoint estava, na prática, sem auth de terceiros.
     const row = db.prepare(`
-      SELECT c.id AS client, c.name AS name, c.kind AS kind
+      SELECT c.id AS client, c.name AS name, c.kind AS kind, c.rate_limit AS rate_limit
         FROM api_key k JOIN api_client c ON c.id = k.client_id
        WHERE k.hash = ? AND k.revoked_at IS NULL
          AND (k.expires_at IS NULL OR k.expires_at > datetime('now'))`).get(hashKey(String(k)));
     if (!row) return { ok: false, error: 'invalid_key' };
-    return { ok: true, payload: { kind: row.kind, client: row.name } };
+    return { ok: true, payload: { kind: row.kind, client: row.name, key: String(k).slice(0, 8), rate_limit: row.rate_limit } };
   }
   return { ok: false, error: 'missing' };
 }
@@ -132,6 +171,15 @@ function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     out[per] = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tarFor(per), loss: vm.loss, formula: vm.formula }).price;
   }
   const omieRef = (agg === 'SPLIT_VAZIO_FORA') ? (omieVazio ?? omie) : omie;
+  // Guarda: indexado com ciclo SIMPLES só tem preço UNICO — o motor só sabe
+  // preços por período (VAZIO/FORA_VAZIO). Não há tarifário assim no seed,
+  // mas um futuro seed sem esta guarda fazia o quoteFixed rebentar com
+  // "sem preço final para UNICO" em cada simulação. Aproximação honesta:
+  // usa o preço fora-vazio da energia (sem TAR — o UNICO real teria a
+  // TAR simples do período, ignorada aqui) — melhor do que 500.
+  if (t.schedule === 'SIMPLES' && out.UNICO == null) {
+    out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
+  }
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region });
   return { ...meta, activation: act, iec, prices: out, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...q };
 }
@@ -169,7 +217,7 @@ const server = http.createServer((req, res) => {
       const html = readFileSync(new URL('../../frontend/index.html', import.meta.url), 'utf8')
         .replace('<html lang="pt-PT">', `<html lang="${negotiateLang(req.headers['accept-language']) === 'en' ? 'en' : 'pt-PT'}">`)
         .replace('window.__LANG__=null', `window.__LANG__=${JSON.stringify(negotiateLang(req.headers['accept-language']))}`);
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', vary: 'Accept-Language' });
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language' });
       return res.end(html);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/index.html em falta' } }); }
   }
@@ -177,40 +225,52 @@ const server = http.createServer((req, res) => {
   // PUT/DELETE (não faziam nada, mas fingiam que sim). 405 com `allow`.
   const allowed = METHODS[url.pathname];
   if (allowed && req.method !== allowed && !(allowed === 'GET' && req.method === 'HEAD')) {
-    res.writeHead(405, { 'content-type': 'application/json', allow: allowed });
+    res.writeHead(405, { 'content-type': 'application/json', 'x-content-type-options': 'nosniff', allow: allowed });
     return res.end(JSON.stringify({ error: { code: 'method_not_allowed', message: `${req.method} em ${url.pathname}; usar ${allowed}` } }));
   }
   if (req.method === 'POST' && url.pathname === '/v1/session') {
+    // /v1/session corre ANTES da auth: sem aqui um teto, um martelo pode
+    // assinar JWTs sem fim (custo de CPU) e fabricar sessões à vazia.
+    const sessRl = rateBucket(`sess:${clientIp(req)}`, RATE_SESSION);
+    if (!sessRl.allowed) return rateLimited(res, sessRl, RATE_SESSION);
     const token = signJwt({ kind: 'WEB_SESSION', sid: Math.random().toString(36).slice(2) }, SECRET);
     return json(res, 200, { token, expires_in: 86400 });
   }
   const a = auth(req);
   if (!a.ok) return json(res, 401, { error: { code: 'unauthorized', message: 'falta Authorization (Bearer ou X-API-Key)' } });
 
-  if (url.pathname === '/v1/health') return json(res, 200, { ok: true, as: a.payload.kind, time: new Date().toISOString() });
-  if (url.pathname === '/v1/cemes') return json(res, 200, { data: db.prepare('SELECT * FROM ceme ORDER BY name').all() });
+  // Rate limit depois da auth (401 não dá orçamento). Por IP para a sessão
+  // web anonima; pela chave para terceiros. /v1/session tem o dele (acima).
+  const rlLimit = a.payload.kind === 'THIRD_PARTY' && a.payload.rate_limit != null ? Number(a.payload.rate_limit) : RATE_DEFAULT;
+  const rlKey = `${a.payload.kind === 'THIRD_PARTY' ? 'key' : 'ip'}:${a.payload.kind === 'THIRD_PARTY' ? a.payload.key : clientIp(req)}`;
+  const rl = rateBucket(rlKey, rlLimit);
+  const headers = rlHeaders(rl, rlLimit);
+  if (!rl.allowed) return rateLimited(res, rl, rlLimit);
+
+  if (url.pathname === '/v1/health') return json(res, 200, { ok: true, as: a.payload.kind, time: new Date().toISOString() }, headers);
+  if (url.pathname === '/v1/cemes') return json(res, 200, { data: db.prepare('SELECT * FROM ceme ORDER BY name').all() }, headers);
   if (url.pathname === '/v1/tariffs') {
-    return json(res, 200, { data: allTariffs().map(t => ({ ...t, version: db.prepare('SELECT * FROM tariff_version WHERE id=?').get(t.vid) })) });
+    return json(res, 200, { data: allTariffs().map(t => ({ ...t, version: db.prepare('SELECT * FROM tariff_version WHERE id=?').get(t.vid) })) }, headers);
   }
   if (url.pathname === '/v1/tar') {
-    return json(res, 200, { data: db.prepare("SELECT * FROM tar WHERE valid_from <= date('now') AND (valid_to IS NULL OR valid_to > date('now'))").all() });
+    return json(res, 200, { data: db.prepare("SELECT * FROM tar WHERE valid_from <= date('now') AND (valid_to IS NULL OR valid_to > date('now'))").all() }, headers);
   }
   if (url.pathname === '/v1/omie/daily' && req.method === 'GET') {
     const days = Math.min(120, Math.max(7, Number(url.searchParams.get('days') || 60)));
     getDaily(DATA_DIR, days).then(
-      d => json(res, 200, d),
-      e => json(res, 502, { error: { code: 'omie_unavailable', message: `séries indisponíveis: ${e.message}` } }));
+      d => json(res, 200, d, headers),
+      e => json(res, 502, { error: { code: 'omie_unavailable', message: `séries indisponíveis: ${e.message}` } }, headers));
     return;
   }
   if (url.pathname === '/v1/omie/futures' && req.method === 'GET') {
     getFutures(DATA_DIR).then(
-      d => json(res, 200, d),
-      e => json(res, 502, { error: { code: 'omie_unavailable', message: `futuros indisponíveis: ${e.message}` } }));
+      d => json(res, 200, d, headers),
+      e => json(res, 502, { error: { code: 'omie_unavailable', message: `futuros indisponíveis: ${e.message}` } }, headers));
     return;
   }
   if (url.pathname === '/v1/indexed/quarters' && req.method === 'GET') {
     const tid = url.searchParams.get('tariff'), region = url.searchParams.get('region') || 'CONT';
-    if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } });
+    if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } }, headers);
     const t = db.prepare('SELECT * FROM tariff WHERE id=?').all(tid || '').find(x => x.kind === 'INDEXED')
       || db.prepare("SELECT * FROM tariff WHERE kind='INDEXED' ORDER BY id LIMIT 1").get();
     if (!t) return json(res, 404, { error: { code: 'no_indexed', message: 'sem tarifário indexado' } });
@@ -255,10 +315,10 @@ const server = http.createServer((req, res) => {
         json(res, 200, { date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], cached: q.cached, source: q.source, cutoff: q.cutoff, estimated: q.estimated, days: q.days, fixed: fixInfo,
           warning: REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF',
           wins: tallyWinners(comp),
-          quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) })) });
-      } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }); }
+          quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) })) }, headers);
+      } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }
     };
-    getQuarters(DATA_DIR, url.searchParams.get('date')).then(finish, e => json(res, 502, { error: { code: 'omie_unavailable', message: e.message } }));
+    getQuarters(DATA_DIR, url.searchParams.get('date')).then(finish, e => json(res, 502, { error: { code: 'omie_unavailable', message: e.message } }, headers));
     return;
   }
   if (url.pathname === '/v1/simulate' && req.method === 'POST') {
@@ -271,20 +331,41 @@ const server = http.createServer((req, res) => {
       body += c;
     });
     req.on('end', () => {
-      if (tooBig) return json(res, 413, { error: { code: 'payload_too_large', message: `corpo > ${MAX_BODY} bytes` } });
+      if (tooBig) return json(res, 413, { error: { code: 'payload_too_large', message: `corpo > ${MAX_BODY} bytes` } }, headers);
       try {
-        const { kwh = 40, at, region = 'CONT', omie = 0.20, omieVazio, omieFora } = JSON.parse(body || '{}');
-        if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } });
-        const now = at ? new Date(at) : new Date();
+        // Corpo de terceiros/anónimos é input hostil: JSON malformado, kwh
+        // string, `at` carne para new Date, omie o que vier. Sem validação,
+        // o erro apanhado aqui vai com message crua para o cliente e valores
+        // tolos (omie negativo, kwh 1e300) produziam preços absurdos.
+        let parsed;
+        try { parsed = JSON.parse(body || '{}'); } catch { return json(res, 400, { error: { code: 'bad_request', message: 'corpo JSON inválido' } }, headers); }
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          return json(res, 400, { error: { code: 'bad_request', message: 'corpo deve ser um objecto JSON' } }, headers);
+        }
+        const { kwh = 40, at, region = 'CONT', omie = 0.20, omieVazio, omieFora } = parsed;
+        if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } }, headers);
+        if (typeof kwh !== 'number' || !Number.isFinite(kwh) || kwh <= 0 || kwh > 1000) {
+          return json(res, 400, { error: { code: 'bad_kwh', message: 'kwh deve ser um número maior que 0 e até 1000' } }, headers);
+        }
+        let now;
+        if (at != null) {
+          now = new Date(at);
+          if (Number.isNaN(now.getTime())) return json(res, 400, { error: { code: 'bad_at', message: 'at deve ser uma data ISO válida' } }, headers);
+        } else now = new Date();
+        for (const [nome, v] of [['omie', omie], ['omieVazio', omieVazio], ['omieFora', omieFora]]) {
+          if (v != null && (typeof v !== 'number' || !Number.isFinite(v) || v <= 0)) {
+            return json(res, 400, { error: { code: 'bad_omie', message: `${nome} deve ser um número (€/kWh) positivo` } }, headers);
+          }
+        }
         const data = allTariffs().map(t => quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora }))
           .filter(q => !q.skipped).sort((x, y) => x.totalEur - y.totalEur);
         const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
-        json(res, 200, { at: now.toISOString(), kwh, region, omieRef: omie, avg: Math.round(avg * 100) / 100, data });
-      } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }); }
+        json(res, 200, { at: now.toISOString(), kwh, region, omieRef: omie, avg: Math.round(avg * 100) / 100, data }, headers);
+      } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }
     });
     return;
   }
-  json(res, 404, { error: { code: 'not_found', message: url.pathname } });
+  json(res, 404, { error: { code: 'not_found', message: url.pathname } }, headers);
 });
 
 server.on('error', (e) => {

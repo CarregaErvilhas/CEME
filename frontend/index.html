@@ -562,6 +562,13 @@ async function api(path, opts = {}) {
   }
   return r.json();
 }
+// escapa HTML para inputs que refletem texto do utilizador (a pesquisa fica
+// em localStorage e volta para o value= do input). Escapar só aspas
+// protege dentro do atributo, mas o escape completo vale por si: um
+// render futuro fora de atributos não reabre a porta ao XSS.
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const eur = n => Number(n).toFixed(2) + '€';
 const kwhe = n => Number(n).toFixed(3) + '€/kWh';
 const cycName = c => (c === 'SIMPLES' ? i18n('cycSimple') : i18n(c === 'DIARIO' ? 'cycDaily' : 'cycWeekly'));
@@ -744,7 +751,7 @@ function vHome() {
     </div>
     ${kwhView ? `
       <div class="row" style="margin-top:10px"><label class="fl grow">${i18n('kwh')}<input id="kwh" type="number" value="${S.kwh}" min="1" step="0.5" style="font-size:18px;font-weight:700"></label>
-      <label class="fl grow">${i18n('search')}<input id="q" type="search" value="${S.q.replace(/"/g,'&quot;')}" placeholder="${i18n('searchPh')}"></label></div>` :
+      <label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>` :
       `<div style="margin-top:10px">
         <div class="row"><label class="fl" style="width:110px">${i18n('capacity')}<input id="batCap" type="number" value="${S.batCap}" min="1" step="1"></label>
         <div class="grow" style="display:flex;flex-direction:column;gap:6px">
@@ -752,7 +759,7 @@ function vHome() {
           <label class="fl">${i18n('max')} ${S.batMax}%<input id="batMax" type="range" min="0" max="100" step="5" value="${S.batMax}"></label>
         </div></div>
         <small id="batNote" style="display:block;margin-top:4px">${i18n('chargingFrom', { a: S.batMin, b: S.batMax, c: kwhTxt() })}</small>
-        <div class="row" style="margin-top:6px"><label class="fl grow">${i18n('search')}<input id="q" type="search" value="${S.q.replace(/"/g,'&quot;')}" placeholder="${i18n('searchPh')}"></label></div>
+        <div class="row" style="margin-top:6px"><label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>
       </div>`}
     <div class="row" style="margin-top:10px"><div class="seg grow" role="group" aria-label="${i18n('region')}">
       ${Object.entries(REG()).map(([k, v]) => `<button data-r="${k}" class="${k === S.region ? 'on' : ''}">${v.nome}<small>${v.iva}</small></button>`).join('')}

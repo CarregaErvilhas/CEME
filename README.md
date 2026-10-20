@@ -28,7 +28,7 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
 ```sh
 cd ceme-v2/backend
-node --test test/*.test.js   # 75 testes
+node --test test/*.test.js   # 87 testes
 node src/server.js           # http://localhost:3001/
 ```
 
