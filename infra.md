@@ -106,9 +106,9 @@ scripts/
 
 | Secret | Conteúdo |
 |---|---|
-| `ZEROS_API_TOKEN` | Token de API do Zerops (para `zcli` autenticar na CI) |
-| `ZEROS_PROJECT_PROD` | ID/nome do projeto de produção no Zerops |
-| `ZEROS_PROJECT_PREVIEW_PREFIX` | Prefixo para projetos de preview (ex: `ceme-v2-pr-`) |
+| `ZEROPS_API_TOKEN` | Token de API do Zerops (para `zcli` autenticar na CI) |
+| `ZEROPS_PROJECT_PROD` | ID/nome do projeto de produção no Zerops |
+| `ZEROPS_PROJECT_PREVIEW_PREFIX` | Prefixo para projetos de preview (ex: `ceme-v2-pr-`) |
 | `CLOUDFLARE_API_TOKEN` | Token com permissão para editar DNS da zona (se a CI atualizar DNS) |
 | `CLOUDFLARE_ZONE_ID` | ID da zona Cloudflare do domínio |
 | `JWT_SECRET` | Segredo para JWT (mesmo valor usado no Zerops) |
