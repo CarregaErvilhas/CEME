@@ -9,14 +9,24 @@ import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { REGIONS } from './engine/regions.js';
 import { seed, VERSIONS } from './db/seed.js';
+import { pickComponents } from './db/components.js';
 import { getDaily, getFutures, getQuarters } from './omie/cache.js';
 import { periodForWall } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
 
 const PORT = Number(process.env.PORT || 3001);
-const SECRET = process.env.JWT_SECRET || 'dev-only-change-me';
-if (!process.env.JWT_SECRET) console.warn('[ceme-v2] AVISO: JWT_SECRET não definida — a secret de dev "dev-only-change-me" está em uso. Qualquer pessoa pode fabricar sessões.',
-  'Em publicação: export JWT_SECRET=<valor aleatório>.');
+// Secret "de dev" conhecida manteria o POC a arrancar sem configuração —
+// mas no deploy real é a porta para fabricar WEB_SESSION à vontade. O meio
+// termo: o server arranca sempre (dev/CI não rebenta), mas se a secret em
+// uso for a de dev e o processo pareça produção (`NODE_ENV=production`), o
+// /v1/session recusa-se a emitir bilhete (503) — o site não fica seguro
+// por omissão só porque o aviso do log ninguém o leu.
+const DEV_FALLBACK = 'dev-only-change-me';
+const SECRET = process.env.JWT_SECRET || DEV_FALLBACK;
+const WEAK_SECRET = SECRET === DEV_FALLBACK;
+if (WEAK_SECRET) console.warn('[ceme-v2] AVISO: JWT_SECRET não definida — a secret de dev "dev-only-change-me" está em uso. Qualquer pessoa pode fabricar sessões.',
+  'Com NODE_ENV=production, POST /v1/session devolve 503 em vez de emitir tokens.',
+  'Em publicação: export JWT_SECRET=<openssl rand -hex 32>.');
 // Directórios resolvidos a partir do ficheiro, não do cwd: `npm start` corre
 // da pasta backend/, mas arrancar `node ceme-v2/backend/src/server.js` da raiz
 // do repo criava `./data` no sítio errado (e a BD ficava vazia).
@@ -31,6 +41,12 @@ db.exec(readFileSync(new URL('./db/schema.sql', import.meta.url), 'utf8'));
 // API key para terceiros: o valor claro é provido pela env (CEME_API_KEY) e
 // NUNCA fica na BD — só o sha256. Sem chave configurada, X-API-Key devolve
 // 401 (o caminho web usa Bearer JWT; a key é para consumidores externos).
+// Notas de POC:
+//  - INSERT OR REPLACE no id fixo significa que a revogação em BD NÃO
+//    sobrevive a um restart — apagar `CEME_API_KEY` do ambiente é a forma
+//    real de revogar (e o `expires_at` de BD só se aplica a chaves do portal).
+//  - `prefix` fica gravado por inspecção (8 primeiros chars), mas o lookup é
+//    só por hash; sem UNIQUE, o campo não serve para lookup idempotente.
 if (process.env.CEME_API_KEY) {
   db.prepare(`INSERT OR REPLACE INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')`).run();
   db.prepare(`INSERT OR REPLACE INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', ?, ?)`)
@@ -124,20 +140,11 @@ function allTariffs() {
 }
 
 function comps(vid) {
-  // Os componentes têm de ser coerentes entre períodos: EGME/IEC são valores
-  // por sessão/kWh que o seed reparte por linha. Se divergirem, é erro de
-  // dados — falhar aqui em vez de silenciosamente usar o último valor.
   const rows = db.prepare('SELECT * FROM price_component WHERE tariff_version_id=?').all(vid);
-  const price = {};
-  let act = null, iec = null, sup = null;
-  for (const r of rows) {
-    if (r.energy_eur_kwh != null) price[r.period] = r.energy_eur_kwh;
-    const same = (a, b) => a == null || b == null || a === b;
-    if (!same(act, r.activation_eur) || !same(iec, r.iec_eur_kwh) || !same(sup, r.support_eur))
-      throw new Error(`componentes divergentes na versão ${vid}: act/IEC/apoio diferem por período`);
-    act = r.activation_eur; iec = r.iec_eur_kwh; sup = r.support_eur;
-  }
-  return { price, act: act || 0, iec: iec || 0, sup: sup || 0 };
+  let out;
+  try { out = pickComponents(rows); }
+  catch (e) { throw new Error(`${e.message} na versão ${vid}`); }
+  return out;
 }
 
 function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
@@ -233,6 +240,11 @@ const server = http.createServer((req, res) => {
     // assinar JWTs sem fim (custo de CPU) e fabricar sessões à vazia.
     const sessRl = rateBucket(`sess:${clientIp(req)}`, RATE_SESSION);
     if (!sessRl.allowed) return rateLimited(res, sessRl, RATE_SESSION);
+    // Com a secret de dev em produção, proteger o bilhete: 503 em vez de
+    // emitir tokens fabricáveis. Em dev/CI a secret segue a ser aceitável.
+    if (WEAK_SECRET && process.env.NODE_ENV === 'production') {
+      return json(res, 503, { error: { code: 'no_secret', message: 'JWT_SECRET em falta: export JWT_SECRET=<openssl rand -hex 32>' } });
+    }
     const token = signJwt({ kind: 'WEB_SESSION', sid: Math.random().toString(36).slice(2) }, SECRET);
     return json(res, 200, { token, expires_in: 86400 });
   }
@@ -327,6 +339,10 @@ const server = http.createServer((req, res) => {
       // Cap de 64 KB: sem isto um POST de 48 MB crescia a String e rebentava
       // no JSON.parse — memória à solta em cada conexão. O cap guarda a
       // decisão para o `end` (linha em branco, sem parse) e responde 413.
+      // O que o cap NÃO faz: cortar a transferência — em modo flowing a
+      // stream é consumida na mesma (largura de banda intacta). Parar à
+      // bruta seria req.destroy(): reset de ligação, sem o 413.
+      if (tooBig) return;                       // já decidido: não voltar a encher o buffer
       if (body.length + c.length > MAX_BODY) { tooBig = true; body = ''; return; }
       body += c;
     });
@@ -357,8 +373,18 @@ const server = http.createServer((req, res) => {
             return json(res, 400, { error: { code: 'bad_omie', message: `${nome} deve ser um número (€/kWh) positivo` } }, headers);
           }
         }
-        const data = allTariffs().map(t => quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora }))
-          .filter(q => !q.skipped).sort((x, y) => x.totalEur - y.totalEur);
+        // Isolamento por tarifário: um seed com um único período divergente
+        // não pode derrubar os 128 — quarentena em vez de 400 (princípio do
+        // docs/03). O tarifário a mais sai fora do ranking; a lista mantém
+        // os restantes.
+        const data = allTariffs().map(t => {
+          try {
+            return quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora });
+          } catch (e) {
+            // com identidade, para quem lê os logs/BD saber o que foi posto de lado
+            return { id: t.id, ceme: t.ceme_name, name: t.name, skipped: true, error: e.message };
+          }
+        }).filter(q => !q.skipped).sort((x, y) => x.totalEur - y.totalEur);
         const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
         json(res, 200, { at: now.toISOString(), kwh, region, omieRef: omie, avg: Math.round(avg * 100) / 100, data }, headers);
       } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }

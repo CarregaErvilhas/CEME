@@ -124,6 +124,14 @@ regressão do motor *e* contra uma alteração acidental no seed.
 ¹ Reponderados em 2026-10-18 para a EGME 2026 (0,1088 €; o sheet de captura
 tinha 0,1572 €, valor de 2025). Veja a nota de EGME acima.
 
+**Âncoras externas vs. auto-consistência.** De oito totais, seis vêm de fora
+do código (a folha de captura: os quatro da Atlante, EZU e miio) e continuam
+a validar o motor de ponta a ponta. Os dois reponderados (Charge2Go 9,32,
+Via Verde 8,25) afirmam só que o motor e o seed são consistentes entre si —
+por isso o valor do sheet de 2025 (9,38 / 8,31, com a EGME 0,1572) fica
+num teste próprio, marcado como histórico: uma mudança futura de EGME tem
+de ser declarada, não absorvida (ver `golden.test.js`).
+
 O **9,11 €** é o valor que a folha dava — é o que valida o motor de ponta a
 ponta (a folha, o `ROUNDUP` por componente e o IVA a 23%).
 

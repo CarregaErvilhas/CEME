@@ -16,6 +16,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { seed, SHEET_SNAPSHOT } from '../src/db/seed.js';
 import { quoteFixed } from '../src/engine/quote.js';
+import { pickComponents } from '../src/db/components.js';
 
 const AT = new Date('2026-10-15T22:09:00+01:00'); // 22:09 de uma quinta, fora-de-vazio
 const KWH = 40;
@@ -46,14 +47,9 @@ function quoteFromDb(db, id, { kwh = KWH, at = AT, region = 'CONT' } = {}) {
   assert.ok(t, `tarifário ${id} não existe no seed`);
   const v = db.prepare('SELECT * FROM tariff_version WHERE tariff_id=? ORDER BY id DESC LIMIT 1').get(id);
   const rows = db.prepare('SELECT * FROM price_component WHERE tariff_version_id=?').all(v.id);
-  const price = {};
-  let act = 0, sup = 0, iec = 0;
-  for (const r of rows) {
-    if (r.energy_eur_kwh != null) price[r.period] = r.energy_eur_kwh;
-    act = r.activation_eur || 0; sup = r.support_eur || 0; iec = r.iec_eur_kwh || 0;
-  }
+  const { price, act, sup, iec } = pickComponents(rows);
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region });
-  return { t, q };
+  return { t, q, price, act, sup, iec };
 }
 
 describe('golden: fixos a 40 kWh, 2026-10-15 22:09 (CONT)', () => {
@@ -63,6 +59,32 @@ describe('golden: fixos a 40 kWh, 2026-10-15 22:09 (CONT)', () => {
       const { q } = quoteFromDb(db, id);
       assert.equal(q.totalEur.toFixed(2), total.toFixed(2), `total de ${id}`);
       assert.equal(q.eurKwhNoIva.toFixed(2), eurKwh.toFixed(2), `€/kWh de ${id}`);
+    });
+  }
+});
+
+describe('golden: âncoras históricas do sheet (EGME 2025)', () => {
+  // Os dois totais reponderados (9,32 / 8,25) afirmam que o motor faz o que
+  // o seed diz — valor em cima do valor. O que a folha de captura dizia com
+  // a EGME de 2025 (0,1572) é uma âncora EXTERNA e fica congelado aqui: se
+  // alguém mexer na EGME outra vez, o delta tem de ser declarado
+  // (9,38 − 9,32 = 0,06 ≈ (0,1572 − 0,1088) × 1,23) em vez de absorvido.
+  const EGME_2025 = 0.1572;
+  for (const [id, sheetTotal, sheetKwh] of [
+    ['charge2go-mt-ecogreen', 9.38, 0.19],
+    ['viaverde-mt-viaverdeelec', 8.31, 0.17],
+  ]) {
+    it(`${id} voltava a ${sheetTotal.toFixed(2)} € com a EGME de 2025 (valor do sheet)`, () => {
+      const db = seeded();
+      const { t, q, price, sup, iec } = quoteFromDb(db, id);
+      const comEGME2025 = quoteFixed({
+        schedule: t.schedule, cycle: t.cycle, at: AT, kwh: KWH,
+        price, activation: EGME_2025, support: sup, iec, region: 'CONT',
+      });
+      assert.equal(comEGME2025.totalEur.toFixed(2), sheetTotal.toFixed(2), `total histórico do sheet de ${id}`);
+      assert.equal(comEGME2025.eurKwhNoIva.toFixed(2), sheetKwh.toFixed(2), `€/kWh histórico de ${id}`);
+      // e o atual (EGME 2026) é o sheet menos o delta do reprice declarado
+      assert.ok(q.totalEur < comEGME2025.totalEur, 'o reprice 2026 tem de baixar o total (EGME baixa)');
     });
   }
 });

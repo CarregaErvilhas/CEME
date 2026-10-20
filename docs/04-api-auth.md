@@ -19,12 +19,26 @@ token.
 | App terceira | POC: chave provida via env `CEME_API_KEY` → inserida no arranque com **só o sha256** na BD (`api_key`); portal de emissão fica para fase 2 | `X-API-Key: <valor>` |
 
 O `X-API-Key` é **validado** contra o hash em BD (chaves revogadas ou
-expiradas excluem) — qualquer string desconhecida recebe 401.
+expiradas excluem) — qualquer string desconhecida recebe 401. O lookup
+tem índice (`idx_api_key_hash`). Em POC, a chave vem da env
+(`CEME_API_KEY`), inserida em cada arranque: sem `UNIQUE` em
+`api_key.prefix` e com `INSERT OR REPLACE` no id fixo, **a revogação
+real é remover a env** — a BD não sobrevive ao restart.
+
+## Secret de sessão (`JWT_SECRET`)
+
+O POC arranca sempre; sem `JWT_SECRET` usa a secret de dev
+(`dev-only-change-me`) com aviso no stdout. Em produção
+(`NODE_ENV=production`), com a secret de dev em uso, o `POST /v1/session`
+devolve **503** em vez de emitir tokens — `export
+JWT_SECRET=<openssl rand -hex 32>` é obrigatório (ver `backend/.env.example`).
 
 O `POST /v1/simulate` rejeita corpos acima de **64 KB** (413), JSON
 inválido/não-objecto (400), `kwh` fora de (0, 1000], `at` não-ISO e rates
 `omie*` não numéricas ou ≤ 0 (400 com `error.code` explícito), e cada
-endpoint aceita só o seu método (405 com `Allow`).
+endpoint aceita só o seu método (405 com `Allow`). com componentes divergentes ou dados maus entra em **quarentena**
+(`skipped`, fora do ranking, com `id` no output) — os restantes seguem;
+não há 400 vindo de um seed mal.
 
 ## Rate limit (POC, em memória)
 

@@ -2,8 +2,41 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDailyCsv, parseFuturesCsv } from '../src/omie/cache.js';
 import { seed } from '../src/db/seed.js';
+import { pickComponents } from '../src/db/components.js';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
+
+describe('pickComponents: coerência por versão', () => {
+  const r = (period, act, iec = 0.001) => ({ period, energy_eur_kwh: 0.1, activation_eur: act, support_eur: 0, iec_eur_kwh: iec });
+
+  it('períodos coerentes: EGME/IEC partilham-se', async () => {
+    const { price, act, iec } = pickComponents([r('VAZIO', 0.11), r('FORA_VAZIO', 0.11)]);
+    assert.equal(act, 0.11); assert.equal(iec, 0.001);
+    assert.deepEqual(Object.keys(price).sort(), ['FORA_VAZIO', 'VAZIO']);
+  });
+
+  it('períodos divergentes rebentam (já depois de ver o valor)', async () => {
+    assert.throws(() => pickComponents([r('VAZIO', 0.11), r('FORA_VAZIO', 0.12)]), /divergentes/);
+  });
+
+  // O bug latente: o guard antigo tratava NULL como carta branca e o
+  // `act || 0` no fim APAGAVA a EGME de um tarifário que a cobra.
+  it('NULL depois de um valor também é divergência (não zera a EGME)', async () => {
+    const out = pickComponents([r('VAZIO', 0.1088), { period: 'FORA_VAZIO', energy_eur_kwh: 0.1, activation_eur: null, support_eur: 0, iec_eur_kwh: 0.001 }]);
+    assert.equal(out.act, 0.1088);   // nunca se apaga com NULL
+  });
+
+  it('NULL antes do valor: preenche com a primeira não-nula', async () => {
+    const out = pickComponents([{ period: 'VAZIO', energy_eur_kwh: 0.1, activation_eur: null, support_eur: 0, iec_eur_kwh: null }, r('FORA_VAZIO', 0.1088, 0.002)]);
+    assert.equal(out.act, 0.1088);
+    assert.equal(out.iec, 0.002);
+  });
+
+  it('tudo a zero/NULL (miio): act 0 sem erros', async () => {
+    const out = pickComponents([r('VAZIO', 0), r('FORA_VAZIO', 0)]);
+    assert.equal(out.act, 0);
+  });
+});
 
 describe('cache OMIE: parsers defensivos', () => {
   it('diário: filtra últimos N e ignora linhas más', () => {

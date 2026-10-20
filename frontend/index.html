@@ -543,7 +543,12 @@ const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: t
 
 async function sess() {
   if (token) return token;
-  token = (await (await fetch(API + '/v1/session', { method: 'POST' })).json()).token;
+  const r = await fetch(API + '/v1/session', { method: 'POST' });
+  if (!r.ok) throw new Error('sessão indisponível (erro ' + r.status + ')');
+  const tk = (await r.json()).token;
+  // Sem token guardado, os pedidos iam com "Bearer undefined" e tudo era 401
+  if (!tk) throw new Error('sessão sem token');
+  token = tk;
   try { sessionStorage.setItem('ceme:jwt', token); } catch (e) {} // modo privado pode recusar
   return token;
 }
@@ -560,6 +565,10 @@ async function api(path, opts = {}) {
     tk = await sess();
     r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
   }
+  // 400/405/429/502 não são dados: sem check, o corpo de erro era tratado
+  // como resposta boa (j.data undefined, "sem resultados" sem pista) e a
+  // falha da taxa (429) parecia lista vazia. Lança com a mensagem do server.
+  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j?.error?.message || ('erro ' + r.status)); }
   return r.json();
 }
 // escapa HTML para inputs que refletem texto do utilizador (a pesquisa fica
@@ -939,8 +948,12 @@ async function loadCmp() {
     const [daily] = await Promise.all([api('/v1/omie/daily?days=60')]);
     const cyc = a.cycle === 'DIARIO' ? ['bd_v', 'bd_f'] : ['bs_v', 'bs_f'];
     const loss = 1 + (a.loss || 0);
-    // A série segue a FÓRMULA do tarifário (`q.formula`, ver engine/indexed.js):
-    // standard: (OMIE+K+CGS)×(1+perdas)+TAR · ynerluz: (OMIE+K)×(1+perdas)+CGS+TAR.
+    // É a fórmula do motor, escrita no browser de propósito: o gráfico
+    // desenha 60 dias com a TAR e o loss do tarifário sem endpoint novo.
+    // O perigo (dupla implementação a divergir) é travado por teste:
+    // `formula.test.js` extrai esta linha do HTML e compara com
+    // indexedPrice() nos dois ramos. Mudou aqui? O teste em falha —
+    // melhor do que o gráfico a mentir.
     // Sem isto o gráfico e o breakeven do Ynerluz seguiam a fórmula errada
     // (CGS dentro do factor de perdas) — be sai 0,0417 em vez de 0,0450.
     const yn = a.formula === 'ynerluz';
@@ -987,7 +1000,7 @@ async function route() {
   document.getElementById('nCmp').classList.toggle('on', cmp);
   document.getElementById('app').innerHTML = cmp ? vCmp() : vHome();
   if (!cmp) {
-    const R2 = () => refresh().then(route);
+    const R2 = () => refresh().catch(e => console.warn('[ceme] refresh falhou:', e.message)).then(route);
     // Mudar kWh <-> bateria muda a energia, logo obriga a recalcular. O botão
     // marca-se de imediato (feedback instantâneo) e o re-render completo
     // espera pelo refresh — senão o utilizador vê o valor velho até ao clique
@@ -1046,7 +1059,7 @@ async function route() {
     if (cmpFix) cmpFix.onchange = e => { S.fix = e.target.value; loadCmp(); };
     if (cmpOmie) {
       cmpOmie.oninput = e => { document.getElementById('cmpOmieV').textContent = Number(e.target.value).toFixed(3); };
-      cmpOmie.onchange = e => { S.omie = Number(e.target.value); S.omieVazio = S.omie; S.omieFora = S.omie; S.omieAuto = false; refresh().then(loadCmp); };
+      cmpOmie.onchange = e => { S.omie = Number(e.target.value); S.omieVazio = S.omie; S.omieFora = S.omie; S.omieAuto = false; refresh().catch(e => console.warn('[ceme] refresh falhou:', e.message)).then(loadCmp); };
     }
     if (cmpIdx) loadCmp();
   }
