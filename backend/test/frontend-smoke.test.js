@@ -300,4 +300,26 @@ describe('smoke do frontend', () => {
     assert.equal(JSON.stringify(out.bt), JSON.stringify(['f-bt', 'i-bt']), `lista BT: ${out.bt}`);
     assert.equal(JSON.stringify(out.mt), JSON.stringify(['f-mt', 'f-simples', 'i-mt']), `lista MT: ${out.mt}`);
   });
+
+  it('valores hostis no localStorage não injectam HTML (SEC-03)', () => {
+    // simula um ceme:S corrompido (edição à mão ou XSS anterior). A coagão
+    // em loadS() transforma os números inválidos em defaults, e o esc() no
+    // template fecha o que sobra (o q, que é texto livre).
+    store.v['ceme:S'] = JSON.stringify({
+      kwh: '40" onfocus=alert(1) x="',
+      batCap: '"><img src=x onerror=alert(2)>',
+      batMin: '<img src=x onerror=alert(3)>',
+      batMax: '"><script>alert(4)</script>',
+      omie: '0.20" onmouseover=alert(5) x="',
+      q: '"><img src=x onerror=alert(6)>',
+    });
+    const h = run(`(() => { loadS(); return vHome(); })()`, `setLang('pt', false);`);
+    // O esc() transforma '<' em '&lt;', por isso '<img' / '<script' não podem
+    // aparecer crus. "onerror=alert" aparece como texto mesmo quando escapado
+    // (é só texto), por isso não é um indicador de injecção.
+    for (const needle of ['<img', '<script', 'onfocus="', 'onerror="', 'onmouseover="']) {
+      assert.ok(!h.includes(needle), `payload não escapado encontrado: ${needle}`);
+    }
+    delete store.v['ceme:S'];
+  });
 });
