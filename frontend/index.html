@@ -404,7 +404,7 @@ const STR = {
     egmeStale: 'Activ. > EGME 2026',
     egmeStaleTip: 'The activation charge this CEME publishes ({act} €/session) is above the legal rate in force for 2026 ({legal} €/session, ERSE Regulation 7/2026). That is normal — several CEMEs have not yet updated the 2025 value (€0.157) or publish their own. The simulator shows what is published; updating it is on the CEME, not the calculation.',
     bootRetry: 'Try again',
-    kIdx: 'wholesale-linked', kFix: 'fixed tariff', diffNow: 'difference right now',
+    kIdx: 'indexed tariff', kFix: 'fixed tariff', diffNow: 'difference right now',
     fixedWins: 'the fixed tariff is cheaper', idxWins: 'the indexed tariff is cheaper',
     winsTxt: 'On <b>{w} of the last {d} days</b> the indexed tariff would have worked out cheaper during peak hours. It stays cheaper today whenever OMIE falls below <b>{be}€/kWh</b>. <br>Series: {src}{cache}.',
     histUnavail: 'The 60-day history is not available. The price shown above is still correct.',
@@ -767,15 +767,15 @@ function vHome() {
       <div class="seg" style="min-width:120px"><button data-ramal="BT" class="${S.ramal === 'BT' ? 'on' : ''}" title="${i18n('ramalTip')}">BT</button><button data-ramal="MT" class="${S.ramal === 'MT' ? 'on' : ''}" title="${i18n('ramalTip')}">MT</button></div>
     </div>
     ${kwhView ? `
-      <div class="row" style="margin-top:10px"><label class="fl grow">${i18n('kwh')}<input id="kwh" type="number" value="${S.kwh}" min="1" step="0.5" style="font-size:18px;font-weight:700"></label>
+      <div class="row" style="margin-top:10px"><label class="fl grow">${i18n('kwh')}<input id="kwh" type="number" value="${esc(S.kwh)}" min="1" step="0.5" style="font-size:18px;font-weight:700"></label>
       <label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>` :
       `<div style="margin-top:10px">
-        <div class="row"><label class="fl" style="width:110px">${i18n('capacity')}<input id="batCap" type="number" value="${S.batCap}" min="1" step="1"></label>
+        <div class="row"><label class="fl" style="width:110px">${i18n('capacity')}<input id="batCap" type="number" value="${esc(S.batCap)}" min="1" step="1"></label>
         <div class="grow" style="display:flex;flex-direction:column;gap:6px">
-          <label class="fl">${i18n('min')} ${S.batMin}%<input id="batMin" type="range" min="0" max="100" step="5" value="${S.batMin}"></label>
-          <label class="fl">${i18n('max')} ${S.batMax}%<input id="batMax" type="range" min="0" max="100" step="5" value="${S.batMax}"></label>
+          <label class="fl">${i18n('min')} ${esc(S.batMin)}%<input id="batMin" type="range" min="0" max="100" step="5" value="${esc(S.batMin)}"></label>
+          <label class="fl">${i18n('max')} ${esc(S.batMax)}%<input id="batMax" type="range" min="0" max="100" step="5" value="${esc(S.batMax)}"></label>
         </div></div>
-        <small id="batNote" style="display:block;margin-top:4px">${i18n('chargingFrom', { a: S.batMin, b: S.batMax, c: kwhTxt() })}</small>
+        <small id="batNote" style="display:block;margin-top:4px">${i18n('chargingFrom', { a: esc(S.batMin), b: esc(S.batMax), c: kwhTxt() })}</small>
         <div class="row" style="margin-top:6px"><label class="fl grow">${i18n('search')}<input id="q" type="search" value="${esc(S.q)}" placeholder="${i18n('searchPh')}"></label></div>
       </div>`}
     <div class="row" style="margin-top:10px"><div class="seg grow" role="group" aria-label="${i18n('region')}">
@@ -858,7 +858,7 @@ function vCmp() {
   return `<div class="card"><div class="row">
     <label class="fl grow">${i18n('lIndexed')}<select id="cmpIdx" style="width:100%">${opt(idx, S.idx)}</select></label>
     <label class="fl grow">${i18n('lFixed')}<select id="cmpFix" style="width:100%">${opt(fix, S.fix)}</select></label></div>
-    <div class="row" style="margin-top:8px"><label class="fl grow">${i18n('omieRef')}<input id="cmpOmie" type="range" min="0.05" max="0.40" step="0.005" value="${S.omie}" style="width:100%"></label><b id="cmpOmieV">${Number(S.omie).toFixed(3)}</b></div>
+    <div class="row" style="margin-top:8px"><label class="fl grow">${i18n('omieRef')}<input id="cmpOmie" type="range" min="0.05" max="0.40" step="0.005" value="${esc(S.omie)}" style="width:100%"></label><b id="cmpOmieV">${Number(S.omie).toFixed(3)}</b></div>
     <div class="kpi" id="cmpKpi" style="margin-top:10px"></div></div>
     <div class="sec-t">${i18n('last60')}</div>
     <div id="cmpChart"><div class=card>${i18n('calcHist')}</div></div>
