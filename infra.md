@@ -18,9 +18,9 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 
 | Serviço | Tipo | Versão | Função |
 |---|---|---|---|
-| `api` | nodejs | 26 | Node.js puro (`src/server.js`). Serve frontend + API. Escuta em `PORT=3001`. |
+| `api` | nodejs | 24 (topo da base list do Zerops; `nodejs@latest` = 24) | Node.js puro (`src/server.js`). Serve frontend + API. Escuta em `PORT=3001`. |
 | `db` | postgresql | 18 | BD principal. Tabelas: `ceme`, `tariff`, `tariff_version`, `price_component`, `tar`, `omie_spot`, `omie_daily`, `api_client`, `api_key`, `audit_log`, etc. |
-| `cache` | valkey | 9.1 | Cache OMIE (6h) e sessões. Opcional na fase 1. |
+| `cache` | valkey | 7.2 (única versão disponível no Zerops) | Cache OMIE (6h) e sessões. Opcional na fase 1. |
 
 Recursos (ajustáveis depois):
 - `api`: 0.5 GB RAM, 1 vCPU, 1 GB disco.
