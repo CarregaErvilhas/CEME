@@ -1,0 +1,23 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zcli
+        run: |
+          curl -fsSL https://cli.zerops.io/install.sh | sh
+
+      - name: Authenticate with Zerops
+        run: |
+          zcli login --token ${{ secrets.ZEROS_API_TOKEN }}
+
+      - name: Deploy to production
+        run: |
+          zcli deploy --project ${{ secrets.ZEROS_PROJECT_PROD }}
