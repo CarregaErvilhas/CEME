@@ -67,26 +67,35 @@ ceme-beta.ocarroeletrico.com  AAAA  <IPv6-do-api-zerops>  proxy: ON
 
 ---
 
-## 4. CI/CD com GitHub Actions (implementado)
+## 4. CI/CD — GitHub Actions (testes) + webhook Zerops (deploy)
 
-Um único workflow, `.github/workflows/ci.yml`:
+### 4.1 CI — `.github/workflows/ci.yml`
 
-- **`test`** — push para `main` e PRs: `npm ci` + `npm test` (Node 24, o mesmo que o `zerops.yml` suporta; testar noutro número daria um verde que a produção não reproduz).
-- **`deploy`** — só em push para `main` e com `needs: test`: `zcli login` + `zcli push api --setup api -w clean --version-name $GITHUB_SHA`. Um workflow só é o que garante que o deploy nunca corre com testes vermelhos; dois workflows separados correm em paralelo e o deploy disparava à mesma.
+Um único job `test`, em push para `main` e em PRs: `npm ci` + `npm test` (Node 24, o mesmo que o `zerops.yml` suporta; testar noutro número daria um verde que a produção não reproduz).
 
-Notas de implementação:
-- `ZEROPS_CLI_TERMINAL_MODE=disabled` — o runner não tem TTY; sem isto os spinners/prompts do zcli podem travar o job.
-- `-w clean` — sobe só o HEAD do commit. Sem isto, o default `all` inclui ficheiros untracked do checkout (ex.: `node_modules` se algum pass o instalar).
-- O projeto tem os serviços managed `db` e `cache`, por isso o serviço tem de ser explícito no push (`zcli push api`). O ID do projeto (`9n1HBsuHT72ZgP2XkXXAIA`) está como env no job de deploy — não é segredo.
-- O `zcli` só conhece `login` (token como argumento posicional, não há flag `--token`) e `push` (não existe `zcli deploy`). A instalação é via `https://zerops.io/zcli/install.sh`.
+### 4.2 Deploy — webhook do Zerops (sem credenciais no GitHub)
 
-### Secret necessário no GitHub
+O deploy **não** é feito pelo GitHub Actions. É o próprio Zerops que puxa o repositório quando o push chega a `main`:
 
-| Secret | Conteúdo |
-|---|---|
-| `ZEROPS_API_TOKEN` | Token de API do Zerops — GUI → settings/token-management. É o único segredo: o ID do projeto está no próprio workflow. |
+> Serviço `api` → **Build, Deploy, Run Pipeline Settings** → **Connect with a GitHub repository** → trigger **Push to branch: `main`**.
 
-`JWT_SECRET` **não** é secret do GitHub: é env do serviço `api` no Zerops (ver secção 2). O DNS continua a ser configuração única manual na Cloudflare (o IPv6 do Zerops é estático).
+Porque é que não é `zcli push` na CI: essa via obrigava a guardar um **token de admin da conta Zerops** como secret do GitHub. Notas sobre o que a Zerops oferece e porque foi descartado:
+- Os tokens com escopo existem (**Settings → Access Tokens Management** → acesso *Custom per project*, limitado ao projeto CEME), o que reduz o blast radius face a *Full access to all projects*. Mas mesmo assim continua a ser uma credencial de longa duração, com acesso de leitura a env vars sensíveis (`JWT_SECRET`, `DATABASE_URL`) e a backups, guardada num sítio que qualquer pessoa com push a `main` consegue ler.
+- A Zerops não suporta (ainda) tokens efémeros/OIDC federation, portanto não dá para trocar por credenciais de curta duração.
+
+O webhook elimina a credencial no GitHub por completo. Trade-off aceite: perdemos o `needs: test` explícito do lado do deploy — o que garante que nada chega a `main` sem testes verdes passa a ser a **branch protection** (4.3), que é o controlo certo de qualquer forma.
+
+### 4.3 Branch protection do `main` (pré-requisito do gating)
+
+Sem o `needs: test` do workflow, é a branch protection que impede merges com CI vermelho:
+
+- Settings → Branches → `main`: **Require status checks to pass** → check `test` (do workflow CI); **Require pull request before merging**.
+
+Sem isto, um push direto a `main` (ou um merge com checks vermelhos) chega ao Zerops e é deployado.
+
+### 4.4 Segredos
+
+**Nenhum segredo Zerops no GitHub.** O `JWT_SECRET` (e futuro `CEME_API_KEY`) são env secrets do serviço `api` no Zerops (ver secção 2). O DNS é configuração única manual na Cloudflare (o IPv6 do Zerops é estático).
 
 ### Preview por PR
 
@@ -145,6 +154,8 @@ Substituição futura: MCP server para gestão de tarifários (a discutir depois
 - [ ] Criar serviços `api`, `db`, `cache` no projeto Zerops (`zcli service create` ou import YAML).
 - [ ] `zcli push` → obter IPv6 do serviço `api`.
 - [ ] Criar registo `AAAA` no Cloudflare com proxy activo.
-- [x] Criar GitHub Actions (CI + deploy prod; secção 4). Falta o secret `ZEROPS_API_TOKEN` no GitHub.
-- [ ] Testar PR preview → destroy on merge.
-- [ ] Testar merge to main → update prod.
+- [x] Criar GitHub Actions (só CI; secção 4).
+- [ ] Ligar o webhook do Zerops ao repositório (trigger: push para `main`; secção 4.2).
+- [ ] Branch protection do `main` com o check `test` obrigatório (secção 4.3).
+- [ ] Testar merge to main → build+deploy automático pelo Zerops.
+- [ ] (futuro) Preview por PR.
