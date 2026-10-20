@@ -14,12 +14,45 @@ token.
 
 | cliente | emissão | envia |
 |---|---|---|
-| Sessão web anónima | `POST /v1/session` → JWT `WEB_SESSION` 24h (sem dados pessoais; id = uuid + IP hash para anti-abuso) | `Bearer <jwt>` |
+| Sessão web anónima | `POST /v1/session` → JWT `WEB_SESSION` 24h (sem dados pessoais; `sid` é um identificador aleatório gerado no servidor — *no POC não há IP hash; em produção, uuid + hash de IP anti-abuso*) | `Bearer <jwt>` |
 | Conta (admin/CEME) | registo com email + magic link local (sem SendGrid; token impresso no log em dev) → JWT `USER` com `roles` | `Bearer <jwt>` |
-| App terceira | portal → `api_key` (`prefix + secret`; só o hash fica na BD) | `X-API-Key: <prefix>.<secret>` |
+| App terceira | POC: chave provida via env `CEME_API_KEY` → inserida no arranque com **só o sha256** na BD (`api_key`); portal de emissão fica para fase 2 | `X-API-Key: <valor>` |
 
-Rate-limit por cliente (ex. sessão 60/min, third-party 600/min —
-configurável em env). Respostas incluem `X-RateLimit-*`.
+O `X-API-Key` é **validado** contra o hash em BD (chaves revogadas ou
+expiradas excluem) — qualquer string desconhecida recebe 401. O lookup
+tem índice (`idx_api_key_hash`). Em POC, a chave vem da env
+(`CEME_API_KEY`), inserida em cada arranque: sem `UNIQUE` em
+`api_key.prefix` e com `INSERT OR REPLACE` no id fixo, **a revogação
+real é remover a env** — a BD não sobrevive ao restart.
+
+## Secret de sessão (`JWT_SECRET`)
+
+O POC arranca sempre; sem `JWT_SECRET` usa a secret de dev
+(`dev-only-change-me`) com aviso no stdout. Em produção
+(`NODE_ENV=production`), com a secret de dev em uso, o `POST /v1/session`
+devolve **503** em vez de emitir tokens — `export
+JWT_SECRET=<openssl rand -hex 32>` é obrigatório (ver `backend/.env.example`).
+
+O `POST /v1/simulate` rejeita corpos acima de **64 KB** (413), JSON
+inválido/não-objecto (400), `kwh` fora de (0, 1000], `at` não-ISO e rates
+`omie*` não numéricas ou ≤ 0 (400 com `error.code` explícito), e cada
+endpoint aceita só o seu método (405 com `Allow`). com componentes divergentes ou dados maus entra em **quarentena**
+(`skipped`, fora do ranking, com `id` no output) — os restantes seguem;
+não há 400 vindo de um seed mal.
+
+## Rate limit (POC, em memória)
+
+Janela fixa de 60 s, por processo — em produção, um limitador à frente do
+server. Sessão web (Bearer) conta por IP: 60/min. `POST /v1/session` conta
+por IP à parte: 10/min (é pré-auth; sem teto era a rota barata para
+martelar JWT). Terceiros (X-API-Key) contam pela chave: 60/min ou o
+`api_client.rate_limit` da BD. Exceder devolve **429** com
+`x-ratelimit-limit/remaining/reset` e `retry-after`. O mapa de buckets é
+podado e tem teto (10 000 chaves) — IPs distintos em enxurrada não crescem
+memória sem limite.
+
+`x-content-type-options: nosniff` vai em todas as respostas JSON e no HTML
+da UI.
 
 ## Endpoints (MVP)
 
@@ -59,9 +92,18 @@ região pedidos, mais `avg` e `omieRef`. A filtragem é do cliente.
 Notas:
 - `POST /v1/simulate` devolve **todos** os tarifários (24 CEME, 128
   tarifários), para qualquer região — a filtragem é do cliente.
+- `activation` da resposta é **o que o CEME publica no sheet capturado**
+  — nunca substituído pelo regulamentar. Juntamente vão `egme_legal` (o
+  valor legal 2026: 0,1088 €/carregamento, Regul. ERSE 7/2026) e
+  `activation_stale` (`true` quando o publicado ainda está acima do legal —
+  normal: CEMEs não actualizam de imediato). Actualizar é tarefa de nova
+  captura da folha, não de substituição no código (ver docs/02).
 - `omieVazio`/`omieFora` alimentam a agregação `SPLIT_VAZIO_FORA` dos
   indexados; sem eles o motor usa o `omie` único para todas as bandas.
-- Erros em `{error:{code,message}}`; datas ISO com offset local da região.
+- Erros em `{error:{code,message}}`. As **datas devolvidas são UTC** (ISO
+  `toISOString()`), independentemente da região; a conversão para a parede
+  horária local do carregamento é no cliente. Datas *pedidas* em `at`
+  seguem o offset que o cliente escrever.
 
 ## Endpoints planeados (fase 2)
 
@@ -79,7 +121,7 @@ POST /v1/admin/suggestions/:id/approve  # cria tariff_version
 POST /v1/admin/suggestions/:id/reject
 ```
 
-Erros em `{error:{code,message}}`; datas ISO com offset local da região;
+Erros em `{error:{code,message}}`; datas ISO (UTC, como no POC);
 €/kWh com 4 casas, totais com 2 — `ROUNDUP` por componente antes de somar,
 como na fatura.
 
@@ -95,6 +137,9 @@ português. O cliente pode sobrepor via bandeira, que persiste em
 `localStorage` e tem precedência sobre o cabeçalho.
 
 ## Autorização
+
+(Plano de fase 2 — no POC o `kind` do payload só é informativo, ver
+`GET /v1/health`; os endpoints de escrita ainda existem.)
 
 - `WEB_SESSION`: só leitura + `POST /suggestions`.
 - `USER ceme_editor`: leitura + escrita só em `ceme_id` próprio.

@@ -28,9 +28,13 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
 ```sh
 cd ceme-v2/backend
-node --test test/*.test.js   # 74 testes
+node --test test/*.test.js   # 106 testes
 node src/server.js           # http://localhost:3001/
 ```
+
+Para consumidores da API fora do browser, uma `X-API-Key` valida contra o
+sha256 em BD: exporta `CEME_API_KEY=<valor>` antes de arrancar (o valor
+claro nunca fica na BD — ver docs/04).
 
 Abrir http://localhost:3001/ — ranking ao vivo de **128 tarifários versionados** (55 ofertas distintas em ecrã) / 24 CEME
 (seed completo do sheet, incluindo Atlante, EDP, Galp, 6 indexados LuziGas,
@@ -38,9 +42,9 @@ MEO Dinâmica, Ynerluz, miio, Via Verde, etc.), com kWh ou bateria %,
 região (Portugal Continental / Madeira / Açores), pesquisa, filtros (verde,
 sem bundle, favoritos), favoritos em localStorage e detalhe por tarifário.
 
-Página **Indexado vs fixo** (`#/comparar`): valor actual lado a lado, gráfico
-SVG de 60 dias, tabela de quartos-horários (os 8 mais baratos destacados) e
-futuros OMIP.
+Página **Indexado vs fixo** (`#/comparar`): valor actual lado a lado,
+gráfico SVG de 60 dias e tabela de quartos-horários (os 8 mais baratos
+marcados, com as faixas em que o indexado bate o fixo de referência).
 
 ## Funcionalidades actuais
 

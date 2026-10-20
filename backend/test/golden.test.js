@@ -16,6 +16,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { seed, SHEET_SNAPSHOT } from '../src/db/seed.js';
 import { quoteFixed } from '../src/engine/quote.js';
+import { pickComponents } from '../src/db/components.js';
 
 const AT = new Date('2026-10-15T22:09:00+01:00'); // 22:09 de uma quinta, fora-de-vazio
 const KWH = 40;
@@ -27,7 +28,10 @@ function seeded() {
   return db;
 }
 
-// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15
+// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15.
+// TODAS as âncoras são externas: vêm da folha de captura, não de qualquer
+// re-derivação no código. O cenário «E se o CEME aplicar a EGME legal
+// 2026?» fica no teste do cenário regulatório, mais abaixo.
 const GOLDEN = [
   ['atlante-mt-myatlanteac', 9.11, 0.19],
   ['atlante-bt-myatlanteac', 10.98, 0.23],
@@ -44,14 +48,9 @@ function quoteFromDb(db, id, { kwh = KWH, at = AT, region = 'CONT' } = {}) {
   assert.ok(t, `tarifário ${id} não existe no seed`);
   const v = db.prepare('SELECT * FROM tariff_version WHERE tariff_id=? ORDER BY id DESC LIMIT 1').get(id);
   const rows = db.prepare('SELECT * FROM price_component WHERE tariff_version_id=?').all(v.id);
-  const price = {};
-  let act = 0, sup = 0, iec = 0;
-  for (const r of rows) {
-    if (r.energy_eur_kwh != null) price[r.period] = r.energy_eur_kwh;
-    act = r.activation_eur || 0; sup = r.support_eur || 0; iec = r.iec_eur_kwh || 0;
-  }
+  const { price, act, sup, iec } = pickComponents(rows);
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region });
-  return { t, q };
+  return { t, q, price, act, sup, iec };
 }
 
 describe('golden: fixos a 40 kWh, 2026-10-15 22:09 (CONT)', () => {
@@ -61,6 +60,34 @@ describe('golden: fixos a 40 kWh, 2026-10-15 22:09 (CONT)', () => {
       const { q } = quoteFromDb(db, id);
       assert.equal(q.totalEur.toFixed(2), total.toFixed(2), `total de ${id}`);
       assert.equal(q.eurKwhNoIva.toFixed(2), eurKwh.toFixed(2), `€/kWh de ${id}`);
+    });
+  }
+});
+
+describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
+  // Não é âncora externa: é o cenário "e se o CEME aplicar o valor legal".
+  // A EGME publicada no sheet (0,1572, valor de 2025) está acima do legal
+  // 2026 (0,1088 = Regul. ERSE 7/2026, em vigor desde 2026-01-01) — e vários
+  // CEMEs, na prática, não actualizam. O seed fica com o PUBLISHED e a API
+  // marca `activation_stale`; aqui congelam-se os totais QUE O CENÁRIO
+  // legal daria, para o delta (9,38 − 9,32 = 0,06 ≈ (0,1572 − 0,1088) ×
+  // 1,23) ser sempre verificável — em qualquer dos sentidos da actualização.
+  const EGME_2026 = 0.1088;
+  for (const [id, scenarioTotal, scenarioKwh] of [
+    ['charge2go-mt-ecogreen', 9.32, 0.19],
+    ['viaverde-mt-viaverdeelec', 8.25, 0.17],
+  ]) {
+    it(`${id} ficaria em ${scenarioTotal.toFixed(2)} € com a EGME legal 2026`, () => {
+      const db = seeded();
+      const { t, q, price, act, sup, iec } = quoteFromDb(db, id);
+      assert.ok(act > EGME_2026, `${id} tem de estar acima do legal no seed (publicado)`);
+      const cenário = quoteFixed({
+        schedule: t.schedule, cycle: t.cycle, at: AT, kwh: KWH,
+        price, activation: EGME_2026, support: sup, iec, region: 'CONT',
+      });
+      assert.equal(cenário.totalEur.toFixed(2), scenarioTotal.toFixed(2), `total do cenário regulatório de ${id}`);
+      assert.equal(cenário.eurKwhNoIva.toFixed(2), scenarioKwh.toFixed(2), `€/kWh do cenário de ${id}`);
+      assert.ok(cenário.totalEur < q.totalEur, 'aplicar o legal tem de baixar o total (EGME baixa)');
     });
   }
 });

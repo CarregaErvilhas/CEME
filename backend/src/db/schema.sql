@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS api_key (
   hash TEXT NOT NULL, prefix TEXT NOT NULL,
   revoked_at TEXT, expires_at TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_api_key_hash ON api_key(hash);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT DEFAULT (datetime('now')),

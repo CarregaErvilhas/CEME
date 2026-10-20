@@ -1,7 +1,16 @@
 // Seed completo: 24 CEME / 127 tarifários extraídos do sheet em 2026-10-15.
 // (Okeana removida em 2026-10-18: última info de 2023, sem EGME discriminado.)
 // Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
-// act = EGME, o valor que a CEME publica (só o miio não cobra).
+// act = a taxa de activação PUBLICADA por cada CEME no sheet, à data da
+// captura (2026-10-15) — um único significado, invariante ao longo do tempo:
+// o que a folha diz, é isso. Quatro CEMEs ainda mostravam o EGME de 2025
+// (0,1572: Charge2Go, Via Verde, EVPower e parte da EVIO) apesar do valor
+// legal 2026 ser 0,1088 (Regul. ERSE 7/2026) — CEMEs não actualizam de
+// imediato, e o simulador mostra o publicado, não o regulamentar. O legal
+// (0,1088) fica como referência na API (`egme_legal`) + flag
+// `activation_stale` quando o publicado está acima do legal. Já em 0,1088
+// na captura: EZU, EDP, bluecharge, moeve, etc. o miio não cobra. Ver
+// docs/02-motor-calculo.md.
 import { DatabaseSync } from 'node:sqlite';
 
 const CEMES = [

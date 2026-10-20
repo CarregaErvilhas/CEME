@@ -133,6 +133,7 @@ describe('smoke do frontend', () => {
       bihorario: FIXED(), indexado: INDEXED(), bundle: FIXED({ bundle: 1 }),
       verde: FIXED({ green: 1 }), estimado: FIXED({ estimated: 1 }),
       aviso: FIXED({ warning: 'OMIE_CONT_REF' }), outraRegiao: FIXED({ regions: 'MAD' }),
+      egmeStale: FIXED({ activation: 0.1572, egme_legal: 0.1088, activation_stale: true }),
     };
     for (const [nome, q] of Object.entries(casos)) {
       const h = run(`badges(q)`, `const q = ${JSON.stringify(q)};`);

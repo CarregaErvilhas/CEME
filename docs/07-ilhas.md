@@ -39,7 +39,10 @@ inverno (23:00) vêm de extracção do PDF da ERSE — estrutura confirmada
 pelo precário EDA (`11:30/13:30 18:00/23:00`), mas validar com factura EDA
 antes de publicar. Época = mês 6–10 vs resto (critério ERSE, não DST) para as ilhas; no Portugal Continental a época do sábado segue a **hora legal** (DST: último domingo de março → último domingo de outubro).
 
-Perdas E-REDES 2026 (média anual BTN): BT 0,1531 / MT 0,0713 (substituiu o placeholder 0,10/0,07).
+Perdas E-REDES 2026 (média anual BTN): BT 0,1531 / MT 0,0713 — mesmo
+placeholder do Continente; ver a nota de verificação dos factores em
+`02-motor-calculo.md` (os valores por quarto de hora do operador, quando
+entrarem em `loss_profile`, aplicam-se às ilhas também).
 
 ## Feriados
 
@@ -51,9 +54,13 @@ dos CEME em MT seguem a mesma regra; até lá, OWN_DAY com hook de config.
 ## OMIE nas ilhas
 
 MIBEL não cobre os sistemas isolados (EDA/EEM); tarifários indexados ao
-OMIE são, por omissão, só `CONT` (`REGIONS[].omieIndexed=false` → a API
-avisa em vez de calcular). TAR insular tem valores próprios (mecanismo de
-convergência ERSE) — tabela `tar` já leva `region`.
+OMIE são, por omissão, só `CONT` (`REGIONS[].omieIndexed=false`). Mesmo
+nas ilhas o motor **calcula** — com o OMIE continental de referência — e
+marca: `quoteOne` devolve `warning: 'OMIE_CONT_REF'` (badge no cartão) e
+`/v1/indexed/quarters` devolve o mesmo `warning` para MAD/AZO. O valor é
+**ilustrativo, não contractual** (a ilha não compra no MIBEL). TAR
+insular tem valores próprios (mecanismo de convergência ERSE) — tabela
+`tar` já leva `region`.
 
 ## Reforma 2027 (fora do MVP)
 

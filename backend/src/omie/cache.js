@@ -109,10 +109,18 @@ export function parseQuartersCsv(text, wantIso) {
     if (!dm || !hm || !Number.isFinite(pt)) continue;
     const iso = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
     if (!byDay.has(iso)) byDay.set(iso, []);
+    // A coluna `intervalo` (`[hh:mm-hh:mm[`) é a verdade — usa-a quando vem.
+    // O `hora` é o fim do quarto, mas a ÚLTIMA linha do dia traz `23:59`
+    // (fim do dia de dados, não meia-noite arredondada): com o -15 cego dava
+    // 23:44–23:59; o correcto é 23:45–00:00 (no ficheiro: [23:45-00:00[).
+    const iv = /^\[(\d{2}):(\d{2})-(\d{2}):(\d{2})\[/.exec((c[ix('intervalo')] || '').trim());
     const endMin = Number(hm[1]) * 60 + Number(hm[2]);
-    const stMin = (endMin - 15 + 1440) % 1440;
+    const fechaDia = endMin === 23 * 60 + 59;
+    const end = iv ? `${iv[3]}:${iv[4]}` : (fechaDia ? '00:00' : hm[0]);
+    const stMin = iv ? (Number(iv[1]) * 60 + Number(iv[2]))
+      : (fechaDia ? 23 * 60 + 45 : (endMin - 15 + 1440) % 1440);
     const hh = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
-    byDay.get(iso).push({ start: hh(stMin), end: hm[0], priceMwh: pt });
+    byDay.get(iso).push({ start: hh(stMin), end, priceMwh: pt });
   }
   const days = [...byDay.keys()].sort();
   const date = wantIso && byDay.has(wantIso) ? wantIso : days[days.length - 1];
