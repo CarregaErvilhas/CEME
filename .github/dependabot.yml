@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"        # dependências do backend (package.json)
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    cooldown:
+      default-days: 14              # espera 14 dias entre atualizações da mesma dependência
+    open-pull-requests-limit: 1     # apenas 1 PR aberto por vez (evita spam)
+    labels:
+      - "dependencies"
+      - "backend"
+    commit-message:
+      prefix: "deps(backend)"
+      include: "scope"
+    groups:
+      patch-and-minor:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"

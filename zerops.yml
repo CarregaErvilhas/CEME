@@ -1,0 +1,54 @@
+version: '3.7'
+
+# CEME v2 — simulador de mobilidade eléctrica
+# Projeto Zerops: backend Node.js + PostgreSQL gerenciado + Valkey (cache OMIE)
+# Deploy: zcli deploy  (na raiz do repo)
+
+services:
+  # ---------- Backend API (Node.js) ----------
+  # Mantém o server.js atual (node:http). Após a migração SQLite→Postgres
+  # só o driver de BD muda; o servidor continua a ouvir em PORT.
+  api:
+    type: nodejs
+    version: '26'
+    disk: 1          # GB
+    ram: 0.5         # GB
+    cpu: 1           # core
+    domains:
+      - ceme-beta.ocarroeletrico.com
+    env:
+      PORT: 3001
+      NODE_ENV: production
+      JWT_SECRET: ${SECRET:JWT_SECRET}           # definir via zcli secret set
+      DATABASE_URL: ${ENV:db:DATABASE_URL}       # injetado pelo serviço db
+      OMIE_URL: https://www.omie.es/sites/default/files/dados/NUEVA_SECCION/INT_PBC_EV_H_ACUM.TXT
+      TIAGO_OMIE_CSV: https://dados.tiagofelicia.pt/data/omie/omie_dados_atuais.csv
+      CACHE_TTL_HOURS: 6
+    build:
+      - npm install
+    start: npm start
+    depends_on:
+      - db
+
+  # ---------- Base de dados principal ----------
+  # Substitui o SQLite ficheiro (./data/ceme.db) por PostgreSQL gerenciado.
+  # Credenciais são injetadas automaticamente como DATABASE_URL no serviço api.
+  db:
+    type: postgresql
+    version: '18'
+    disk: 2          # GB
+    ram: 0.5         # GB
+    cpu: 1           # core
+    high_availability: false   # toggle HA sem mudar de plano
+    backups: true
+
+  # ---------- Cache (OMIE 6h, sessões, opcional) ----------
+  # Pode ser removido na fase 1 se quiser só Postgres + Node.
+  cache:
+    type: valkey
+    version: '9.1'
+    disk: 0.5        # GB
+    ram: 0.25        # GB
+    cpu: 0.25        # core
+    env:
+      REDIS_CACHE_TTL: 21600   # 6h em segundos

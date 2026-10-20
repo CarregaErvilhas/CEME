@@ -7,5 +7,8 @@
     "test": "node --test test/*.test.js",
     "dev": "node --watch src/server.js",
     "start": "node src/server.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
   }
 }
