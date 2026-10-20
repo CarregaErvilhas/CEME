@@ -1,20 +1,24 @@
-// Servidor POC (só node:* — sem deps). Serve a web em / e a API em /v1/* (tudo com auth).
+// Servidor POC (Node.js em produção via pg; SQLite em dev/test).
+// Serve a web em / e a API em /v1/* (tudo com auth). O hardening da main
+// está re-aplicado sobre a migração assíncrona: nosniff, rate limiting,
+// 405 por método, cap do corpo (413), validação de input, guarda da secret
+// de dev, auth de X-API-Key por hash e quarentena por tarifário.
 import http from 'node:http';
-import { readFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { query, get, run, dbInstance } from './db.js';
 import { signJwt, verifyJwt, hashKey } from './auth/tokens.js';
 import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
-import { REGIONS } from './engine/regions.js';
-import { seed, VERSIONS } from './db/seed.js';
-import { pickComponents } from './db/components.js';
-import { getDaily, getFutures, getQuarters } from './omie/cache.js';
-import { periodForWall } from './engine/regions.js';
+import { REGIONS, periodForWall } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
+import { getDaily, getFutures, getQuarters } from './omie/cache.js';
+import { pickComponents } from './db/components.js';
+import { VERSIONS } from './db/seed.postgres.js';
 
 const PORT = Number(process.env.PORT || 3001);
+const USE_PG = !!process.env.DATABASE_URL;
 // Secret "de dev" conhecida manteria o POC a arrancar sem configuração —
 // mas no deploy real é a porta para fabricar WEB_SESSION à vontade. O meio
 // termo: o server arranca sempre (dev/CI não rebenta), mas se a secret em
@@ -29,37 +33,46 @@ if (WEAK_SECRET) console.warn('[ceme-v2] AVISO: JWT_SECRET não definida — a s
   'Em publicação: export JWT_SECRET=<openssl rand -hex 32>.');
 // Directórios resolvidos a partir do ficheiro, não do cwd: `npm start` corre
 // da pasta backend/, mas arrancar `node ceme-v2/backend/src/server.js` da raiz
-// do repo criava `./data` no sítio errado (e a BD ficava vazia).
+// do repo criava `./data` no sítio errado (cache OMIE vazia → 502).
 const BACKEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(BACKEND_DIR, 'data');
-const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'ceme.db');
 
-mkdirSync(DATA_DIR, { recursive: true });
-const db = new DatabaseSync(DB_PATH);
-db.exec(readFileSync(new URL('./db/schema.sql', import.meta.url), 'utf8'));
+// Schema executado uma vez no arranque (idempotente).
+const schemaFile = USE_PG
+  ? new URL('./db/schema.postgres.sql', import.meta.url)
+  : new URL('./db/schema.sql', import.meta.url);
+const schemaSql = await readFile(schemaFile, 'utf8');
+await run(schemaSql);
 
 // API key para terceiros: o valor claro é provido pela env (CEME_API_KEY) e
 // NUNCA fica na BD — só o sha256. Sem chave configurada, X-API-Key devolve
-// 401 (o caminho web usa Bearer JWT; a key é para consumidores externos).
-// Notas de POC:
-//  - INSERT OR REPLACE no id fixo significa que a revogação em BD NÃO
-//    sobrevive a um restart — apagar `CEME_API_KEY` do ambiente é a forma
-//    real de revogar (e o `expires_at` de BD só se aplica a chaves do portal).
-//  - `prefix` fica gravado por inspecção (8 primeiros chars), mas o lookup é
-//    só por hash; sem UNIQUE, o campo não serve para lookup idempotente.
+// 401 (o caminho web usa Bearer JWT). UPSERT: refresca o hash se a env mudar
+// entre restarts; em PG e SQLite a sintaxe upsert coincide.
 if (process.env.CEME_API_KEY) {
-  db.prepare(`INSERT OR REPLACE INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')`).run();
-  db.prepare(`INSERT OR REPLACE INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', ?, ?)`)
-    .run(hashKey(process.env.CEME_API_KEY), process.env.CEME_API_KEY.slice(0, 8));
+  await run(`INSERT INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')
+    ON CONFLICT (id) DO NOTHING`);
+  await run(`INSERT INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', $1, $2)
+    ON CONFLICT (id) DO UPDATE SET hash = $3, prefix = $4`,
+    [hashKey(process.env.CEME_API_KEY), process.env.CEME_API_KEY.slice(0, 8),
+     hashKey(process.env.CEME_API_KEY), process.env.CEME_API_KEY.slice(0, 8)]);
 }
 
 // TAR 2026 Continente (ERSE) — ilhas entram na fase de seed completo
-db.exec(`
-INSERT OR IGNORE INTO tar (valid_from, valid_to, region, voltage, period, price_eur_kwh) VALUES
+await run(`
+INSERT INTO tar (valid_from, valid_to, region, voltage, period, price_eur_kwh) VALUES
  ('2026-01-01', NULL, 'CONT','BT','VAZIO',0.0266), ('2026-01-01', NULL,'CONT','BT','FORA_VAZIO',0.1192),
- ('2026-01-01', NULL, 'CONT','MT','VAZIO',0.0157), ('2026-01-01', NULL,'CONT','MT','FORA_VAZIO',0.0812);
+ ('2026-01-01', NULL, 'CONT','MT','VAZIO',0.0157), ('2026-01-01', NULL,'CONT','MT','FORA_VAZIO',0.0812)
+ON CONFLICT (valid_from, region, voltage, period) DO NOTHING
 `);
-seed(db);
+
+// Seed — depende do backend ativo.
+if (USE_PG) {
+  const { seed } = await import('./db/seed.postgres.js');
+  await seed();
+} else {
+  const { seed } = await import('./db/seed.js');
+  await seed(dbInstance);
+}
 
 function vmeta(tid) {
   const v = VERSIONS[tid] || {};
@@ -111,36 +124,43 @@ const rateLimited = (res, rl, limit) => json(res, 429, {
 
 const clientIp = (req) => (req.socket && req.socket.remoteAddress) || 'unknown';
 
-function auth(req) {
+async function auth(req) {
   const h = req.headers.authorization || '';
   if (h.startsWith('Bearer ')) return verifyJwt(h.slice(7), SECRET);
   const k = req.headers['x-api-key'];
   if (k) {
     // Valida contra o hash em BD (revogada/expirada exclui). Antes aceitava
     // qualquer string — o endpoint estava, na prática, sem auth de terceiros.
-    const row = db.prepare(`
+    const row = await get(`
       SELECT c.id AS client, c.name AS name, c.kind AS kind, c.rate_limit AS rate_limit
         FROM api_key k JOIN api_client c ON c.id = k.client_id
-       WHERE k.hash = ? AND k.revoked_at IS NULL
-         AND (k.expires_at IS NULL OR k.expires_at > datetime('now'))`).get(hashKey(String(k)));
+       WHERE k.hash = $1 AND k.revoked_at IS NULL
+         AND (k.expires_at IS NULL OR k.expires_at > CURRENT_DATE)`, [hashKey(String(k))]);
     if (!row) return { ok: false, error: 'invalid_key' };
     return { ok: true, payload: { kind: row.kind, client: row.name, key: String(k).slice(0, 8), rate_limit: row.rate_limit } };
   }
   return { ok: false, error: 'missing' };
 }
 
-function allTariffs() {
+async function allTariffs() {
   // POC: simulam-se TODOS os tarifários para a região escolhida (com o IVA
   // e os ciclos dessa região). A disponibilidade comercial (`regions`) é
   // mostrada como informação, não como filtro.
-  return db.prepare(`SELECT t.*, c.name AS ceme_name,
-      (SELECT id FROM tariff_version v WHERE v.tariff_id=t.id AND v.valid_from <= date('now')
-        AND (v.valid_to IS NULL OR v.valid_to > date('now')) ORDER BY v.valid_from DESC LIMIT 1) AS vid
-    FROM tariff t JOIN ceme c ON c.id=t.ceme_id ORDER BY t.id`).all();
+  return await query(`
+    SELECT t.*, c.name AS ceme_name,
+      (SELECT v.id FROM tariff_version v
+       WHERE v.tariff_id = t.id
+         AND v.valid_from <= CURRENT_DATE
+         AND (v.valid_to IS NULL OR v.valid_to > CURRENT_DATE)
+       ORDER BY v.valid_from DESC LIMIT 1) AS vid
+    FROM tariff t
+    JOIN ceme c ON c.id = t.ceme_id
+    ORDER BY t.id
+  `);
 }
 
-function comps(vid) {
-  const rows = db.prepare('SELECT * FROM price_component WHERE tariff_version_id=?').all(vid);
+async function comps(vid) {
+  const rows = await query('SELECT * FROM price_component WHERE tariff_version_id = $1', [vid]);
   let out;
   try { out = pickComponents(rows); }
   catch (e) { throw new Error(`${e.message} na versão ${vid}`); }
@@ -155,16 +175,16 @@ function comps(vid) {
 const EGME_LEGAL = 0.1088; // €/carregamento, Regul. ERSE 7/2026 (em vigor 2026-01-01)
 const egmeFlags = (act) => ({ egme_legal: EGME_LEGAL, activation_stale: act > EGME_LEGAL });
 
-function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
-  const ver = db.prepare('SELECT * FROM tariff_version WHERE id=?').get(t.vid);
-  const { price, act, iec, sup } = comps(t.vid);
+async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
+  const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
+  const { price, act, iec, sup } = await comps(t.vid);
   const meta = {
     id: t.id, ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
     schedule: t.schedule, cycle: t.cycle, green: !!t.green, access: t.access,
     bundle: !!t.bundle, popular: !!t.popular, estimated: /~$/.test(t.name),
     source_url: t.source_url, valid_from: ver?.valid_from || null,
     notes: ver?.notes || null,
-    brand: db.prepare('SELECT brand_color FROM ceme WHERE id=?').get(t.ceme_id)?.brand_color || '#666',
+    brand: (await get('SELECT brand_color FROM ceme WHERE id = $1', [t.ceme_id]))?.brand_color || '#666',
   };
   if (t.kind === 'FIXED') {
     const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region });
@@ -173,7 +193,13 @@ function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   // INDEXED: PE por período com o OMIE de referência do pedido.
   // Nas ilhas usa-se a ref. continental com aviso (MIBEL não cobre as ilhas).
   const here = REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF';
-  const tarFor = (per) => db.prepare("SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage=? AND period=? AND valid_from <= date('now') ORDER BY valid_from DESC LIMIT 1").get(t.voltage, per)?.price_eur_kwh ?? 0;
+  const tarFor = async (per) => {
+    const row = await get(
+      "SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage = $1 AND period = $2 AND valid_from <= CURRENT_DATE ORDER BY valid_from DESC LIMIT 1",
+      [t.voltage, per]
+    );
+    return row?.price_eur_kwh ?? 0;
+  };
   const vm = vmeta(t.id);
   const agg = ver.omie_aggregation || 'SPLIT_VAZIO_FORA';
   const omieForPeriod = (per) => {
@@ -183,7 +209,8 @@ function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   const out = {};
   for (const per of ['VAZIO', 'FORA_VAZIO']) {
     const oref = omieForPeriod(per);
-    out[per] = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tarFor(per), loss: vm.loss, formula: vm.formula }).price;
+    const tarEurKwh = await tarFor(per);
+    out[per] = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: vm.loss, formula: vm.formula }).price;
   }
   const omieRef = (agg === 'SPLIT_VAZIO_FORA') ? (omieVazio ?? omie) : omie;
   // Guarda: indexado com ciclo SIMPLES só tem preço UNICO — o motor só sabe
@@ -208,9 +235,6 @@ function negotiateLang(header) {
   const tags = String(header).split(',')
     .map(s => { const [tag, ...params] = s.trim().split(';'); const q = params.find(p => /^\s*q=/.test(p)); return { tag: tag.trim().toLowerCase(), q: q ? parseFloat(q.split('=')[1]) || 0 : 1 }; })
     .filter(t => t.tag && t.q > 0).sort((a, b) => b.q - a.q);
-  // Decide o PRIMEIRO tag (o de maior preferência): só passa a inglês se o
-  // browser pedir explicitamente en como primeira escolha. Um "en;q=0.8"
-  // atrás de um "pt;q=0.9" não pode ganhar.
   return tags[0] && tags[0].tag.startsWith('en') ? 'en' : 'pt';
 }
 
@@ -223,13 +247,13 @@ const METHODS = {
 };
 const MAX_BODY = 64 * 1024; // 64 KB — corpos raquíticos; pedir mais é abuso
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   // Web POC sem auth (ficheiro estático); a API continua toda com auth.
   // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
   if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/' || url.pathname === '/index.html')) {
     try {
-      const html = readFileSync(new URL('../../frontend/index.html', import.meta.url), 'utf8')
+      const html = (await readFile(new URL('../../frontend/index.html', import.meta.url), 'utf8'))
         .replace('<html lang="pt-PT">', `<html lang="${negotiateLang(req.headers['accept-language']) === 'en' ? 'en' : 'pt-PT'}">`)
         .replace('window.__LANG__=null', `window.__LANG__=${JSON.stringify(negotiateLang(req.headers['accept-language']))}`);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language' });
@@ -256,7 +280,7 @@ const server = http.createServer((req, res) => {
     const token = signJwt({ kind: 'WEB_SESSION', sid: Math.random().toString(36).slice(2) }, SECRET);
     return json(res, 200, { token, expires_in: 86400 });
   }
-  const a = auth(req);
+  const a = await auth(req);
   if (!a.ok) return json(res, 401, { error: { code: 'unauthorized', message: 'falta Authorization (Bearer ou X-API-Key)' } });
 
   // Rate limit depois da auth (401 não dá orçamento). Por IP para a sessão
@@ -268,12 +292,14 @@ const server = http.createServer((req, res) => {
   if (!rl.allowed) return rateLimited(res, rl, rlLimit);
 
   if (url.pathname === '/v1/health') return json(res, 200, { ok: true, as: a.payload.kind, time: new Date().toISOString() }, headers);
-  if (url.pathname === '/v1/cemes') return json(res, 200, { data: db.prepare('SELECT * FROM ceme ORDER BY name').all() }, headers);
+  if (url.pathname === '/v1/cemes') return json(res, 200, { data: await query('SELECT * FROM ceme ORDER BY name') }, headers);
   if (url.pathname === '/v1/tariffs') {
-    return json(res, 200, { data: allTariffs().map(t => ({ ...t, version: db.prepare('SELECT * FROM tariff_version WHERE id=?').get(t.vid) })) }, headers);
+    const rows = await allTariffs();
+    const enriched = await Promise.all(rows.map(async t => ({ ...t, version: await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]) })));
+    return json(res, 200, { data: enriched });
   }
   if (url.pathname === '/v1/tar') {
-    return json(res, 200, { data: db.prepare("SELECT * FROM tar WHERE valid_from <= date('now') AND (valid_to IS NULL OR valid_to > date('now'))").all() }, headers);
+    return json(res, 200, { data: await query("SELECT * FROM tar WHERE valid_from <= CURRENT_DATE AND (valid_to IS NULL OR valid_to > CURRENT_DATE)") }, headers);
   }
   if (url.pathname === '/v1/omie/daily' && req.method === 'GET') {
     const days = Math.min(120, Math.max(7, Number(url.searchParams.get('days') || 60)));
@@ -291,28 +317,33 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/v1/indexed/quarters' && req.method === 'GET') {
     const tid = url.searchParams.get('tariff'), region = url.searchParams.get('region') || 'CONT';
     if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } }, headers);
-    const t = db.prepare('SELECT * FROM tariff WHERE id=?').all(tid || '').find(x => x.kind === 'INDEXED')
-      || db.prepare("SELECT * FROM tariff WHERE kind='INDEXED' ORDER BY id LIMIT 1").get();
-    if (!t) return json(res, 404, { error: { code: 'no_indexed', message: 'sem tarifário indexado' } });
-    const ver = db.prepare('SELECT * FROM tariff_version WHERE tariff_id=? ORDER BY valid_from DESC LIMIT 1').get(t.id);
+    const t = (await query('SELECT * FROM tariff WHERE id = $1', [tid || ''])).find(x => x.kind === 'INDEXED')
+      || (await query("SELECT * FROM tariff WHERE kind = 'INDEXED' ORDER BY id LIMIT 1"))[0];
+    if (!t) return json(res, 404, { error: { code: 'no_indexed', message: 'sem tarifário indexado' } }, headers);
+    const ver = await get('SELECT * FROM tariff_version WHERE tariff_id = $1 ORDER BY valid_from DESC LIMIT 1', [t.id]);
 
     // Fixo de referencia: o que o cliente escolheu no comparador. Sem ele nao
     // ha com quem comparar — o endpoint so sabe quanto o INDEXADO custa.
     const fixId = url.searchParams.get('fixed');
     let fixPrice = null, fixInfo = null;
     if (fixId) {
-      const ft = db.prepare('SELECT * FROM tariff WHERE id=?').get(fixId);
-      const fv = ft && db.prepare(`SELECT id FROM tariff_version v WHERE v.tariff_id=?
-        AND v.valid_from <= date('now') AND (v.valid_to IS NULL OR v.valid_to > date('now'))
-        ORDER BY v.valid_from DESC LIMIT 1`).get(ft.id);
-      const fp = fv ? comps(fv.id).price : null;
-      // Fixo sem preços de energia (ex. só EGME) não dá comparação: fica
-      // null — a UI trata como "sem fixo" e esconde colunas, em vez de
-      // mostrar uma referência vazia com nome.
-      if (fp && Object.keys(fp).length) {
-        fixPrice = fp;
-        const fc = db.prepare('SELECT name FROM ceme WHERE id=?').get(ft.ceme_id);
-        fixInfo = { id: ft.id, name: ft.name, ceme: fc?.name || ft.ceme_id, voltage: ft.voltage, schedule: ft.schedule };
+      const ft = await get('SELECT * FROM tariff WHERE id = $1', [fixId]);
+      if (ft) {
+        const fv = await get(
+          `SELECT id FROM tariff_version v WHERE v.tariff_id = $1
+           AND v.valid_from <= CURRENT_DATE AND (v.valid_to IS NULL OR v.valid_to > CURRENT_DATE)
+           ORDER BY valid_from DESC LIMIT 1`,
+          [ft.id]
+        );
+        // Fixo sem versão em vigor, ou sem preços de energia (ex. só EGME),
+        // não dá comparação: fica null — a UI trata como "sem fixo" e esconde
+        // colunas, em vez de mostrar uma referência vazia com nome.
+        const fp = fv ? (await comps(fv.id)).price : null;
+        if (fp && Object.keys(fp).length) {
+          fixPrice = fp;
+          const fc = await get('SELECT name FROM ceme WHERE id = $1', [ft.ceme_id]);
+          fixInfo = { id: ft.id, name: ft.name, ceme: fc?.name || ft.ceme_id, voltage: ft.voltage, schedule: ft.schedule };
+        }
       }
     }
 
@@ -321,21 +352,33 @@ const server = http.createServer((req, res) => {
         const withP = q.rows.map(r => {
           const [sh, sm] = r.start.split(':').map(Number);
           const per = periodForWall({ region, schedule: t.schedule, cycle: t.cycle, ymd: q.date, minutes: sh * 60 + sm });
-          // TAR vigente (valid_from <= hoje): a coluna pode levar versões futuras
-          const tar = db.prepare("SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage=? AND period=? AND (valid_from IS NULL OR valid_from <= date('now')) ORDER BY valid_from DESC LIMIT 1").get(t.voltage, per)?.price_eur_kwh ?? 0;
-          const vm = vmeta(t.id);
-          const { price } = indexedPrice({ omieEurKwh: r.priceMwh/1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tar, loss: vm.loss, formula: vm.formula });
-          return { start: r.start, end: r.end, period: per, omieMwh: r.priceMwh, price: Math.round(price * 10000) / 10000 };
+          return { start: r.start, end: r.end, period: per, omieMwh: r.priceMwh };
         });
-        // quem ganha, quarto a quarto — logica em engine/compare.js
-        const comp = compareWithFixed(withP, fixPrice);
-        const ranked = [...comp].sort((x, y) => x.price - y.price);
-        const cheap = new Set(ranked.slice(0, 8).map(x => x.start));
-        const vm2 = vmeta(t.id);
-        json(res, 200, { date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], cached: q.cached, source: q.source, cutoff: q.cutoff, estimated: q.estimated, days: q.days, fixed: fixInfo,
-          warning: REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF',
-          wins: tallyWinners(comp),
-          quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) })) }, headers);
+        Promise.all(withP.map(async (item) => {
+          // TAR vigente (valid_from <= hoje): a coluna pode levar versões futuras
+          const tarRow = await get(
+            "SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage = $1 AND period = $2 AND (valid_from IS NULL OR valid_from <= CURRENT_DATE) ORDER BY valid_from DESC LIMIT 1",
+            [t.voltage, item.period]
+          );
+          const tarEurKwh = tarRow?.price_eur_kwh ?? 0;
+          const vm = vmeta(t.id);
+          const { price } = indexedPrice({ omieEurKwh: item.omieMwh / 1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: vm.loss, formula: vm.formula });
+          item.price = Math.round(price * 10000) / 10000;
+        })).then(() => {
+          // quem ganha, quarto a quarto — logica em engine/compare.js
+          const comp = compareWithFixed(withP, fixPrice);
+          const ranked = [...comp].sort((x, y) => x.price - y.price);
+          const cheap = new Set(ranked.slice(0, 8).map(x => x.start));
+          const vm2 = vmeta(t.id);
+          json(res, 200, {
+            date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh,
+            loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], cached: q.cached, source: q.source, cutoff: q.cutoff,
+            estimated: q.estimated, days: q.days, fixed: fixInfo,
+            warning: REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF',
+            wins: tallyWinners(comp),
+            quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) }))
+          }, headers);
+        }).catch(e => json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers));
       } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }
     };
     getQuarters(DATA_DIR, url.searchParams.get('date')).then(finish, e => json(res, 502, { error: { code: 'omie_unavailable', message: e.message } }, headers));
@@ -347,14 +390,11 @@ const server = http.createServer((req, res) => {
       // Cap de 64 KB: sem isto um POST de 48 MB crescia a String e rebentava
       // no JSON.parse — memória à solta em cada conexão. O cap guarda a
       // decisão para o `end` (linha em branco, sem parse) e responde 413.
-      // O que o cap NÃO faz: cortar a transferência — em modo flowing a
-      // stream é consumida na mesma (largura de banda intacta). Parar à
-      // bruta seria req.destroy(): reset de ligação, sem o 413.
       if (tooBig) return;                       // já decidido: não voltar a encher o buffer
       if (body.length + c.length > MAX_BODY) { tooBig = true; body = ''; return; }
       body += c;
     });
-    req.on('end', () => {
+    req.on('end', async () => {
       if (tooBig) return json(res, 413, { error: { code: 'payload_too_large', message: `corpo > ${MAX_BODY} bytes` } }, headers);
       try {
         // Corpo de terceiros/anónimos é input hostil: JSON malformado, kwh
@@ -381,18 +421,22 @@ const server = http.createServer((req, res) => {
             return json(res, 400, { error: { code: 'bad_omie', message: `${nome} deve ser um número (€/kWh) positivo` } }, headers);
           }
         }
+        const tariffs = await allTariffs();
         // Isolamento por tarifário: um seed com um único período divergente
         // não pode derrubar os 128 — quarentena em vez de 400 (princípio do
         // docs/03). O tarifário a mais sai fora do ranking; a lista mantém
         // os restantes.
-        const data = allTariffs().map(t => {
+        const data = [];
+        for (const t of tariffs) {
           try {
-            return quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora });
+            const q = await quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora });
+            data.push(q);
           } catch (e) {
             // com identidade, para quem lê os logs/BD saber o que foi posto de lado
-            return { id: t.id, ceme: t.ceme_name, name: t.name, skipped: true, error: e.message };
+            console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
           }
-        }).filter(q => !q.skipped).sort((x, y) => x.totalEur - y.totalEur);
+        }
+        data.sort((x, y) => x.totalEur - y.totalEur);
         const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
         json(res, 200, { at: now.toISOString(), kwh, region, omieRef: omie, avg: Math.round(avg * 100) / 100, data }, headers);
       } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }
@@ -410,4 +454,4 @@ server.on('error', (e) => {
   }
   console.error('[ceme-v2] erro no servidor:', e);
 });
-server.listen(PORT, () => console.log(`ceme-v2 POC http://localhost:${PORT}/ db=${DB_PATH}`));
+server.listen(PORT, () => console.log(`ceme-v2 POC http://localhost:${PORT}/ db=${USE_PG ? 'postgresql' : 'sqlite'}`));

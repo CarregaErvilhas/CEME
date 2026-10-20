@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Serializa runs por branch: dois pushes em sequência nunca correm
+# `zcli push` em paralelo (dois uploads ao mesmo serviço à vez = corrida).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          # 24 = o que o zerops.yml suporta (nodejs@24); testar em 26
+          # daria um verde que a produção não reproduz.
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run tests
+        working-directory: backend
+        run: npm test
+
+  deploy:
+    # Só em push direto para main (PRs nunca fazem deploy) e só com os
+    # testes verdes — um workflow só garante `needs:`; dois workflows
+    # separados disparavam o deploy em paralelo com os testes.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      # Sem TTY no runner: desliga spinners/prompts que travariam o zcli.
+      ZEROPS_CLI_TERMINAL_MODE: disabled
+      # ID do projeto CEME (não é segredo; ver `zcli project list`).
+      ZEROPS_PROJECT_ID: 9n1HBsuHT72ZgP2XkXXAIA
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install zcli
+        run: curl -fsSL https://zerops.io/zcli/install.sh | sh
+
+      - name: Authenticate with Zerops
+        # `zcli login` aceita o token como argumento posicional (não há
+        # flag --token). Token criado em Zerops GUI → settings/token-management.
+        run: zcli login "$ZEROPS_API_TOKEN"
+        env:
+          ZEROPS_API_TOKEN: ${{ secrets.ZEROPS_API_TOKEN }}
+
+      - name: Deploy to production
+        # `api` = hostname do serviço (o projeto tem também os managed
+        # db/cache, por isso o serviço tem de ser explícito); `--setup`
+        # escolhe a entrada do zerops.yml. `-w clean` sobe só o HEAD do
+        # commit — nunca node_modules ou outros untracked.
+        run: |
+          zcli push api --setup api \
+            --project-id "$ZEROPS_PROJECT_ID" \
+            --workspace-state clean \
+            --version-name "$GITHUB_SHA"

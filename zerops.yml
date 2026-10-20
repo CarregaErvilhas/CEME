@@ -1,0 +1,47 @@
+# CEME v2 no Zerops — configuração do serviço runtime da API.
+#
+# É um `zerops.yml` (runtime apenas): os serviços managed — PostgreSQL 18 e
+# Valkey 7.2 (única versão disponível) — NÃO se declaram aqui; criam-se na
+# consola ou por import YAML com os hostnames `db` e `cache`:
+#
+#   services:
+#     - hostname: db
+#       type: postgresql:single@18      # ou postgresql:ha@18
+#       profile: oltp-staging
+#     - hostname: cache
+#       type: valkey:ha@7.2
+#       profile: staging
+#
+# e é deles que este serviço puxa as variáveis
+# variáveis por referência `${hostname_variavel}`.
+#
+# JWT_SECRET: definir como env secret no serviço `api` (GUI ou
+# `zcli service env add`); nunca no repositório.
+#
+# Deploy: `zcli push api --setup api` na raiz do repo.
+zerops:
+  - setup: api
+    build:
+      base: nodejs@24
+      buildCommands:
+        - cd backend && npm install
+      cache: backend/node_modules
+      deployFiles:
+        - backend
+        - frontend
+    run:
+      base: nodejs@24
+      start: cd backend && npm start
+      ports:
+        - port: 3001
+          httpSupport: true
+      envVariables:
+        PORT: 3001
+        NODE_ENV: production
+        # Referência às variáveis de sistema do serviço managed `db` — o pg
+        # gera connectionString, hostname, user, password e port
+        # automaticamente (ref: docs.zerops.io/features/env-variables).
+        DATABASE_URL: ${db_connectionString}
+        OMIE_URL: https://www.omie.es/sites/default/files/dados/NUEVA_SECCION/INT_PBC_EV_H_ACUM.TXT
+        TIAGO_OMIE_CSV: https://dados.tiagofelicia.pt/data/omie/omie_dados_atuais.csv
+        CACHE_TTL_HOURS: 6
