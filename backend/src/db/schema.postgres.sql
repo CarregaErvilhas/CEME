@@ -25,10 +25,14 @@ CREATE TABLE IF NOT EXISTS tariff (
 CREATE TABLE IF NOT EXISTS tariff_version (
   id SERIAL PRIMARY KEY, tariff_id TEXT NOT NULL REFERENCES tariff(id),
   valid_from DATE NOT NULL, valid_to DATE, campaign INTEGER DEFAULT 0,
-  status TEXT DEFAULT 'ACTIVE', origin TEXT,
+  status TEXT DEFAULT 'DRAFT', origin TEXT,
   k_index_eur_mwh REAL, cgs_eur_mwh REAL,
   omie_aggregation TEXT DEFAULT 'SPLIT_VAZIO_FORA',
-  notes TEXT, created_by TEXT, created_at TIMESTAMP DEFAULT now()
+  notes TEXT, created_by TEXT, created_at TIMESTAMP DEFAULT now(),
+  -- Uma versão por data de vigência: garante o alvo do
+  -- `ON CONFLICT (tariff_id, valid_from)` do seed idempotente
+  -- (à paridade do mesmo alvo no seed postgres).
+  UNIQUE (tariff_id, valid_from)
 );
 
 CREATE TABLE IF NOT EXISTS price_component (
