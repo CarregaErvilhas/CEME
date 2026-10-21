@@ -27,19 +27,6 @@ services:
       minDisk: 1
       maxDisk: 5
 
-  - hostname: cache
-    type: valkey@7.2
-    priority: 20
-    # Mesmo motivo: o perfil `staging` traz 8 CPU / 48 GB / 250 GB.
-    verticalAutoscaling:
-      cpuMode: SHARED
-      minCpu: 1
-      maxCpu: 1
-      minRam: 0.25
-      maxRam: 0.5
-      minDisk: 1
-      maxDisk: 2
-
   # --- Runtime da API ----------------------------------------------------
   - hostname: api
     type: nodejs@24

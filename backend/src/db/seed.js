@@ -114,7 +114,7 @@ const TARIFFS = [
   ["evio-mt-gochargeby", "evio", "Go.Charge by EVIO", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.1572, 0.0, 0.001, 0, "https://www.gocharge.pt/pt/landing-pages/app/"],
   ["ezu-bt-tarifrioceme", "ezu", "Tarifário CEME", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1766, "FORA_VAZIO": 0.2692}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],
   ["ezu-mt-tarifrioceme", "ezu", "Tarifário CEME", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1657, "FORA_VAZIO": 0.2312}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],
-  ["ezu-bt-abenergia", "ezu", "AB Energia", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1256, "FORA_VAZIO": 0.2182}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],
+  ["ezu-bt-abenergia", "ezu", "AB Energia", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 1, "CONT", {"VAZIO": 0.1256, "FORA_VAZIO": 0.2182}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],
   ["ezu-mt-abenergia", "ezu", "AB Energia", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 1, "CONT", {"VAZIO": 0.1147, "FORA_VAZIO": 0.1802}, 0.1088, 0.0, 0.001, 0, "https://ezu.pt/ceme"],
   ["factorenergia-bt-vecard", "factorenergia", "VECARD", "FIXED", "BT", "BI_HORARIA", "DIARIO", 0, "CARTAO", 0, 1, "CONT", {"VAZIO": 0.19, "FORA_VAZIO": 0.295}, 0.1088, 0.0, 0.001, 0, "https://factorenergia.pt/servicos/cartao-mobilidade-eletrica/"],
   ["factorenergia-mt-vecard", "factorenergia", "VECARD", "FIXED", "MT", "BI_HORARIA", "DIARIO", 0, "CARTAO", 0, 1, "CONT", {"VAZIO": 0.19, "FORA_VAZIO": 0.295}, 0.1088, 0.0, 0.001, 0, "https://factorenergia.pt/servicos/cartao-mobilidade-eletrica/"],
