@@ -466,6 +466,7 @@
         footData: 'Dados de {src}. Actualização horária; último dado: {d}.',
         noteStale: 'A actualizar em segundo plano — estes ainda são os dados de {d}.',
         err: 'Não foi possível ir buscar as estatísticas OMIE: {m}',
+        cvdToggle: 'Cores para daltonismo',
       },
       en: {
         docTitle: 'OMIE statistics',
@@ -490,6 +491,7 @@
         footData: 'Data from {src}. Refreshed hourly; last data point: {d}.',
         noteStale: 'Refreshing in the background — these are still the {d} data.',
         err: 'Could not fetch the OMIE statistics: {m}',
+        cvdToggle: 'Colour-blind friendly colours',
       },
     },
   };
