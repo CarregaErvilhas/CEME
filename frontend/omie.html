@@ -104,15 +104,6 @@ table.tb tr.total td { font-weight: 700; }
 </style>
 </head>
 <body>
-<header class="top"><div class="wrap">
-  <a class="logo" href="/" id="logoLink"><span class="mark">⚡</span><span class="ttl" id="logoTxt"></span></a>
-  <nav>
-    <a href="/simulador" id="nSim"></a>
-    <a href="/assistente" id="nAssistant"></a>
-    <a href="/sobre" id="nSobre"></a>
-    <a href="/contactos" id="nContactos"></a>
-  </nav>
-</div></header>
 <main class="grid">
   <aside class="cards" id="cards"></aside>
   <section class="tables">
@@ -285,15 +276,6 @@ function drawMonthly(d) {
 function draw(d) {
   document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
   document.title = t('docTitle');
-  document.getElementById('logoTxt').innerHTML = t('logoA') + ' <b class="lg2">' + t('logoB') + '</b>';
-  // No domínio próprio a raiz é esta página — o logo tem de levar ao site
-  // principal, senão seria um loop.
-  const own = location.hostname === 'omie.cocofree.dev';
-  document.getElementById('logoLink').href = own ? 'https://ceme-beta.ocarroeletrico.com/' : '/';
-  document.getElementById('nSim').textContent = t('navSim');
-  document.getElementById('nAssistant').textContent = t('navAssistant');
-  document.getElementById('nSobre').textContent = t('navSobre');
-  document.getElementById('nContactos').textContent = t('navContactos');
   document.getElementById('capAnnual').textContent = t('capAnnual');
   document.getElementById('capMonthly').textContent = t('capMonthly');
   drawCards(d);
