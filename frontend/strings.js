@@ -1,11 +1,11 @@
-/* Dicionário das duas interfaces do CEME.
+/* Dicionário do CEME.
  *
- * As duas páginas (assistente e simulador completo) partilham este ficheiro
- * para os textos não divergirem: o mesmo conceito tem uma chave só, e a
- * tradução faz-se uma vez. Cada HTML pede o seu namespace com `CEME_STR(ns)`,
- * que junta `common` + as chaves da página — os nomes das páginas nunca se
- * cruzam, e um teste garante que nenhuma chave se repete entre `common` e um
- * namespace.
+ * As quatro páginas (assistente, simulador completo, Sobre e Contactos)
+ * partilham este ficheiro para os textos não divergirem: o mesmo conceito
+ * tem uma chave só, e a tradução faz-se uma vez. Cada HTML pede o seu
+ * namespace com `CEME_STR(ns)`, que junta `common` + as chaves da página — os
+ * nomes das páginas nunca se cruzam, e um teste garante que nenhuma chave se
+ * repete entre `common` e um namespace.
  *
  * Regras: PT e EN têm exactamente as mesmas chaves e os mesmos placeholders
  * (`{n}`, `{v}`, …); nada de valores duplicados em dois sítios — se duas
@@ -24,19 +24,31 @@
   };
 
   // Vocabulário partilhado: filtros e etiquetas dos tarifários, que as duas
-  // interfaces mostram com o mesmo sentido e o mesmo texto.
+  // interfaces mostram com o mesmo sentido e o mesmo texto. E também o
+  // chrome das quatro páginas (logo e navegação) — se duas páginas dizem o
+  // mesmo, a chave vive aqui.
   const common = {
     pt: {
       fPopular: '★ populares', tagPopular: 'popular',
       fGreen: '⚡ verde', tagGreen: 'verde',
       fNoBundle: 'sem condições', tagBundle: 'com condições',
       retry: 'Tentar outra vez', now: 'Agora', kwhIn: 'Energia a carregar',
+      // chrome partilhado por todas as páginas
+      logoA: 'Comparador CEME', logoB: '@ O Carro Elétrico',
+      navSim: 'Simulador', navAssistant: 'Assistente',
+      navSobre: 'Sobre', navContactos: 'Contactos',
+      footNote: 'Ferramenta comunitária, sem fins lucrativos.',
     },
     en: {
       fPopular: '★ popular', tagPopular: 'popular',
       fGreen: '⚡ green', tagGreen: 'green',
       fNoBundle: 'no conditions', tagBundle: 'conditional',
       retry: 'Try again', now: 'Now', kwhIn: 'Energy to charge',
+      // chrome partilhado por todas as páginas
+      logoA: 'EV Tariff Comparison', logoB: '@ O Carro Elétrico',
+      navSim: 'Simulator', navAssistant: 'Assistant',
+      navSobre: 'About', navContactos: 'Contact',
+      footNote: 'A community tool, non-profit.',
     },
   };
 
@@ -47,8 +59,7 @@
     simulador: {
       pt: {
         docTitle: 'Comparador CEME @ O Carro Elétrico',
-        logoA: 'Comparador CEME', logoB: '@ O Carro Elétrico',
-        navHome: 'Simular', navCmp: 'Indexado vs fixo', navSimple: 'Assistente',
+        navHome: 'Simular', navCmp: 'Indexado vs fixo',
         // hero
         h1a: 'Quanto custa ', h1b: 'carregar agora?',
         scopeHint: '⚠️ Simula só a <b>parcela de energia</b> (CEME + IEC + IVA + EGME). <u>Não inclui a tarifa de utilização do posto (OPC)</u>.',
@@ -144,8 +155,7 @@
       },
       en: {
         docTitle: 'EV Tariff Comparison @ O Carro Elétrico',
-        logoA: 'EV Tariff Comparison', logoB: '@ O Carro Elétrico',
-        navHome: 'Simulation', navCmp: 'Indexed to OMIE vs fixed', navSimple: 'Assistant',
+        navHome: 'Simulation', navCmp: 'Indexed to OMIE vs fixed',
         // hero
         h1a: 'How much does it cost ', h1b: 'to charge right now?',
         scopeHint: '⚠️ Only the <b>energy component</b> is calculated here (CEME + IEC + VAT + EGME). <u>The charging point operator tariff is not included</u>.',
@@ -290,10 +300,138 @@
         err: 'Could not calculate. Check your internet connection.',
       },
     },
+    // Página "Sobre" (frontend/about.html): a história do projecto, o que
+    // faz, e porque é que é útil também a quem tem um ponto de carregamento.
+    about: {
+      pt: {
+        docTitle: 'Sobre o Comparador CEME',
+        h1: 'Porque é que isto existe',
+        lede: 'De onde veio o Comparador CEME, o que ele faz por ti, e porque é que também pode ser útil a quem tem um ponto de carregamento em casa ou na empresa.',
+        // 1 — a história
+        s1h: 'Tudo começou com uma folha de cálculo',
+        s1p1: 'O meu primeiro carregamento custou o que custam todos — mas o preço nunca é um só número. Depende do comercializador de energia (o CEME) que subscrevi, da hora a que carrego, do posto onde carrego e de um punhado de parcelas que ninguém explica em português claro. Por isso, depois de comprar o primeiro carro eléctrico, a pergunta foi inevitável: <i>isto vai custar-me quanto?</i>',
+        s1p2: 'A resposta apareceu numa folha de cálculo do Google que eu fiz: as ofertas de mobilidade eléctrica do simulador da ERSE, todas numa grelha, para eu ver de uma vez o que cada comercializador me estava a cobrar. Foi aí que entrou o <a href="https://twitter.com/ofelgueiras2" target="_blank" rel="noopener">@ofelgueiras2</a> — a inspiração, e a ajuda a validar os dados — e este projecto continua a lhe dever esse agradecimento. A folha funcionava, mas tinha os limites de uma folha: um retrato fixo dos preços, o OMIE escrito à mão, o cálculo enterrado em fórmulas, e nada que se pudesse partilhar, corrigir ou testar.',
+        s1p3: 'O Comparador CEME é a mesma ideia, feita a sério: os mesmos dados, mas numa base de dados versionada, com um motor de cálculo que tem testes, uma API e um site que se abre no telemóvel. A diferença entre uma folha que se parte ao fim de uns meses e um site em que se pode confiar.',
+        // 2 — porquê que é difícil comparar
+        s2h: 'Porque é que comparar um carregamento é tão difícil',
+        s2li1: '<b>O preço são várias parcelas.</b> O CEME vende-te a energia, o operador do posto (OPC) cobra pela utilização do posto, a Mobi.E cobra a EGME e o Estado põe o IEC e o IVA. A <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">Mobi.E explica a estrutura melhor do que nós</a>, mas a ideia é esta: o preço de um tarifário nunca é a factura final.',
+        s2li2: '<b>Cada CEME põe as suas condições.</b> Um preço «com condições» pressupõe outra relação com o comercializador — um contrato de electricidade doméstica, uma subscrição, uma associação, ser colaborador. Lado a lado na mesma tabela parecem iguais, e não são.',
+        s2li3: '<b>O preço muda de hora para hora.</b> Num tarifário indexado ao OMIE, o mesmo kWh pode custar o dobro à hora de ponta — e o OMIE muda todos os dias.',
+        // 3 — o que o simulador faz
+        s3h: 'O que o Comparador faz por ti',
+        s3li1: '<b>Dizes o posto, a energia e a hora.</b> A região (Continente, Madeira ou Açores), a tensão (BT ou MT), os kWh — ou a percentagem da bateria — e o momento do carregamento.',
+        s3li2: '<b>Recebes os tarifários de todos os CEMEs, ordenados por preço</b> para esse posto e nesse momento, com a composição à vista: tarifário do CEME, TAR, IEC, IVA e EGME.',
+        s3li3: '<b>Comparas um indexado com um fixo — olhando para a frente.</b> O valor do dia seguinte já é conhecido: o comparador mostra os próximos dias (com a estimativa OMIP assinalada) para veres as horas mais baratas e agendares o carregamento para lá. E há um bónus: as horas mais baratas costumam ser também as horas em que há mais energia renovável — ou seja, uma menor pegada de CO2. Os 60 dias de histórico ficam para calibrar a escolha.',
+        s3li4: '<b>Guardas só o que te interessa.</b> Os favoritos ficam no teu browser — sem conta, sem tracking, sem anúncios.',
+        // 4 — DPC
+        s4h: 'Serve também a quem tem um ponto de carregamento',
+        s4p1: 'Um <b>Detentor de Ponto de Carregamento (DPC)</b> é o titular de um ponto de carregamento num espaço privado — em casa, num condomínio, na empresa. No regime antigo, estar ligado à rede Mobi.E era a condição para ser DPC; com o novo regime da mobilidade eléctrica a integração deixou de ser obrigatória, mas quem se liga continua a ter as vantagens — os apoios do Fundo Ambiental, o cartão e a app da rede, a separação dos consumos. A <a href="https://www.mobie.pt/instalar-postos/detentores-de-pontos-de-carregamento" target="_blank" rel="noopener">Mobi.E explica o papel dos DPC</a> em detalhe; em duas linhas: o DPC é o dono do posto, e a energia que lá carrega é paga por quem carrega, através do CEME dele.',
+        s4p2: 'Para um DPC isto é especialmente útil, por uma razão simples: <b>no teu ponto não há OPC</b>. Não há taxa de utilização do posto — a energia é praticamente toda a factura. Logo, comparar os CEMEs aqui é comparar quase a totalidade do custo, sem o ruído.',
+        s4li1: '<b>Saber quanto custa um carregamento nocturno típico</b> — dos 20% aos 80% numa bateria de 60 kWh — em todos os CEMEs, para poderes informar quem carrega no teu posto.',
+        s4li2: '<b>Decidir se compensa um indexado ou um fixo</b> para os dias que vêm — e marcar o carregamento nas horas mais baratas, em vez de adivinhar a partir do passado.',
+        s4li3: '<b>Acompanhar a subida da TAR.</b> A tarifa de acesso às redes muda todos os anos por decisão da ERSE, e o simulador recalcula os preços com o valor em vigor.',
+        // 5 — dados
+        s5h: 'De onde vêm os números',
+        s5p1: 'Os tarifários vêm da <a href="https://www.erse.pt/simuladores/mobilidade-eletrica/lista-de-ofertas-comerciais-de-mobilidade-eletrica/" target="_blank" rel="noopener">lista de ofertas comerciais de mobilidade eléctrica do simulador da ERSE</a>. Os preços de mercado (OMIE) vêm do OMIE/MIBEL, em séries diárias e de quarto de hora, publicados pelo <a href="https://dados.tiagofelicia.pt" target="_blank" rel="noopener">Tiago Felicia</a>. Cada tarifário mostra a data de captura dos dados e um link para a página do CEME, para ires confirmar.',
+        s5p2: 'O código é aberto e a licença é não-comercial: <a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">no GitHub</a>, sob PolyForm Noncommercial 1.0.0.',
+        // agradecimentos
+        s8h: 'Agradecimentos',
+        s8p1: 'Este projecto é de todos, mas há duas pessoas a quem se deve mais do que uma linha de agradecimento. Ao <a href="https://dados.tiagofelicia.pt" target="_blank" rel="noopener">Tiago Felicia</a>, pelos dados: as séries do OMIE/MIBEL — diárias, de quartos-horários e os futuros — que alimentam o comparador. E ao <b>Miguel Simões</b>, pela inspiração, pelos dados e pelas discussões: o que está aqui saiu de muitas conversas — e das boas.',
+        // 6 — limites
+        s6h: 'O que este projecto não é',
+        s6li1: 'Não é um comercializador de energia. É uma ferramenta da comunidade, sem fins lucrativos: não vendemos nada, não há anúncios, e os teus favoritos não saem do teu browser.',
+        s6li2: 'Não calcula a tarifa de utilização do posto (OPC) — cada operador publica a sua, no próprio posto.',
+        s6li3: 'Não substitui o CEME nem a ERSE. Em caso de dúvida, o valor que vale é o do teu comercializador.',
+        // 7 — erros
+        s7h: 'Encontraste um erro?',
+        s7p1: 'Conta-nos. As <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">issues no GitHub</a> são o caminho mais curto para uma correção, e a <a href="/contactos">página de contactos</a> é boa para o resto. Se preferires mostrar como deve ser, a folha de cálculo original está aqui: <a href="https://docs.google.com/spreadsheets/d/1WMaiaShTwp1-QzWXi-SlcB3uTigp5nfYO-v3veCcn84/edit" target="_blank" rel="noopener">a folha</a>.',
+      },
+      en: {
+        docTitle: 'About the EV Tariff Comparison',
+        h1: 'Why this exists',
+        lede: 'Where the CEME comparison came from, what it does for you, and why it can be useful if you run a charging point at home or at work.',
+        s1h: 'It started as a spreadsheet',
+        s1p1: 'My first charging session cost what every other one costs — but the price is never a single number. It depends on the energy retailer (the CEME) I signed up with, on the time I charge, on the point I use, and on a handful of charges nobody explains in plain Portuguese. So, right after buying the first electric car, one question was unavoidable: <i>how much is this going to cost me?</i>',
+        s1p2: 'The answer turned up in a Google spreadsheet I made myself: the electric mobility offers published by the ERSE simulator, all in one grid, so I could see at a glance what each retailer was charging me. That is where <a href="https://twitter.com/ofelgueiras2" target="_blank" rel="noopener">@ofelgueiras2</a> came in — the inspiration, and the help validating the data — and this project still owes him that credit. The sheet worked, but it had the limits of a spreadsheet: a frozen snapshot of the prices, the OMIE price typed in by hand, the calculation buried in formulas, and nothing you could share, fix or test.',
+        s1p3: 'The CEME comparison is the same idea, done properly: the same data, but in a versioned database, with a calculation engine that has tests, an API, and a site that opens on your phone. The difference between a sheet that falls apart after a few months and a site you can rely on.',
+        s2h: 'Why comparing a charging session is so hard',
+        s2li1: '<b>The price is made of several parts.</b> The CEME sells you the energy, the charging point operator (CPO) charges for using the point, Mobi.E charges the EGME network fee, and the state adds the consumption tax and VAT. <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">Mobi.E explains the structure better than we can</a>, but the short version is: the price in a tariff sheet is never your bill.',
+        s2li2: '<b>Every CEME attaches its own conditions.</b> A "conditional price" assumes some other relationship with the retailer — a home electricity contract, a subscription, a membership, employee status. Side by side in the same table they look alike, and they are not.',
+        s2li3: '<b>The price moves with the clock.</b> On a tariff indexed to the OMIE, the same kWh can cost twice as much at peak time — and the OMIE changes every day.',
+        s3h: 'What the comparison does for you',
+        s3li1: '<b>You say where, how much and when.</b> The region (Mainland, Madeira or the Azores), the voltage (LV or MV), the kWh — or the battery percentage — and the moment you charge.',
+        s3li2: '<b>You get every CEME tariff, ranked by price</b> for that point at that moment, with the breakdown on show: the CEME tariff, network access tariffs, consumption tax, VAT and the activation fee.',
+        s3li3: '<b>You compare an indexed tariff with a fixed one — looking forward.</b> The next day’s price is already known: the comparison shows the coming days (with the OMIP estimate flagged as such) so you can see the cheapest hours and schedule your charge there. And there is a bonus to it: the cheapest hours tend to be the hours with the most renewable energy — a smaller carbon footprint. The 60 days of history are there to calibrate the decision.',
+        s3li4: '<b>You keep only what you care about.</b> Saved tariffs stay in your browser — no account, no tracking, no ads.',
+        s4h: 'It also helps the people who own the charging point',
+        s4p1: 'A <b>Charging Point Holder (DPC)</b> is the owner of a charging point in a private space — at home, in a condominium, at the office. Under the old regime, being connected to the Mobi.E network was the condition for being a DPC; under the new electric mobility regime the integration is no longer mandatory, but staying connected keeps the advantages — the environmental fund support, the network card and app, separate metering. <a href="https://www.mobie.pt/instalar-postos/detentores-de-pontos-de-carregamento" target="_blank" rel="noopener">Mobi.E explains the role of the DPCs</a> in more detail; in two lines: the DPC owns the point, and the energy charged there is paid for by whoever plugs in, through their own CEME.',
+        s4p2: 'For a DPC this is especially useful, for one simple reason: <b>there is no CPO fee at your own point</b>. No charge for using the point — the energy is practically the whole bill. So comparing CEMEs here means comparing almost the entire cost, without the noise.',
+        s4li1: '<b>See what a typical overnight charge costs</b> — 20% to 80% of a 60 kWh battery — across every CEME, so you can tell whoever charges at your point.',
+        s4li2: '<b>Decide between an indexed and a fixed tariff</b> for the days ahead — and schedule the charge in the cheapest hours, instead of guessing from the past.',
+        s4li3: '<b>Follow the network access tariff.</b> The regulated access tariff changes every year by decision of the ERSE, and the simulator recalculates with the tariff in force.',
+        s5h: 'Where the numbers come from',
+        s5p1: 'The tariffs come from the <a href="https://www.erse.pt/simuladores/mobilidade-eletrica/lista-de-ofertas-comerciais-de-mobilidade-eletrica/" target="_blank" rel="noopener">ERSE simulator list of electric mobility commercial offers</a>. The market prices (OMIE) come from OMIE/MIBEL, in daily and quarter-hourly series, published by <a href="https://dados.tiagofelicia.pt" target="_blank" rel="noopener">Tiago Felicia</a>. Every tariff shows the date the data was captured and a link to the retailer’s own page, so you can check it.',
+        s5p2: 'The code is open and the licence is non-commercial: <a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">on GitHub</a>, under PolyForm Noncommercial 1.0.0.',
+        s8h: 'Thanks',
+        s8p1: 'This project belongs to everyone, but two people deserve more than a line of credit. To <a href="https://dados.tiagofelicia.pt" target="_blank" rel="noopener">Tiago Felicia</a>, for the data: the OMIE/MIBEL series — daily, quarter-hourly and the futures — that feed the comparison. And to <b>Miguel Simões</b>, for the inspiration, the data and the discussions: what is here came out of a lot of conversations — good ones.',
+        s6h: 'What this project is not',
+        s6li1: 'It is not an energy retailer. It is a community tool, non-profit: we sell nothing, there are no ads, and your saved tariffs never leave your browser.',
+        s6li2: 'It does not calculate the charging point operator tariff (CPO) — each operator publishes their own, at the point itself.',
+        s6li3: 'It does not replace your CEME or the ERSE. If in doubt, the number that counts is the one from your retailer.',
+        s7h: 'Spotted a mistake?',
+        s7p1: 'Tell us. The <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">issues on GitHub</a> are the shortest way to a fix, and the <a href="/contactos">contact page</a> is good for everything else. And if you would rather show us how it should look, the original spreadsheet is here: <a href="https://docs.google.com/spreadsheets/d/1WMaiaShTwp1-QzWXi-SlcB3uTigp5nfYO-v3veCcn84/edit" target="_blank" rel="noopener">the sheet</a>.',
+      },
+    },
+    // Página "Contactos" (frontend/contact.html): onde escrever, como
+    // reportar um problema e onde nos encontrar.
+    contact: {
+      pt: {
+        docTitle: 'Contactos — Comparador CEME',
+        h1: 'Fala connosco',
+        lede: 'Dúvidas, correcções, ideias — tudo é bem-vindo. E se encontraste um erro, ainda melhor.',
+        c1h: 'Encontraste um erro ou tens uma sugestão?',
+        c1p1: 'A forma mais rápida de veres uma coisa corrigida é abrir uma issue: <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">issues do Comparador CEME</a>. Se encontraste um tarifário desatualizado, um erro de cálculo ou uma ideia para o simulador, deixa o relato — e se puderes, junta um link.',
+        c1p2: 'Se preferires escrever por email, usa o endereço abaixo. Se for um caso de tarifário, põe no assunto o CEME e a data.',
+        c2h: 'Email e Messenger',
+        c2li1: 'Email — <a href="mailto:info@ocarroeletrico.com">info@ocarroeletrico.com</a>: é o canal mais fiável, e é o mesmo que usamos para as questões de dados e de licença comercial.',
+        c2li2: 'Messenger — <a href="https://m.me/OCarroEletricoDotCom" target="_blank" rel="noopener">m.me/OCarroEletricoDotCom</a>: a forma mais rápida de falar connosco, se preferires.',
+        c3h: 'Onde nos encontrar',
+        c3li1: '<a href="https://ocarroeletrico.com/" target="_blank" rel="noopener">O Carro Elétrico</a> — o sítio onde isto nasceu: guias de carregamento, a rede e a lista de simuladores.',
+        c3li2: '<a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">Comparador CEME no GitHub</a> — o código, e o histórico de tudo o que foi mudado.',
+        c3li3: '<a href="https://www.mobie.pt/" target="_blank" rel="noopener">Mobi.E</a> — a rede nacional de carregamento e a explicação oficial das parcelas da factura.',
+        c3li4: '<a href="https://www.erse.pt/simuladores/mobilidade-eletrica/lista-de-ofertas-comerciais-de-mobilidade-eletrica/" target="_blank" rel="noopener">Simulador da ERSE</a> — de onde saem as listas de ofertas que alimentam esta ferramenta.',
+        c4h: 'O que vale a pena escrever',
+        c4p1: 'Se o problema é um tarifário, diz o CEME, o nome do tarifário e a data. Se é um erro de cálculo, diz a região, os kWh e a hora a que carregaste — com isso conseguimos reproduzir exactamente o que viste.',
+        c4p2: 'E se for só uma dúvida sobre como isto funciona, o botão «Ver a estrutura oficial» leva-te à explicação da Mobi.E.',
+        c5h: 'Um aviso',
+        c5p1: 'O Comparador CEME é uma ferramenta da comunidade, mantida no tempo livre por pessoas que também carregam o carro na mesma rede que tu. Não é um comercializador de energia, não tem anúncios, e os teus favoritos ficam no teu browser.',
+      },
+      en: {
+        docTitle: 'Contact — EV Tariff Comparison',
+        h1: 'Get in touch',
+        lede: 'Questions, corrections, ideas — all welcome. And if you found a mistake, even better.',
+        c1h: 'Spotted a mistake, or got a suggestion?',
+        c1p1: 'The quickest way to see something fixed is to open an issue: <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">issues on the EV Tariff Comparison</a>. If you found a tariff that is out of date, a calculation error, or an idea for the simulator, leave a report — and if you can, add a link.',
+        c1p2: 'If you would rather write an email, use the address below. If it is about a tariff, put the CEME and the date in the subject.',
+        c2h: 'Email and Messenger',
+        c2li1: 'Email — <a href="mailto:info@ocarroeletrico.com">info@ocarroeletrico.com</a>: the most reliable channel, and the same one we use for data questions and commercial licensing.',
+        c2li2: 'Messenger — <a href="https://m.me/OCarroEletricoDotCom" target="_blank" rel="noopener">m.me/OCarroEletricoDotCom</a>: the quickest way to talk to us, if you prefer.',
+        c3h: 'Where to find us',
+        c3li1: '<a href="https://ocarroeletrico.com/" target="_blank" rel="noopener">O Carro Elétrico</a> — the site where this started: charging guides, the network and the list of simulators.',
+        c3li2: '<a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">EV Tariff Comparison on GitHub</a> — the code, and the history of everything that changed.',
+        c3li3: '<a href="https://www.mobie.pt/" target="_blank" rel="noopener">Mobi.E</a> — the national charging network and the official explanation of the parts of the bill.',
+        c3li4: '<a href="https://www.erse.pt/simuladores/mobilidade-eletrica/lista-de-ofertas-comerciais-de-mobilidade-eletrica/" target="_blank" rel="noopener">ERSE simulator</a> — where the offer lists that feed this tool come from.',
+        c4h: 'What is worth telling us',
+        c4p1: 'If the problem is a tariff, tell us the CEME, the tariff name and the date. If it is a calculation error, tell us the region, the kWh and the time you charged — with that we can reproduce exactly what you saw.',
+        c4p2: 'And if it is just a question about how this works, the "Official breakdown" link in the simulator takes you to the Mobi.E explanation.',
+        c5h: 'One note',
+        c5p1: 'The EV Tariff Comparison is a community tool, kept in spare time by people who also charge their car on the same network as you. It is not an energy retailer, it has no ads, and your saved tariffs stay in your browser.',
+      },
+    },
   };
 
   // Junta `common` ao namespace pedido e devolve { pt, en } plano, que é a
-  // forma que as duas páginas já consomem (`STR[lang][chave]`).
+  // forma que as páginas consomem (`STR[lang][chave]`).
   g.CEME_STR = function (ns) {
     const M = g.CEME_I18N;
     const page = M[ns] || {};

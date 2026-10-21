@@ -19,9 +19,10 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
 - Backend: Node.js 24 — `node:http`, `node:test`, `node:sqlite` (dev) e `pg`
   (única dependência, para PostgreSQL em produção).
-- Frontend: HTML + CSS + JS vanilla (sem build), duas interfaces — o
-  assistente passo-a-passo (`frontend/assistente.html`, a porta de entrada) e
-  o simulador completo (`frontend/index.html`) — bilíngues PT/EN, com um
+- Frontend: HTML + CSS + JS vanilla (sem build), quatro páginas — o
+  assistente passo-a-passo (`frontend/assistente.html`, a porta de entrada), o
+  simulador completo (`frontend/index.html`) e as duas páginas institucionais
+  (`frontend/about.html`, `frontend/contact.html`) — bilíngues PT/EN, com um
   dicionário único (`frontend/strings.js`) e `Accept-Language` no servidor.
 - BD: PostgreSQL 18 em produção (serviço gerido no Zerops) e SQLite local em
   dev/teste. Schema em SQL directo (`backend/src/db/schema.sql` e
@@ -89,6 +90,12 @@ seguem (nunca um 400 vindo de um seed mau).
 - **Sessão:** energia/%/bateria/região/favoritos/data-hora persistidos em localStorage (`ceme:S`, `ceme:favs`).
 - **Potência do ramal (BT/MT):** selector no cartão de energia — afecta apenas a TAR aplicada, não a lista de tarifários. O dedup por `CEME+nome` (`dedupByRamal()`) é partilhado pelo ranking, pelo modal de favoritos e pelo comparador, por isso cada tarifário aparece uma vez em todo o lado.
 - **Pesquisa tolerante:** ignora acentos (`luzigas` → `LUZiGÁS`) e não depende da língua da interface — pesquisa em inglês encontra o tarifário em PT.
+- **Páginas Sobre e Contactos** (`/sobre` e `/contactos`, com os aliases
+  english `/about` e `/contact`): a história do projecto, o que o simulador faz
+  e porque é que é útil também a quem tem um ponto de carregamento (DPC);
+  contactos (email, Messenger) e o GitHub issues para reportar problemas e
+  sugestões. São HTML estático, sem API, com o mesmo dicionário e a mesma
+  negociação de língua das outras páginas.
 
 O ranking mostra **128 tarifários versionados** (55 ofertas distintas em ecrã) /
 24 CEME — seed completo da folha da ERSE, incluindo Atlante, EDP, Galp, 6
@@ -136,7 +143,10 @@ em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
   frontend/
     index.html                # simulador completo (tudo num ficheiro)
     assistente.html           # assistente passo-a-passo (3 perguntas)
-    strings.js                # dicionário PT/EN das duas interfaces
+    about.html                # "Sobre": o projecto, o DPC, de onde vêm os dados
+    contact.html              # "Contactos": email, Messenger, GitHub issues
+    pages.css                 # estilo partilhado por Sobre/Contactos
+    strings.js                # dicionário PT/EN das quatro páginas
   docs/                       # 01-modelo, 02-motor, 03-omie, 04-api-auth,
                               # 05-frontend, 06-roadmap, 07-ilhas, 08-migracao-sqlite-postgres
   scripts/etl-sheets.sh

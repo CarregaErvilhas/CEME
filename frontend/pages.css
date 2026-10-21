@@ -1,0 +1,94 @@
+/* Estilo das páginas institucionais (Sobre, Contactos).
+ *
+ * O simulador (index.html) e o assistente (assistente.html) têm os seus
+ * próprios estilos — são duas interfaces diferentes, com character diferente
+ * e com a sua própria identidade. Estas duas páginas são irmãs: partilham o
+ * mesmo header, o mesmo hero e a mesma tipografia de prosa, por isso partilham
+ * também este ficheiro (servido em /pages.css).
+ */
+:root {
+  color-scheme: light;
+  --ink: #0f172a; --mut: #64748b; --line: #e2e8f0; --bg: #f1f5f9;
+  --acc: #22c55e; --accD: #15803d; --card: #fff; --soft: #f8fafc;
+}
+* { box-sizing: border-box; margin: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--ink); line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accD); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: #166534; }
+
+/* ---------- header ---------- */
+header.top { position: sticky; top: 0; z-index: 30; background: rgba(15, 23, 42, .93); backdrop-filter: blur(10px); color: #fff; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+header .wrap { max-width: 820px; margin: 0 auto; padding: 11px 16px; display: flex; gap: 10px; align-items: center; }
+.logo { font-weight: 800; font-size: 17px; text-decoration: none; color: #fff; display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 auto; }
+.logo .mark { background: linear-gradient(135deg, #4ade80, #22c55e); color: #052e16; width: 27px; height: 27px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; flex: 0 0 auto; }
+.logo .ttl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logo b { font-weight: 800; }
+nav { display: flex; gap: 4px; flex: 0 0 auto; }
+nav a { color: #94a3b8; text-decoration: none; font-size: 13.5px; font-weight: 600; padding: 7px 11px; border-radius: 999px; transition: .15s; white-space: nowrap; }
+nav a:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+nav a.on { background: #22c55e; color: #052e16; font-weight: 800; }
+/* Abaixo desta largura já não há espaço para o sufixo do logo («@ O Carro
+   Elétrico»): fica o nome, sem cortar o texto a meio. */
+@media (max-width:799px) { .logo .lg2 { display: none; } }
+.langs { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
+.langs button { padding: 0; border: 0; background: none; cursor: pointer; line-height: 0; font-size: 0; opacity: .45; transition: opacity .15s; }
+.langs button svg { display: block; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .28); }
+.langs button svg { height: 15px; }
+.langs button[data-lang="pt"] svg { width: 26.25px; }
+.langs button[data-lang="en"] svg { width: 30px; }
+.langs button:hover { opacity: .9; }
+.langs button.on { opacity: 1; }
+.langs button.on svg { box-shadow: 0 0 0 1.5px #fff; }
+
+/* ---------- hero ---------- */
+.hero { background: radial-gradient(1200px 400px at 15% -10%, #1f6f3a 0%, transparent 60%), radial-gradient(900px 300px at 95% 10%, #1e3a8a 0%, transparent 55%), linear-gradient(135deg, #052e16 0%, #0b3b20 45%, #0c2a4a 100%); color: #fff; }
+.hero .in { max-width: 820px; margin: 0 auto; padding: 30px 16px 28px; }
+.hero h1 { font-size: 29px; line-height: 1.15; letter-spacing: -.6px; }
+.hero p { color: #a7f3d0; font-size: 14.5px; margin-top: 9px; max-width: 62ch; }
+
+/* ---------- prosa ---------- */
+main { max-width: 820px; margin: 0 auto; padding: 0 14px 20px; }
+article { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; margin: 14px 0; box-shadow: 0 4px 20px rgba(15, 23, 42, .05); }
+article h2 { font-size: 19px; letter-spacing: -.3px; margin: 0 0 10px; }
+article h2:first-child { margin-bottom: 12px; }
+article p { margin: 10px 0; }
+article p:first-of-type { margin-top: 0; }
+article ul { margin: 8px 0 2px; padding-left: 20px; }
+article li { margin: 9px 0; }
+article b { font-weight: 700; }
+article i { color: #334155; }
+.note { background: #f0fdf4; border-left: 4px solid var(--acc); border-radius: 0 12px 12px 0; padding: 11px 14px; margin: 12px 0; font-size: 14px; }
+.cta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.cta a { display: inline-block; background: var(--acc); color: #052e16; font-weight: 700; font-size: 14px; padding: 9px 16px; border-radius: 11px; text-decoration: none; }
+.cta a:hover { background: #16a34a; color: #052e16; }
+.cta a.sec { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+.cta a.sec:hover { background: var(--soft); }
+
+/* ---------- rodapé ---------- */
+footer { max-width: 820px; margin: 0 auto; padding: 6px 16px 44px; font-size: 12.5px; color: var(--mut); }
+footer a { color: var(--accD); font-weight: 600; }
+footer .sep { color: #cbd5e1; margin: 0 6px; }
+
+@media (max-width: 620px) {
+  .hero .in { padding: 24px 14px 22px; }
+  .hero h1 { font-size: 23px; }
+  .hero p { font-size: 13.5px; }
+  main { padding: 0 10px 16px; }
+  article { padding: 16px 15px; border-radius: 14px; }
+  article h2 { font-size: 17px; }
+  /* Em duas linhas: o logo e as bandeiras em cima, a nav por baixo. Com
+     quatro links a nav não cabia numa linha sem espremer os rótulos — fica
+     numa segunda linha e desliza na horizontal. */
+  header .wrap { flex-wrap: wrap; row-gap: 4px; padding: 8px 12px; }
+  .logo { font-size: 13.5px; gap: 5px; flex: 1 1 auto; }
+  .logo .mark { width: 23px; height: 23px; font-size: 12px; }
+  .langs { margin-left: auto; }
+  nav { order: 3; flex: 1 0 100%; max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  nav::-webkit-scrollbar { display: none; }
+  nav a { font-size: 12.5px; padding: 5px 10px; }
+}

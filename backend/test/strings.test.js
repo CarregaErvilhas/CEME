@@ -1,9 +1,9 @@
-// O dicionário das duas interfaces vive num ficheiro só (frontend/strings.js)
-// e é a única fonte de texto das duas páginas. Este teste é o que impede o
-// divórcio: PT e EN completos e com os mesmos placeholders, nada duplicado
-// entre `common` e uma página, nenhuma chave morta e nenhuma chave usada que
-// não exista (o runtime imprime a chave em vez de rebentar, por isso é aqui
-// que o erro aparece).
+// O dicionário das interfaces e das páginas institucionais vive num ficheiro
+// só (frontend/strings.js) e é a única fonte de texto. Este teste é o que
+// impede o divórcio: PT e EN completos e com os mesmos placeholders, nada
+// duplicado entre `common` e uma página, nenhuma chave morta e nenhuma chave
+// usada que não exista (o runtime imprime a chave em vez de rebentar, por isso
+// é aqui que o erro aparece).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,14 +11,19 @@ import vm from 'node:vm';
 
 const read = (f) => readFileSync(new URL(`../../frontend/${f}`, import.meta.url), 'utf8');
 const STRINGS = read('strings.js');
-const PAGES = { simulador: read('index.html'), assistente: read('assistente.html') };
+const PAGES = {
+  simulador: read('index.html'),
+  assistente: read('assistente.html'),
+  about: read('about.html'),
+  contact: read('contact.html'),
+};
 const LANGS = ['pt', 'en'];
 
 // strings.js é um IIFE sobre `window`; avalia-se num contexto mínimo.
 const sandbox = { window: {} };
 vm.runInNewContext(STRINGS, sandbox, { filename: 'strings.js' });
 const I18N = sandbox.window.CEME_I18N;
-const NS = ['common', 'simulador', 'assistente'];
+const NS = ['common', 'simulador', 'assistente', 'about', 'contact'];
 const chaves = (ns, lang) => Object.keys(I18N[ns][lang]);
 const placeholders = (ns, lang) => new Set(
   Object.values(I18N[ns][lang]).flatMap((v) => String(v).match(/\{\w+\}/g) || []));
@@ -60,7 +65,7 @@ describe('dicionário partilhado (strings.js)', () => {
   // pílula), não conceito partilhado.
   it('nenhuma chave de common é redefinida por uma página', () => {
     for (const l of LANGS) {
-      const dup = chaves('common', l).filter((k) => chaves('simulador', l).includes(k) || chaves('assistente', l).includes(k));
+      const dup = chaves('common', l).filter((k) => NS.slice(1).some((ns) => chaves(ns, l).includes(k)));
       assert.deepEqual(dup, [], `${l}: chaves em common e numa página: ${dup}`);
     }
   });
@@ -107,7 +112,7 @@ describe('dicionário partilhado (strings.js)', () => {
     });
   }
 
-  it('nenhuma chave é declarada sem uso nas duas páginas', () => {
+  it('nenhuma chave é declarada sem uso em nenhuma página', () => {
     const tudo = Object.values(PAGES).join('\n');
     const mortas = [];
     for (const ns of NS) {

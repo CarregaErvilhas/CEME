@@ -154,6 +154,54 @@ describe('server POC: hardening HTTP', () => {
     });
   });
 
+  // Sobre e Contactos: páginas estáticas do site, sem cookie (a escolha do
+  // cookie é só da interface) e com a mesma negociação de língua.
+  describe('páginas institucionais: Sobre e Contactos', () => {
+    const abrir = async (caminho, headers = {}) => {
+      const r = await fetch(`${BASE}${caminho}`, { headers });
+      return { status: r.status, html: await r.text(), cookie: r.headers.get('set-cookie') || '', r };
+    };
+
+    it('/sobre e /about servem a mesma página', async () => {
+      for (const caminho of ['/sobre', '/about']) {
+        const { status, html, cookie } = await abrir(caminho);
+        assert.equal(status, 200, caminho);
+        // O texto vem do dicionário em runtime; no HTML servido verifica-se o
+        // <title> e o namespace pedido.
+        assert.ok(html.includes('<title>Sobre o Comparador CEME</title>'), `${caminho}: título em falta`);
+        assert.ok(html.includes("CEME_STR('about')"), `${caminho}: não pede o namespace certo`);
+        assert.equal(cookie, '', `${caminho}: não deve gravar cookie`);
+      }
+    });
+
+    it('/contactos e /contact servem a mesma página', async () => {
+      for (const caminho of ['/contactos', '/contact']) {
+        const { status, html, cookie } = await abrir(caminho);
+        assert.equal(status, 200, caminho);
+        assert.ok(html.includes('<title>Contactos — Comparador CEME</title>'), `${caminho}: título em falta`);
+        assert.ok(html.includes("CEME_STR('contact')"), `${caminho}: não pede o namespace certo`);
+        assert.equal(cookie, '', `${caminho}: não deve gravar cookie`);
+      }
+    });
+
+    it('a língua negociada é injectada também nestas páginas', async () => {
+      for (const caminho of ['/sobre', '/contactos']) {
+        const { html, r } = await abrir(caminho, { 'accept-language': 'en-GB,en;q=0.9' });
+        assert.ok(html.includes('<html lang="en">'), `${caminho}: <html lang> não negociado`);
+        assert.ok(html.includes('window.__LANG__="en"'), `${caminho}: __LANG__ não injectado`);
+        assert.match(r.headers.get('vary') || '', /Accept-Language/, `${caminho}: falta o Vary`);
+      }
+    });
+
+    it('/pages.css é servido como CSS e sem cache', async () => {
+      const r = await fetch(`${BASE}/pages.css`);
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get('content-type'), /text\/css/);
+      assert.equal(r.headers.get('cache-control'), 'no-store');
+      assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+    });
+  });
+
   it('401 sem auth', async () => {
     assert.equal((await fetch(`${BASE}/v1/cemes`)).status, 401);
   });
