@@ -8,7 +8,7 @@ const FUT_URL = 'https://dados.tiagofelicia.pt/data/omie/futuros_omip.csv';
 const QUARTERS_URL = 'https://dados.tiagofelicia.pt/data/omie/omie_dados_atuais.csv';
 const TTL_MS = 6 * 3600 * 1000;
 
-async function fetchText(url) {
+export async function fetchText(url) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const ctl = new AbortController();

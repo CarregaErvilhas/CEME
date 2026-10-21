@@ -6,6 +6,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -199,6 +200,57 @@ describe('server POC: hardening HTTP', () => {
       assert.match(r.headers.get('content-type'), /text\/css/);
       assert.equal(r.headers.get('cache-control'), 'no-store');
       assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+    });
+  });
+
+  // A página das estatísticas OMIE. Vive em /omie no site principal e é o
+  // que aparece na raiz do domínio próprio (omie.cocofree.dev) — o servidor
+  // decide pelo Host, não pelo path.
+  describe('página OMIE', () => {
+    const abrir = async (caminho, headers = {}) => {
+      const r = await fetch(`${BASE}${caminho}`, { headers });
+      return { status: r.status, html: await r.text(), r };
+    };
+    // O `fetch` não deixa mandar o cabeçalho Host (é forbidden na spec), e o
+    // roteamento por domínio é precisamente sobre o Host — aqui vai-se pelo
+    // node:http, que manda o que se lhe disser.
+    const abrirComHost = (caminho, host) => new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: PORT, path: caminho, method: 'GET', headers: { host } }, (res) => {
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => resolve({ status: res.statusCode, html: body }));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+
+    it('/omie serve a página das estatísticas', async () => {
+      const { status, html } = await abrir('/omie');
+      assert.equal(status, 200);
+      assert.ok(html.includes('<title>Estatísticas OMIE</title>'), 'título em falta');
+      assert.ok(html.includes("CEME_STR('omie')"), 'não pede o namespace certo');
+    });
+
+    it('no domínio próprio, a raiz é a página OMIE', async () => {
+      const { status, html } = await abrirComHost('/', 'omie.cocofree.dev');
+      assert.equal(status, 200);
+      assert.ok(html.includes("CEME_STR('omie')"), 'a raiz do domínio próprio não é a página OMIE');
+    });
+
+    it('no domínio próprio, o resto do site continua a funcionar', async () => {
+      const { status, html } = await abrirComHost('/simulador', 'omie.cocofree.dev');
+      assert.equal(status, 200);
+      assert.ok(html.includes("CEME_STR('simulador')"), '/simulador devia servir o simulador');
+    });
+
+    it('a raiz do site principal continua a ser o assistente', async () => {
+      const { status, html } = await abrirComHost('/', 'ceme-beta.ocarroeletrico.com');
+      assert.equal(status, 200);
+      assert.ok(!html.includes("CEME_STR('omie')"), 'o site principal não deve servir a página OMIE');
+    });
+
+    it('/v1/omie/stats exige auth', async () => {
+      assert.equal((await fetch(`${BASE}/v1/omie/stats`)).status, 401);
     });
   });
 

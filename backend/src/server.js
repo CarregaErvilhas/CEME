@@ -14,6 +14,7 @@ import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { REGIONS, periodForWall } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
 import { getDaily, getFutures, getQuarters } from './omie/cache.js';
+import { getStats } from './omie/stats.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed.postgres.js';
 
@@ -286,6 +287,13 @@ const INFO_ROUTES = {
   '/contactos': 'contact.html', '/contact': 'contact.html',
 };
 
+// Página das estatísticas OMIE (omie.cocofree.dev, e /omie no site
+// principal). É uma página à parte — vive dos dados OMIE e não do motor de
+// simulação — mas partilha o servidor e a API. O domínio próprio aponta
+// para a raiz: quem abre omie.cocofree.dev quer a tabela, não o simulador.
+const OMIE_ROUTES = { '/omie': 'omie.html', '/omie.html': 'omie.html' };
+const OMIE_HOST = 'omie.cocofree.dev';
+
 function readCookie(req, name) {
   const raw = req.headers.cookie;
   if (!raw) return null;
@@ -312,7 +320,8 @@ function uiCookie(req, ui) {
 // dois que aceitam corpo. 405 antes de gastar auth.
 const METHODS = {
   '/v1/health': 'GET', '/v1/cemes': 'GET', '/v1/tariffs': 'GET', '/v1/tar': 'GET',
-  '/v1/omie/daily': 'GET', '/v1/omie/futures': 'GET', '/v1/indexed/quarters': 'GET',
+  '/v1/omie/daily': 'GET', '/v1/omie/futures': 'GET', '/v1/omie/stats': 'GET',
+  '/v1/indexed/quarters': 'GET',
   '/v1/session': 'POST', '/v1/simulate': 'POST',
 };
 const MAX_BODY = 64 * 1024; // 64 KB — corpos raquíticos; pedir mais é abuso
@@ -339,6 +348,21 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
       return res.end(css);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/pages.css em falta' } }); }
+  }
+  // Página OMIE. No domínio próprio (omie.cocofree.dev) é o que aparece na
+  // raiz; no site principal vive em /omie. O servidor até agora só olhava
+  // para o path — com dois domínios a servir a mesma app é o Host que
+  // decide o que é a raiz.
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  const onOmieHost = host === OMIE_HOST;
+  if (readStatic(req.method) && (onOmieHost && url.pathname === '/' || Object.hasOwn(OMIE_ROUTES, url.pathname))) {
+    const file = OMIE_ROUTES[url.pathname] || 'omie.html';
+    try {
+      const html = (await readFile(new URL(`../../frontend/${file}`, import.meta.url), 'utf8'))
+        .replace('<html lang="pt-PT">', '<html lang="pt-PT">');
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      return res.end(html);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${file} em falta` } }); }
   }
   if (readStatic(req.method) && Object.hasOwn(INFO_ROUTES, url.pathname)) {
     // Sobre e Contactos: HTML estático com a mesma negociação de língua das
@@ -423,6 +447,15 @@ const server = http.createServer(async (req, res) => {
     getFutures(DATA_DIR).then(
       d => json(res, 200, d, headers),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `futuros indisponíveis: ${e.message}` } }, headers));
+    return;
+  }
+  if (url.pathname === '/v1/omie/stats' && req.method === 'GET') {
+    // As estatísticas mensais: agregados por mês e por ciclo horário, mais
+    // as células de referência. Cache de 24h no backend — a página é
+    // refrescada uma vez por dia.
+    getStats(DATA_DIR).then(
+      d => json(res, 200, d, headers),
+      e => json(res, 502, { error: { code: 'omie_unavailable', message: `estatísticas indisponíveis: ${e.message}` } }, headers));
     return;
   }
   if (url.pathname === '/v1/indexed/quarters' && req.method === 'GET') {

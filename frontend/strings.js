@@ -38,6 +38,9 @@
       navSim: 'Simulador', navAssistant: 'Assistente',
       navSobre: 'Sobre', navContactos: 'Contactos',
       footNote: 'Ferramenta comunitária, sem fins lucrativos.',
+      // conceito partilhado: a tarifa de preço único (o simulador e a
+      // tabela de estatísticas OMIE precisam do mesmo nome)
+      simple: 'Simples',
     },
     en: {
       fPopular: '★ popular', tagPopular: 'popular',
@@ -49,6 +52,7 @@
       navSim: 'Simulator', navAssistant: 'Assistant',
       navSobre: 'About', navContactos: 'Contact',
       footNote: 'A community tool, non-profit.',
+      simple: 'Simple rate',
     },
   };
 
@@ -93,7 +97,7 @@
         tBrowser: 'A usar hora do browser.', tMode: ' · modo “agora”.',
         ranking: 'Ranking', noRes: 'Sem resultados — ajusta os filtros.',
         // cartões
-        simple: 'Simples', biHourly: 'Bi-horária · {c}', cycDaily: 'ciclo diário',
+        biHourly: 'Bi-horária · {c}', cycDaily: 'ciclo diário',
         cycWeekly: 'ciclo semanal', cycSimple: 'tarifa simples',
         idxOmie: 'Indexado OMIE', fixedPrice: 'Preço fixo', green: '⚡ energia verde',
         acOnly: 'só em AC',
@@ -189,7 +193,7 @@
         tBrowser: 'Using your device clock.', tMode: ' · “now” mode.',
         ranking: 'Ranking', noRes: 'No results — try relaxing the filters.',
         // cartões
-        simple: 'Simple rate', biHourly: 'Two periods · {c}', cycDaily: 'same every day',
+        biHourly: 'Two periods · {c}', cycDaily: 'same every day',
         cycWeekly: 'day and night', cycSimple: 'single rate',
         idxOmie: 'Tracks the OMIE price', fixedPrice: 'Fixed price', green: '⚡ renewable energy',
         acOnly: 'AC only',
@@ -426,6 +430,67 @@
         c4p2: 'And if it is just a question about how this works, the "Official breakdown" link in the simulator takes you to the Mobi.E explanation.',
         c5h: 'One note',
         c5p1: 'The EV Tariff Comparison is a community tool, kept in spare time by people who also charge their car on the same network as you. It is not an energy retailer, it has no ads, and your saved tariffs stay in your browser.',
+      },
+    },
+    // Página "Estatísticas OMIE" (frontend/omie.html): as tabelas mensais
+    // de preços e as células de referência que estavam na folha de cálculo.
+    // Os textos são os da folha ("Vazio", "Cheia", "Total geral") — mudar
+    // de vocabulary aqui seria mudar o que a pessoa reconhece.
+    omie: {
+      pt: {
+        docTitle: 'Estatísticas OMIE',
+        lede: 'Preços do mercado diário (OMIE) agregados por mês e por ciclo horário.',
+        // cartões da esquerda
+        cardNow: 'Valor OMIE à hora actual em Portugal',
+        cardToday: 'Média OMIE de Hoje',
+        cardLast: 'Média OMIE do último dia de mercado',
+        cardTomorrow: 'Média OMIE de Amanhã (até às 23h)',
+        cardLast30: 'Média OMIE dos últimos 30 dias',
+        cardForecast: 'Previsão Futuro de {m}',
+        cardMonth: 'Média OMIE do mês {m}',
+        // cabeçalhos das tabelas
+        thOmie: 'OMIE (€/MWh)',
+        thWeekly: 'Bi-horário Semanal',
+        thDaily: 'Bi-horário Diário',
+        thAvg: 'Média',
+        thOff: 'Vazio',
+        thPeak: 'Cheia',
+        thMonth: 'YY/MM',
+        thTotal: 'Total geral',
+        capAnnual: 'Coloração de média Anual',
+        capMonthly: 'Coloração mês-a-mês, expondo vazio vs cheias',
+        // notas
+        noteCutStart: 'o primeiro mês é parcial: a janela de 366 dias não começa no dia 1.',
+        noteCutEnd: 'o mês corrente ainda não acabou.',
+        footData: 'Dados de {src}. Actualizado uma vez por dia; último dado: {d}.',
+        noteStale: 'A actualizar em segundo plano — estes ainda são os dados de {d}.',
+        err: 'Não foi possível ir buscar as estatísticas OMIE: {m}',
+      },
+      en: {
+        docTitle: 'OMIE statistics',
+        lede: 'Day-ahead market (OMIE) prices aggregated by month and by time-of-use cycle.',
+        cardNow: 'OMIE value at the current hour in Portugal',
+        cardToday: 'OMIE average for today',
+        cardLast: 'OMIE average for the last market day',
+        cardTomorrow: 'OMIE average for tomorrow (up to 23h)',
+        cardLast30: 'OMIE average over the last 30 days',
+        cardForecast: 'Forecast for {m}',
+        cardMonth: 'OMIE average for {m}',
+        thOmie: 'OMIE (€/MWh)',
+        thWeekly: 'Bi-hourly weekly',
+        thDaily: 'Bi-hourly daily',
+        thAvg: 'Average',
+        thOff: 'Off-peak',
+        thPeak: 'Peak',
+        thMonth: 'YY/MM',
+        thTotal: 'Overall',
+        capAnnual: 'Annual-average colouring',
+        capMonthly: 'Month-by-month colouring, showing off-peak vs peak',
+        noteCutStart: 'the first month is partial: the 366-day window does not start on the 1st.',
+        noteCutEnd: 'the current month is not over yet.',
+        footData: 'Data from {src}. Refreshed once a day; last data point: {d}.',
+        noteStale: 'Refreshing in the background — these are still the {d} data.',
+        err: 'Could not fetch the OMIE statistics: {m}',
       },
     },
   };
