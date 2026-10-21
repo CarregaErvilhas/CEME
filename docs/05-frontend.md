@@ -1,12 +1,50 @@
 # 05 — Frontend (POC)
 
-Implementação actual: um único ficheiro `frontend/index.html` (HTML + CSS +
-JS vanilla, sem build). Serve em `/` pelo próprio `server.js`.
+Duas interfaces, o mesmo motor e a mesma API: o **assistente** (três perguntas
+até ao tarifário mais barato) e o **simulador completo** (ranking, filtros,
+comparador indexado vs fixo). HTML + CSS + JS vanilla, sem build, servidos
+pelo próprio `server.js`.
 
-## Rotas (hash)
+## Duas interfaces e a escolha do utilizador
+
+| Rota | O que serve |
+|---|---|
+| `GET /` | a interface que o cookie `ceme_ui` indicar; **sem cookie**, o assistente |
+| `GET /assistente` | assistente + grava `ceme_ui=assistente` |
+| `GET /simulador` | simulador completo + grava `ceme_ui=completo` |
+| `GET /index.html` | alias de `/` (segue o cookie) |
+| `GET /strings.js` | dicionário partilhado (ver i18n) |
+
+O assistente é a porta de entrada: é a página que um visitante novo vê em `/`.
+Cada interface tem um link para a outra (`Abrir o simulador completo` /
+nav `Assistente`), e é o **servidor** que grava a escolha, num cookie de
+preferência (`ceme_ui`, 1 ano, `Path=/`, `SameSite=Lax`, `Secure` quando o
+pedido chegou por https). `/` só **lê** o cookie — nunca o escreve — para a
+primeira visita ficar sempre no assistente mesmo que alguém partilhe um link
+para `/`.
+
+Guardar no cookie (e não em `localStorage`) resolve dois problemas de uma vez:
+`GET /` responde logo com a página certa (sem flash nem redirect) e a escolha
+vale mesmo sem JS. Um valor desconhecido no cookie cai no assistente; um
+`<script>` não decide nada.
+
+O fluxo de cada interface:
+
+- **Assistente** (`#/onde` → `#/quanto` → `#/quando` → `#/resultados`): região
+  (mapas), bateria (% e kWh, duas pegas sobre uma barra), quando (agora, esta
+  noite, amanhã, data à escolha). O estado vive em `sessionStorage['ceme:wizard']`
+  (sobrevive a um reload de separador em segundo plano) e o tema em
+  `sessionStorage['ceme:theme']`. Nos resultados: o mais barato em destaque,
+  lista dos restantes com os mesmos filtros do simulador — **populares**,
+  sem condições, verde — e o `Mostrar todos`.
+- **Simulador completo** (`#/`, `#/comparar`): ranking com filtros (verde,
+  populares, sem condições, favoritos, pesquisa), aviso de âmbito, detalhe da
+  composição do preço e o comparador indexado vs fixo.
+
+## Rotas do simulador completo (hash)
 
 - `#/` — ranking "neste momento" (`POST /v1/simulate`), com kWh ou bateria %,
-  região, pesquisa, filtros (verde, sem bundle, favoritos), data/hora do
+  região, pesquisa, filtros (verde, populares, sem condições, favoritos), data/hora do
   carregamento configurável (ISO aaaa/mm/dd hh:mm).
 - `#/comparar` — indexado vs fixo: valor actual, gráfico SVG de 60 dias,
   tabela de quartos-horários com o preço do indexado **e do fixo**, marcando
@@ -110,19 +148,36 @@ Duas línguas, PT por omissão. Precedência:
 3. português.
 
 O servidor injecta o valor detectado em `window.__LANG__` e põe o `<html lang>`
-certo no HTML servido (`negotiateLang()` em `server.js`). Só passa a inglês se
+certo no HTML servido (`negotiateLang()` em `server.js`), **nas duas
+interfaces**. Só passa a inglês se
 o **primeiro** tag da lista ordenada por `q` for `en*` — um `en;q=0.8` atrás
 de um `pt;q=0.9` não ganha, porque o público-alvo é português. Resposta
-inclui `Vary: Accept-Language`.
+inclui `Vary: Accept-Language` (e `Vary: Cookie` no HTML, que também depende
+do cookie da interface).
 
 No cliente:
-- `STR.pt` / `STR.en` no topo do `<script>`, com todas as strings da UI;
-  `t('chave', {vars})` faz a substituição e cai para PT se a chave faltar.
-- `setLang(id, persist)` muda a linguagem, actualiza `<html lang>`, as
-  bandeiras e o chrome estático (`applyChrome()`: `<title>`, logo, nav,
-  título/rodapé do modal de favoritos, rodapé).
+- **Um dicionário para os dois sites**: `frontend/strings.js`, carregado com
+  `<script src="/strings.js">`. Cada página pede o seu namespace com
+  `CEME_STR('simulador')` / `CEME_STR('assistente')`, que devolve
+  `{pt, en}` já com o vocabulário **comum** (filtros e etiquetas dos
+  tarifários, `Agora`, `Energia a carregar`, `Tentar outra vez`) por cima.
+  `CEME_I18N.regions` tem nome, IVA e fuso de cada região — a UI do simulador
+  usa o nome longo, o assistente o `curto` (a mesma fonte, duas larguras).
+- `i18n('chave', {vars})` (simulador) e `t('chave', {vars})` (assistente)
+  fazem a substituição e caem para PT se a chave faltar.
+- **Sincronia garantida por teste** (`backend/test/strings.test.js`): PT e EN
+  com as mesmas chaves e os mesmos placeholders em todos os namespaces,
+  nenhuma chave de `common` redefinida por uma página, nenhuma chave usada que
+  não exista, nenhuma chave morta, e **nenhum texto igual em dois sítios** —
+  se as duas interfaces dizem o mesmo, a chave passa para `common`. É a regra
+  que impede o divórcio entre os dois dicionários.
+- `setLang(id, persist)` (simulador) muda a linguagem, actualiza `<html lang>`,
+  as bandeiras e o chrome estático (`applyChrome()`: `<title>`, logo, nav,
+  título/rodapé do modal de favoritos, rodapé). O assistente re-renderiza:
+  só tem três ecrãs e o `document.title` também vem do dicionário.
 - Seletor com **bandeiras SVG** (PT e GB desenhadas em CSS/SVG — emoji não
-  renderiza em Windows) no header, ao lado da nav.
+  renderiza em Windows) no header do simulador; o assistente usa `PT` / `EN`
+  em texto, que cabe na moldura estreita.
 - Persistência em `localStorage['ceme:lang']` — sem isto a bandeira parecia
   não funcionar, porque cada visita voltava ao português.
 

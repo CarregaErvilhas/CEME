@@ -18,6 +18,9 @@ import vm from 'node:vm';
 
 const HTML = readFileSync(new URL('../../frontend/index.html', import.meta.url), 'utf8');
 const JS = [...HTML.matchAll(/<script>(.*?)<\/script>/gs)].pop()[1];
+// O dicionário vive fora do HTML (partilhado com o assistente) e é carregado
+// por `<script src="/strings.js">`; aqui avalia-se à mão no mesmo contexto.
+const STRINGS = readFileSync(new URL('../../frontend/strings.js', import.meta.url), 'utf8');
 
 const noop = () => 0;
 // Stub de elemento. `select` devolve <option> para o dropdown do comparador.
@@ -57,6 +60,7 @@ ctx.Intl = Intl; ctx.URLSearchParams = URLSearchParams;
 ctx.setInterval = noop; ctx.clearInterval = noop; ctx.__LANG__ = 'pt';
 
 // Corta o `init()` (faz fetch), mantendo o resto.
+vm.runInContext(STRINGS, ctx, { filename: 'strings.js' });
 vm.runInContext(JS.replace(/^init\(\);?$/m, '/* init() removido no teste */'), ctx, { filename: 'frontend.js' });
 
 // Um tarifário de cada tipo, com o formato que `POST /v1/simulate` devolve.
@@ -175,7 +179,7 @@ describe('smoke do frontend', () => {
       ranges(['09:00','09:15','11:00']),
       ranges(['23:45','' + plus15('23:45')]),
     ]`);
-    // JSON.stringify: os arrays do vm context nao passam deepEqual (prototipo)
+    // JSON.stringify: os arrays do vm context nao passam deepEqual
     const eq = (n, esperado, msg) => assert.equal(JSON.stringify(out[n]), JSON.stringify(esperado), msg);
     eq(0, [], 'lista vazia nao da nenhuma faixa');
     eq(1, ['12:00–12:15'], 'um quarto so fecha com o seguinte');
@@ -299,6 +303,14 @@ describe('smoke do frontend', () => {
     })()`, `setLang('pt', false);`);
     assert.equal(JSON.stringify(out.bt), JSON.stringify(['f-bt', 'i-bt']), `lista BT: ${out.bt}`);
     assert.equal(JSON.stringify(out.mt), JSON.stringify(['f-mt', 'f-simples', 'i-mt']), `lista MT: ${out.mt}`);
+  });
+
+  it('a nav tem o link para o assistente e ele diz o mesmo nas duas línguas', () => {
+    assert.match(HTML, /<a href="\/assistente" id="nSimple"/, 'link para a interface leve em falta na nav');
+    for (const [lang, esperado] of [['pt', 'Assistente'], ['en', 'Assistant']]) {
+      const txt = run(`(() => { applyChrome(); return document.getElementById('nSimple').innerHTML; })()`, `setLang('${lang}', false);`);
+      assert.equal(txt, esperado, `nav nSimple em ${lang}`);
+    }
   });
 
   it('valores hostis no localStorage não injectam HTML (SEC-03)', () => {

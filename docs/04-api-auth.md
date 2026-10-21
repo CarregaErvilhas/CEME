@@ -127,9 +127,11 @@ como na fatura.
 
 ## Negociação de idioma
 
-`GET /` injecta a língua detectada no HTML: troca o `<html lang>` e escreve
-`window.__LANG__ = "pt" | "en"`. Vem do cabeçalho `Accept-Language`
-(`negotiateLang()`), e a resposta leva `Vary: Accept-Language`.
+`GET /` (e as restantes rotas de HTML) injecta a língua detectada no HTML:
+troca o `<html lang>` e escreve `window.__LANG__ = "pt" | "en"`. Vem do
+cabeçalho `Accept-Language` (`negotiateLang()`), e a resposta leva
+`Vary: Accept-Language` — mais `Cookie`, porque a página servida em `/`
+também depende do cookie `ceme_ui` (ver `docs/05`).
 
 Só passa a inglês se o **primeiro** tag da lista ordenada por `q` for `en*` —
 um `en;q=0.8` atrás de um `pt;q=0.9` não ganha, porque o público-alvo é

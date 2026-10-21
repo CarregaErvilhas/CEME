@@ -215,61 +215,24 @@ h1 { font-size: 24px; line-height: 1.25; font-weight: 500; letter-spacing: -.01e
   <header class="top" id="top"></header>
   <main id="app"></main>
 </div>
+<script>window.__LANG__=null;</script>
+<script src="/strings.js"></script>
 <script>
 'use strict';
-/* Protótipo do assistente passo-a-passo. Usa a mesma API do simulador
-   (`/v1/session` + `/v1/simulate`), por isso os preços são os mesmos. */
+/* Assistente passo-a-passo: três perguntas (onde, quanto, quando) até ao
+   tarifário mais barato. Usa a mesma API do simulador (`/v1/session` +
+   `/v1/simulate`), por isso os preços são os mesmos. Os textos vivem em
+   strings.js, partilhados com o simulador completo. */
 
-const STR = {
-  pt: {
-    h1: 'Qual tarifário fica mais barato no seu carregamento?',
-    lede: 'Três perguntas para comparar mais de 50 tarifários Mobi.E em Portugal.',
-    start: 'Começar',
-    community: 'Projeto comunitário, sem fins lucrativos.', fullSim: 'Abrir o simulador completo',
-    back: 'Voltar', next: 'Continuar', see: 'Ver resultados', theme: 'Tema claro / escuro',
-    whereH: 'Onde vai carregar?', whereL: 'O IVA muda de região para região.',
-    CONT: 'Continente', MAD: 'Madeira', AZO: 'Açores',
-    howH: 'Quanto vai carregar?', howL: 'Arraste as pegas ou escreva os valores.',
-    from: 'Carga atual', to: 'Carregar até', have: 'Já tem', add: 'Vai carregar', kwhIn: 'Energia a carregar',
-    cap: 'Capacidade da bateria', other: 'Outra', capHint: 'Não sabe? 60 kWh é um valor comum.',
-    whenH: 'Quando vai carregar?', whenL: 'O preço é calculado para a hora a que começa a carregar. Muitos tarifários são mais baratos à noite.',
-    now: 'Agora', tonight: 'Esta noite', tomorrow: 'Amanhã de manhã', pick: 'Escolher', pickSub: 'data e hora',
-    startsAt: 'Começa às', today: 'Hoje', tmrw: 'Amanhã', from_: 'a partir das',
-    calc: 'A calcular…', cheapest: 'Mais barato para este carregamento',
-    perKwh: '{p} por kWh, IVA incluído', below: '<b>{v}</b> abaixo da média dos tarifários',
-    scope: 'Inclui só a energia. O posto cobra à parte a sua própria tarifa (OPC).', scopeLink: 'Saber mais',
-    others: 'Outros tarifários', nobundle: 'Sem condições', green: 'Energia verde',
-    tagBundle: 'Com condições', tagGreen: 'Verde', est: 'estimado',
-    showAll: 'Mostrar todos ({n})', none: 'Nenhum tarifário com estes filtros.',
-    restart: 'Começar de novo',
-    err: 'Não foi possível calcular. Verifique a ligação à internet.', retry: 'Tentar outra vez',
-  },
-  en: {
-    h1: 'Which tariff is cheapest for your charge?',
-    lede: 'Three questions to compare over 50 Mobi.E tariffs in Portugal.',
-    start: 'Start',
-    community: 'A non-profit community project.', fullSim: 'Open the full simulator',
-    back: 'Back', next: 'Continue', see: 'See results', theme: 'Light / dark theme',
-    whereH: 'Where are you charging?', whereL: 'VAT differs from region to region.',
-    CONT: 'Mainland', MAD: 'Madeira', AZO: 'Azores',
-    howH: 'How much will you charge?', howL: 'Drag the handles or type the values.',
-    from: 'Current charge', to: 'Charge to', have: 'Already in', add: 'Charging', kwhIn: 'Energy to charge',
-    cap: 'Battery capacity', other: 'Other', capHint: 'Not sure? 60 kWh is a common size.',
-    whenH: 'When are you charging?', whenL: 'The price is calculated for the time you start charging. Many tariffs are cheaper at night.',
-    now: 'Now', tonight: 'Tonight', tomorrow: 'Tomorrow morning', pick: 'Pick', pickSub: 'date and time',
-    startsAt: 'Starts at', today: 'Today', tmrw: 'Tomorrow', from_: 'from',
-    calc: 'Calculating…', cheapest: 'Cheapest for this charge',
-    perKwh: '{p} per kWh, VAT included', below: '<b>{v}</b> below the average tariff',
-    scope: 'Energy only. The charging point adds its own fee (OPC) on top.', scopeLink: 'Learn more',
-    others: 'Other tariffs', nobundle: 'No conditions', green: 'Green energy',
-    tagBundle: 'Conditions apply', tagGreen: 'Green', est: 'estimated',
-    showAll: 'Show all ({n})', none: 'No tariffs match these filters.',
-    restart: 'Start over',
-    err: 'Could not calculate. Check your internet connection.', retry: 'Try again',
-  },
-};
+const STR = CEME_STR('assistente');
+const REGIONS = CEME_I18N.regions;
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
-let LANG = store.get('ceme:lang') || ((navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'pt');
+// Precedência: bandeira escolhida (localStorage) > Accept-Language injectado
+// pelo servidor em __LANG__ > língua do browser. A mesma ordem do simulador.
+let LANG = store.get('ceme:lang')
+  || (typeof window.__LANG__ === 'string' ? window.__LANG__ : null)
+  || ((navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'pt');
+LANG = LANG === 'en' ? 'en' : 'pt';
 // Tema: claro por omissão em cada visita; a escolha dura só a sessão.
 let THEME = 'light';
 try { if (sessionStorage.getItem('ceme:theme') === 'dark') THEME = 'dark'; } catch {}
@@ -281,7 +244,7 @@ const dec = (n, d = 1) => new Intl.NumberFormat(loc(), { minimumFractionDigits: 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 const TZ = { CONT: 'Europe/Lisbon', MAD: 'Atlantic/Madeira', AZO: 'Atlantic/Azores' };
-const DEF = { region: 'CONT', cap: 60, capOther: false, from: 20, to: 80, when: 'now', tTonight: '23:00', tTomorrow: '09:00', custom: '', nobundle: false, green: false, all: false };
+const DEF = { region: 'CONT', cap: 60, capOther: false, from: 20, to: 80, when: 'now', tTonight: '23:00', tTomorrow: '09:00', custom: '', nobundle: false, green: false, popular: false, all: false };
 const P = { ...DEF };
 // As respostas sobrevivem a um reload (os browsers móveis recarregam separadores
 // em segundo plano); fecha-se o separador e recomeça-se do zero.
@@ -423,13 +386,13 @@ function vLanding() {
     <h1>${t('h1')}</h1>
     <p class="lede">${t('lede')}</p>
     <button class="btn" data-go="onde">${t('start')} ${ARROW}</button>
-    <p class="small">${t('community')}<br><a href="/">${t('fullSim')}</a></p>
+    <p class="small">${t('community')}<br><a href="/simulador">${t('fullSim')}</a></p>
   </section>`;
 }
 function vWhere() {
   const tile = k => `<button class="tile ${k === 'CONT' ? 'cont' : ''}" data-region="${k}" aria-pressed="${P.region === k}">
       ${mapSvg(k, k === 'CONT' ? 120 : 140, k === 'CONT' ? 220 : 80)}
-      <span class="name">${t(k)}</span><span class="sub">IVA ${{ CONT: 23, MAD: 22, AZO: 16 }[k]}%</span></button>`;
+      <span class="name">${REGIONS[k][LANG].curto}</span><span class="sub">${REGIONS[k][LANG].iva}</span></button>`;
   return `<section class="screen">
     <h1>${t('whereH')}</h1><p class="lede">${t('whereL')}</p>
     <div class="maps">${tile('CONT')}${tile('MAD')}${tile('AZO')}</div>
@@ -488,19 +451,19 @@ async function load() {
     }
     LAST = [...seen.values()].sort((a, b) => a.totalEur - b.totalEur);
     AVG = j.avg;
-  } catch (e) { console.warn('[prototipo]', e.message); FAILED = true; }
+  } catch (e) { console.warn('[assistente]', e.message); FAILED = true; }
   LOADING = false; render();
 }
 function vResults() {
   const summary = `<div class="summary">
     <button class="chip num" data-go="quanto">${dec(kwh())} kWh</button>
-    <button class="chip" data-go="onde">${t(P.region)}</button>
+    <button class="chip" data-go="onde">${REGIONS[P.region][LANG].curto}</button>
     <button class="chip" data-go="quando">${esc(whenLabel())}</button></div>`;
   const foot = `<div class="foot"><button class="btn wide" data-act="restart">${t('restart')}</button></div>`;
   if (LOADING || !LAST && !FAILED) return `<section class="screen">${summary}<div class="loading"><div><div class="bar"><i></i></div>${t('calc')}</div></div>${foot}</section>`;
   if (FAILED) return `<section class="screen">${summary}<p class="empty">${t('err')}</p><button class="btn wide" data-act="retry">${t('retry')}</button>${foot}</section>`;
-  const items = LAST.filter(r => (!P.nobundle || !r.bundle) && (!P.green || r.green));
-  const tags = r => `${r.bundle ? `<span class="tag">${t('tagBundle')}</span>` : ''}${r.green ? `<span class="tag">${t('tagGreen')}</span>` : ''}`;
+  const items = LAST.filter(r => (!P.nobundle || !r.bundle) && (!P.green || r.green) && (!P.popular || r.popular));
+  const tags = r => `${r.popular ? `<span class="tag">${t('tagPopular')}</span>` : ''}${r.bundle ? `<span class="tag">${t('tagBundle')}</span>` : ''}${r.green ? `<span class="tag">${t('tagGreen')}</span>` : ''}`;
   const price = r => `${r.estimated ? '~' : ''}${eur(r.totalEur)}`;
   const brand = r => (/^#[0-9a-f]{6}$/i.test(r.brand || '') ? `<i class="brand" style="background:${r.brand}" aria-hidden="true"></i>` : '');
   const best = items[0], rest = items.slice(1), shown = P.all ? rest : rest.slice(0, 8);
@@ -517,14 +480,15 @@ function vResults() {
     ${bestHtml}
     <div class="list-head"><h2>${t('others')}</h2></div>
     <div class="filters">
-      <button class="chip" data-filter="nobundle" aria-pressed="${P.nobundle}">${t('nobundle')}</button>
-      <button class="chip" data-filter="green" aria-pressed="${P.green}">${t('green')}</button></div>
+      <button class="chip" data-filter="popular" aria-pressed="${P.popular}">${t('fPopular')}</button>
+      <button class="chip" data-filter="nobundle" aria-pressed="${P.nobundle}">${t('fNoBundle')}</button>
+      <button class="chip" data-filter="green" aria-pressed="${P.green}">${t('fGreen')}</button></div>
     ${items.length ? `<ul class="rows">${shown.map((r, i) => `<li class="row"><span class="rank num">${i + 2}</span>${brand(r)}
-        <div class="who"><div class="co">${esc(r.ceme)}</div><div class="tf">${esc(r.name)}</div>${r.bundle ? `<span class="tag">${t('tagBundle')}</span>` : ''}</div>
+        <div class="who"><div class="co">${esc(r.ceme)}</div><div class="tf">${esc(r.name)}</div>${tags(r)}</div>
         <div class="p num">${price(r)}<small>${eur(r.totalEur / kwh())}/kWh</small></div></li>`).join('')}</ul>
       ${!P.all && rest.length > shown.length ? `<button class="btn wide more" data-act="all">${t('showAll', { n: items.length })}</button>` : ''}`
       : `<p class="empty">${t('none')}</p>`}
-    <p class="full"><a href="/">${t('fullSim')}</a></p>
+    <p class="full"><a href="/simulador">${t('fullSim')}</a></p>
     ${foot}
   </section>`;
 }
@@ -536,6 +500,7 @@ function render() {
   saveP();
   document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
   document.documentElement.dataset.theme = THEME;
+  document.title = t('docTitle');
   header(step);
   const app = document.getElementById('app');
   app.innerHTML = { onde: vWhere, quanto: vHow, quando: vWhen, resultados: vResults }[step]?.() ?? vLanding();

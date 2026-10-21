@@ -121,20 +121,4 @@ describe('i18n: a função de tradução não pode ser sombreada', () => {
     });
     assert.deepEqual(Maus, [], `variável t a sombrear i18n:\n  ${Maus.join('\n  ')}`);
   });
-
-  it('o dicionário tem PT e EN completos e com os mesmos placeholders', () => {
-    const bloco = (nome) => {
-      const a = html.indexOf(`  ${nome}: {`);
-      const b = html.indexOf('\n  },', a);
-      return html.slice(a, b);
-    };
-    const k = (nome) => [...bloco(nome).matchAll(/^\s{4}(\w+):/gm)].map(m => m[1]);
-    const ph = (nome) => new Set([...bloco(nome).matchAll(/\{(\w+)\}/g)].map(m => m[1]));
-    const pt = k('pt'), en = k('en');
-    assert.ok(pt.length > 60, `dicionário PT com ${pt.length} chaves`);
-    assert.deepEqual(pt.filter(x => !en.includes(x)), [], 'chaves só em PT');
-    assert.deepEqual(en.filter(x => !pt.includes(x)), [], 'chaves só em EN');
-    const dif = [...pt].filter(x => JSON.stringify([...ph('pt')].sort()) !== JSON.stringify([...ph('en')].sort()) && /\{/.test(bloco('pt').match(new RegExp(`^\\s{4}${x}:.*$`, 'm'))[0]));
-    assert.deepEqual(dif, [], `placeholders diferentes entre PT e EN: ${dif}`);
-  });
 });

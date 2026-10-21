@@ -69,6 +69,91 @@ describe('server POC: hardening HTTP', () => {
     assert.equal((await fetch(`${BASE}/`)).headers.get('x-content-type-options'), 'nosniff');
   });
 
+  describe('duas interfaces: o cookie ceme_ui escolhe a página', () => {
+    // Marca visual de cada página: a cena animada só existe no assistente, o
+    // hero só no simulador completo.
+    const MARCA = { assistente: 'class="scene"', completo: 'class="hero"' };
+    const abrir = async (caminho, headers = {}, opts = {}) => {
+      const r = await fetch(`${BASE}${caminho}`, { headers, ...opts });
+      return { status: r.status, html: await r.text(), cookie: r.headers.get('set-cookie') || '', r };
+    };
+
+    it('sem cookie, / serve o assistente e não grava nada (primeira visita)', async () => {
+      const { status, html, cookie } = await abrir('/');
+      assert.equal(status, 200);
+      assert.ok(html.includes(MARCA.assistente), 'a primeira visita devia ver o assistente');
+      assert.ok(!html.includes(MARCA.completo), 'a página do simulador não pode vir junto');
+      assert.equal(cookie, '', '/ não pode escrever o cookie: a primeira visita é sempre o assistente');
+    });
+
+    it('cookie ceme_ui=completo faz / servir o simulador', async () => {
+      const { status, html, cookie } = await abrir('/', { cookie: 'ceme_ui=completo' });
+      assert.equal(status, 200);
+      assert.ok(html.includes(MARCA.completo), 'com o cookie devia vir o simulador completo');
+      assert.equal(cookie, '', '/ só lê o cookie, não o reescreve');
+    });
+
+    it('cookie estragado cai no assistente em vez de rebentar', async () => {
+      for (const c of ['ceme_ui=%%%', 'ceme_ui=;', 'outro=1', 'CEEME_UI=completo']) {
+        const { status, html } = await abrir('/', { cookie: c });
+        assert.equal(status, 200, c);
+        assert.ok(html.includes(MARCA.assistente), `cookie "${c}" devia cair no assistente`);
+      }
+    });
+
+    it('/assistente serve a página leve e grava a escolha (1 ano, SameSite)', async () => {
+      const { status, html, cookie } = await abrir('/assistente');
+      assert.equal(status, 200);
+      assert.ok(html.includes(MARCA.assistente));
+      assert.match(cookie, /^ceme_ui=assistente;/);
+      assert.match(cookie, /Path=\//);
+      assert.match(cookie, /Max-Age=31536000/);
+      assert.match(cookie, /SameSite=Lax/);
+    });
+
+    it('/simulador serve o simulador completo e grava a escolha', async () => {
+      const { status, html, cookie } = await abrir('/simulador');
+      assert.equal(status, 200);
+      assert.ok(html.includes(MARCA.completo));
+      assert.match(cookie, /^ceme_ui=completo;/);
+    });
+
+    it('/index.html continua a funcionar e segue o cookie', async () => {
+      assert.ok((await abrir('/index.html')).html.includes(MARCA.assistente));
+      assert.ok((await abrir('/index.html', { cookie: 'ceme_ui=completo' })).html.includes(MARCA.completo));
+    });
+
+    it('HEAD nas duas rotas: 200 com o mesmo set-cookie, corpo vazio', async () => {
+      const r = await fetch(`${BASE}/simulador`, { method: 'HEAD' });
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get('set-cookie') || '', /ceme_ui=completo/);
+      assert.equal(await r.text(), '');
+    });
+
+    it('/strings.js é servido como JS e sem cache', async () => {
+      const r = await fetch(`${BASE}/strings.js`);
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get('content-type'), /text\/javascript/);
+      assert.equal(r.headers.get('cache-control'), 'no-store');
+      assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+      const js = await r.text();
+      assert.match(js, /CEME_I18N/);
+      assert.match(js, /CEME_STR/);
+    });
+
+    it('a língua negociada é injectada nas duas páginas', async () => {
+      for (const caminho of ['/assistente', '/simulador']) {
+        const { html, r } = await abrir(caminho, { 'accept-language': 'en-GB,en;q=0.9' });
+        assert.ok(html.includes('<html lang="en">'), `${caminho}: <html lang> não negociado`);
+        assert.ok(html.includes('window.__LANG__="en"'), `${caminho}: __LANG__ não injectado`);
+        assert.match(r.headers.get('vary') || '', /Cookie/, `${caminho}: resposta depende do cookie, tem de ir no Vary`);
+      }
+      const pt = await abrir('/assistente', { 'accept-language': 'pt-PT' });
+      assert.ok(pt.html.includes('<html lang="pt-PT">'));
+      assert.ok(pt.html.includes('window.__LANG__="pt"'));
+    });
+  });
+
   it('401 sem auth', async () => {
     assert.equal((await fetch(`${BASE}/v1/cemes`)).status, 401);
   });

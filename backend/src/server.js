@@ -263,6 +263,41 @@ function negotiateLang(header) {
   return tags[0] && tags[0].tag.startsWith('en') ? 'en' : 'pt';
 }
 
+// Duas interfaces para a mesma API: o assistente passo-a-passo (três
+// perguntas, por omissão) e o simulador completo. O assistente é a porta de
+// entrada; o utilizador troca no link de cada página, e a escolha fica num
+// cookie que este servidor lê para responder à página certa em `GET /`.
+const UI = {
+  assistente: { file: 'assistente.html' },
+  completo: { file: 'index.html' },
+};
+// `null` = respeitar o cookie (a rota `/`); um valor = gravar essa escolha.
+const UI_ROUTES = { '/': null, '/index.html': null, '/assistente': 'assistente', '/simulador': 'completo' };
+const UI_COOKIE = 'ceme_ui';
+const UI_COOKIE_MAX_AGE = 31536000; // 1 ano
+
+function readCookie(req, name) {
+  const raw = req.headers.cookie;
+  if (!raw) return null;
+  for (const part of String(raw).split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    try { return decodeURIComponent(part.slice(eq + 1).trim()); } catch { return null; }
+  }
+  return null;
+}
+// Valor ausente ou desconhecido cai no assistente: é a interface que um
+// visitante novo vê, e um cookie editado à mão não pode dar 500.
+const uiFromCookie = req => (readCookie(req, UI_COOKIE) === 'completo' ? 'completo' : 'assistente');
+// Cookie de preferência de UI, não de sessão: nada aqui autentica, e o JS
+// não precisa de o ler. `Secure` só quando o pedido chegou por https (em dev
+// é http, e um cookie Secure seria descartado).
+function uiCookie(req, ui) {
+  const https = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+  return `${UI_COOKIE}=${ui}; Path=/; Max-Age=${UI_COOKIE_MAX_AGE}; SameSite=Lax${https ? '; Secure' : ''}`;
+}
+
 // Um método por endpoint (POC): leitura para os /v1/* de dados, POST para os
 // dois que aceitam corpo. 405 antes de gastar auth.
 const METHODS = {
@@ -274,25 +309,35 @@ const MAX_BODY = 64 * 1024; // 64 KB — corpos raquíticos; pedir mais é abuso
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
-  // Web POC sem auth (ficheiro estático); a API continua toda com auth.
+  // Web POC sem auth (ficheiros estáticos); a API continua toda com auth.
   // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
-  if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/' || url.pathname === '/index.html')) {
+  const readStatic = method => method === 'GET' || method === 'HEAD';
+  if (readStatic(req.method) && url.pathname === '/strings.js') {
+    // Dicionário partilhado pelas duas interfaces: um só ficheiro para os dois
+    // sites, por isso não pode ficar preso em cache depois de um deploy.
     try {
-      const html = (await readFile(new URL('../../frontend/index.html', import.meta.url), 'utf8'))
-        .replace('<html lang="pt-PT">', `<html lang="${negotiateLang(req.headers['accept-language']) === 'en' ? 'en' : 'pt-PT'}">`)
-        .replace('window.__LANG__=null', `window.__LANG__=${JSON.stringify(negotiateLang(req.headers['accept-language']))}`);
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language' });
-      return res.end(html);
-    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/index.html em falta' } }); }
+      const js = await readFile(new URL('../../frontend/strings.js', import.meta.url), 'utf8');
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      return res.end(js);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/strings.js em falta' } }); }
   }
-  // Protótipo do assistente passo-a-passo (estático, mesma API). A língua
-  // escolhe-se no cliente, por isso não há injecção como em `/`.
-  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/prototipo') {
+  if (readStatic(req.method) && Object.hasOwn(UI_ROUTES, url.pathname)) {
+    // A escolha da interface vive num cookie que o servidor lê: `GET /` já
+    // responde com a página certa (sem redirect nem flash). Só os caminhos
+    // explícitos gravam a escolha; `/` nunca escreve, para a primeira visita
+    // ficar sempre no assistente.
+    const forced = UI_ROUTES[url.pathname]; // null = respeitar o cookie
+    const ui = forced || uiFromCookie(req);
+    const lang = negotiateLang(req.headers['accept-language']);
     try {
-      const html = await readFile(new URL('../../frontend/prototipo.html', import.meta.url), 'utf8');
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      const html = (await readFile(new URL(`../../frontend/${UI[ui].file}`, import.meta.url), 'utf8'))
+        .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
+        .replace('window.__LANG__=null', `window.__LANG__=${JSON.stringify(lang)}`);
+      const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language, Cookie' };
+      if (forced) headers['set-cookie'] = uiCookie(req, forced);
+      res.writeHead(200, headers);
       return res.end(html);
-    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/prototipo.html em falta' } }); }
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${UI[ui].file} em falta` } }); }
   }
   // Um método por pathname: os handlers de leitura respondiam 200 a
   // PUT/DELETE (não faziam nada, mas fingiam que sim). 405 com `allow`.

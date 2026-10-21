@@ -19,8 +19,10 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
 - Backend: Node.js 24 — `node:http`, `node:test`, `node:sqlite` (dev) e `pg`
   (única dependência, para PostgreSQL em produção).
-- Frontend: HTML + CSS + JS vanilla em `frontend/index.html` (sem build),
-  bilíngue PT/EN (dicionário no cliente + `Accept-Language` no servidor).
+- Frontend: HTML + CSS + JS vanilla (sem build), duas interfaces — o
+  assistente passo-a-passo (`frontend/assistente.html`, a porta de entrada) e
+  o simulador completo (`frontend/index.html`) — bilíngues PT/EN, com um
+  dicionário único (`frontend/strings.js`) e `Accept-Language` no servidor.
 - BD: PostgreSQL 18 em produção (serviço gerido no Zerops) e SQLite local em
   dev/teste. Schema em SQL directo (`backend/src/db/schema.sql` e
   `schema.postgres.sql`), sem ORM — a seed é o bootstrap do ambiente vazio.
@@ -129,10 +131,12 @@ em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
       db/                     # db.js, pg.js, schema[.postgres].sql, seed[.postgres].js
       engine/                 # quote, indexed, periods, regions, compare
       omie/                   # cache, parse, convert, fallback
-    test/                     # 12 ficheiros, 111 testes (node:test)
+    test/                     # 14 ficheiros, 141 testes (node:test)
     data/                     # gerado: SQLite + cache OMIE (no .gitignore)
   frontend/
-    index.html                # tudo num ficheiro
+    index.html                # simulador completo (tudo num ficheiro)
+    assistente.html           # assistente passo-a-passo (3 perguntas)
+    strings.js                # dicionário PT/EN das duas interfaces
   docs/                       # 01-modelo, 02-motor, 03-omie, 04-api-auth,
                               # 05-frontend, 06-roadmap, 07-ilhas, 08-migracao-sqlite-postgres
   scripts/etl-sheets.sh
