@@ -115,7 +115,6 @@ table.tb tr.total td { font-weight: 700; }
   </section>
 </main>
 <p id="status"></p>
-<footer id="foot"></footer>
 <script src="/strings.js"></script>
 <script>
 'use strict';
@@ -291,8 +290,6 @@ function draw(d) {
   st.className = d.stale ? 'note' : '';
   st.textContent = t('footData', { d: dt(d.dataThrough), src: d.source }) +
     (d.stale ? ' ' + t('noteStale', { d: dt(d.dataThrough) }) : '');
-  document.getElementById('foot').innerHTML = `${t('footNote')} <a href="/sobre">${t('navSobre')}</a>` +
-    `<span class="sep">·</span><a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">GitHub</a>`;
 }
 
 /* --- dados ----------------------------------------------------------- */
