@@ -9,7 +9,7 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 - **Sem painel de admin nem de editor** (desistido). Atualizações de tarifários via seed/MCP server, discutido à parte.
 - **Backend e frontend vivem no Zerops.** O serviço `api` (Node.js) serve tanto a API REST em `/v1/*` como o frontend estático em `/`.
 - **Base de dados:** PostgreSQL gerenciado no Zerops (substitui o SQLite local). A seed passa a ser bootstrap inicial; a source of truth é a BD ao vivo.
-- **Cache:** Valkey (Redis-compatível) para OMIE (6h) e sessões.
+- **Cache:** filesystem (JSON local, 6h) para OMIE — ver `backend/src/omie/cache.js`. Sem serviço Redis/Valkey.
 - **DNS:** subdomínio no Cloudflare, proxy activo, origem IPv6 no Zerops.
 
 ---
@@ -20,12 +20,12 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 |---|---|---|---|
 | `api` | nodejs | 24 (topo da base list do Zerops; `nodejs@latest` = 24) | Node.js puro (`src/server.js`). Serve frontend + API. Escuta em `PORT=3001`. |
 | `db` | postgresql | 18 | BD principal. Tabelas: `ceme`, `tariff`, `tariff_version`, `price_component`, `tar`, `omie_spot`, `omie_daily`, `api_client`, `api_key`, `audit_log`, etc. |
-| `cache` | valkey | 7.2 (única versão disponível no Zerops) | Cache OMIE (6h) e sessões. Opcional na fase 1. |
+
 
 Recursos (fixados via autoscaling, ver abaixo):
 - `api`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco, 1 container.
 - `db`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco (Postgres `:single`).
-- `cache`: 1 vCPU, 0.25–0.5 GB RAM, 1–2 GB disco.
+(serviço `cache` removido — não usado)
 
 ### Autoscaling (fixado por API, `PUT /service-stack/{id}/autoscaling`)
 
@@ -35,7 +35,7 @@ Os serviços managed `db` e `cache` herdaram dos perfis `oltp-staging`/`staging`
 |---|---|---|---|
 | `api` | 2 CPU / 1 GB / 10 GB, 1–2 containers | 2 CPU / 1 GB / 5 GB | 1 CPU / 0.25 GB / 1 GB, 1 container |
 | `db` | 8 CPU / 48 GB / 250 GB | **2 CPU / 1 GB / 5 GB** | 1 CPU / 0.25 GB / 1 GB |
-| `cache` | 8 CPU / 48 GB / 250 GB | **1 CPU / 0.5 GB / 2 GB** | 1 CPU / 0.25 GB / 1 GB |
+| `cache` | — | removido | — |
 
 Todos em `SHARED`, `startCpuCoreCount: 1`.
 

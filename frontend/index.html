@@ -244,7 +244,7 @@ const STR = {
     kwh: 'kWh', search: 'Pesquisar', searchPh: 'ex. luzigas, ACP, EDP…',
     capacity: 'Capacidade (kWh)', min: 'Mínimo', max: 'Máximo',
     chargingFrom: 'Carrega de {a}% a {b}% → {c} kWh',
-    region: 'Região', fGreen: '⚡ verde', fBundle: 'sem condições',
+    region: 'Região', fGreen: '⚡ verde', fPop: '★ populares', fBundle: 'sem condições',
     fFavOn: '★ favoritos', fFavOff: '☆ favoritos', fFavMgr: '★ gerir favoritos ({n})',
     when: 'Data/hora do carregamento', whenPh: 'aaaa/mm/dd hh:mm', nowBtn: 'Agora',
     tFixed: 'Hora fixa seleccionada — a usar o instante indicado.',
@@ -344,7 +344,7 @@ const STR = {
     kwh: 'kWh', search: 'Search', searchPh: 'e.g. Luzigas, ACP, EDP…',
     capacity: 'Battery capacity (kWh)', min: 'From', max: 'To',
     chargingFrom: 'Charging from {a}% to {b}% → {c} kWh',
-    region: 'Region', fGreen: '⚡ green', fBundle: 'no conditions',
+    region: 'Region', fGreen: '⚡ green', fPop: '★ popular', fBundle: 'no conditions',
     fFavOn: '★ saved', fFavOff: '☆ saved', fFavMgr: '★ saved tariffs ({n})',
     when: 'When you charge', whenPh: 'yyyy/mm/dd hh:mm', nowBtn: 'Now',
     tFixed: 'A specific time is set — pricing for that moment.',
@@ -571,6 +571,7 @@ function loadS() {
     S.scopeClosed = bool(o.scopeClosed, S.scopeClosed);
     S.green = bool(o.green, S.green);
     S.nobundle = bool(o.nobundle, S.nobundle);
+    S.popular = bool(o.popular, S.popular);
     S.favonly = bool(o.favonly, S.favonly);
     S.omieAuto = bool(o.omieAuto, S.omieAuto);
     if (typeof o.chargeAt === 'string') S.chargeAt = o.chargeAt;
@@ -579,7 +580,7 @@ function loadS() {
   } catch (e) {}
 }
 function saveS() { try { localStorage.setItem('ceme:S', JSON.stringify(S)); } catch (e) {} }
-const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
+const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, popular: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
   energyMode: 'kwh', batCap: 60, batMin: 20, batMax: 80,
   chargeAt: null, forceServerTime: false, serverNow: null };
 
@@ -653,6 +654,7 @@ function badges(q) {
   b += `<span class="badge ${q.kind === 'INDEXED' ? 'idx' : ''}">${q.kind === 'INDEXED' ? i18n('idxOmie') : i18n('fixedPrice')}</span>`;
   if (q.kind === 'INDEXED') b += `<span class="badge idx">K = ${fmtNum(q.k)}</span>`;
   if (q.green) b += `<span class="badge grn">${i18n('green')}</span>`;
+  if (q.popular) b += `<span class="badge">${i18n('tagPopular')}</span>`;
   if (q.bundle) b += `<span class="badge bnd" title="${i18n('bundleTip')}">${i18n('needsHome')}</span>`;
   if (q.notes) b += `<span class="badge ac" title="${noteText(q.notes)}">${i18n('acOnly')}</span>`;
   // Activ. > EGME legal (publicado ≠ regulamentar): avisa, não substitui —
@@ -747,6 +749,7 @@ function filtered() {
   return dedupByRamal(LAST).filter(tf =>
     (!S.green || tf.green) &&
     (!S.nobundle || !tf.bundle) &&
+    (!S.popular || tf.popular) &&
     (!S.favonly || fav.includes(tf.id)) &&
     (!q || searchText(tf).toLowerCase().includes(q)));
 }
@@ -821,6 +824,7 @@ function vHome() {
     </div></div>
     <div class="row" style="margin-top:10px">
       <button id="fGreen" class="${S.green ? 'on' : ''}">${i18n('fGreen')}</button>
+      <button id="fPop" class="${S.popular ? 'on' : ''}">${i18n('fPop')}</button>
       <button id="fBundle" class="${S.nobundle ? 'on' : ''}">${i18n('fBundle')}</button>
       <button id="fFav">${S.favonly ? i18n('fFavOn') : i18n('fFavOff')}</button>
       <button id="openFavModal">${i18n('fFavMgr', { n: favs().length })}</button>
@@ -1081,6 +1085,7 @@ async function route() {
     if (q) q.oninput = e => { S.q = e.target.value; const pos = e.target.selectionStart; route(); const q2 = document.getElementById('q'); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } };
     document.querySelectorAll('[data-ramal]').forEach(x => x.onclick = () => { S.ramal = x.dataset.ramal; route(); });
     const fG = document.getElementById('fGreen'); if (fG) fG.onclick = () => { S.green = !S.green; route(); };
+    const fP = document.getElementById('fPop'); if (fP) fP.onclick = () => { S.popular = !S.popular; fP.classList.toggle('on', S.popular); route(); };
     const fB = document.getElementById('fBundle'); if (fB) fB.onclick = () => { S.nobundle = !S.nobundle; route(); };
     const fF = document.getElementById('fFav'); if (fF) fF.onclick = () => { S.favonly = !S.favonly; route(); };
     const ofm = document.getElementById('openFavModal');
