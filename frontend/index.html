@@ -404,6 +404,11 @@ async function sess() {
   try { sessionStorage.setItem('ceme:jwt', token); } catch (e) {} // modo privado pode recusar
   return token;
 }
+// O fuso do browser: a hora de relógio que se mostra ao utilizador é a
+// dele. O backend guarda tudo em UTC e só converte aqui, na apresentação.
+const BROWSER_TZ = (() => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
+})();
 async function api(path, opts = {}) {
   let tk = await sess();
   let r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
@@ -760,7 +765,7 @@ async function loadQuarters(a, date) {
   const box = document.getElementById('cmpQ');
   if (!a) return;
   try {
-    const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
+    const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}&tz=${encodeURIComponent(BROWSER_TZ)}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
     const byPrice = [...q.quarters].sort((x, y) => x.price - y.price);
     const cheapSorted = byPrice.slice(0, 8).map(x => x.start).sort();
     const wins = ranges(cheapSorted);

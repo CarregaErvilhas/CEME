@@ -6,7 +6,7 @@ Node.js funcional e os 74 testes verdes.
 
 ## Porquê
 
-O POC usa `node:sqlite` + ficheiro `.db` local. Isso não sobrevive a
+O backend usa `node:sqlite` + ficheiro `.db` local. Isso não sobrevive a
 redeploy/container efémero no Zerops (sem disco persistente garantido entre
 builds) e não escala para múltiplas instâncias da API. O PostgreSQL do
 Zerops resolve persistência, backups automáticos e HA como toggle.
@@ -271,5 +271,5 @@ As fontes OMIE e o TTL do cache não são env vars: estão fixas em `backend/src
 ## Rollback
 
 O ficheiro `./data/ceme.db` continua no repositório (gitignorado ou não).
-Para voltar ao POC SQLite: remover as dependências `pg`, restaurar o
+Para voltar ao SQLite: remover as dependências `pg`, restaurar o
 `server.js` original e desfazer o `zerops.yml`.

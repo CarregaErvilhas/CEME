@@ -39,13 +39,16 @@ if (process.env.DATABASE_URL) {
   // repetições (ex.: $1,$2 ... $3,$4 com valores repetidos) e referências
   // fora de ordem ($2 antes de $1).
   const compile = (sql, params) => {
-    const used = [];
+    // A ordem é a das OCORRÊNCIAS, não a dos índices únicos: um
+    // `ON CONFLICT DO UPDATE SET x = $2` usa o $2 duas vezes (no VALUES e
+    // no SET) e são duas ocorrências — com a lista de índices únicos o
+    // segundo ? ficava sem parâmetro e gravava NULL.
+    const order = [];
     const out = sql.replace(/\$(\d+)/g, (_, n) => {
-      const idx = Number(n) - 1;
-      if (!used.includes(idx)) used.push(idx);
+      order.push(Number(n) - 1);
       return '?';
     });
-    return { sql: out, params: used.map(i => params[i]) };
+    return { sql: out, params: order.map(i => params[i]) };
   };
   queryImpl = async (sql, params = []) => {
     if (params.length === 0 && sql.includes(';')) {

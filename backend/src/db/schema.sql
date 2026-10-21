@@ -46,15 +46,36 @@ CREATE TABLE IF NOT EXISTS tar (
   PRIMARY KEY (valid_from, region, voltage, period)
 );
 
+-- Os quartos-horários do OMIE, um por linha, indexados pelo INSTANTE (UTC).
+--
+-- A chave é o instante em UTC (ISO-8601, sempre 'Z'), nunca a hora local:
+-- a hora repetida da mudança de hora de Outono daria duas linhas com a
+-- mesma hora de relógio, e a chave tem de as distinguir.
+--
+-- `source` diz de onde veio o preço: 'OMIE_ES' (o ficheiro oficial) ou 'TF'
+-- (o Tiago Felícia, que traz também a classificação do período horário).
+-- As duas fontes podem ter linhas para o mesmo instante — a reconciliação
+-- (a oficial ganha) é feita na leitura.
 CREATE TABLE IF NOT EXISTS omie_spot (
-  ts_lisbon TEXT PRIMARY KEY, market_day TEXT, market_period INTEGER,
+  ts_utc TEXT NOT NULL, day_utc TEXT NOT NULL, min_utc INTEGER NOT NULL,
   price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL,
-  source TEXT NOT NULL, flags TEXT, ingested_at TEXT DEFAULT (datetime('now'))
+  bd TEXT, bs TEXT,
+  source TEXT NOT NULL, flags TEXT, ingested_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (ts_utc, source)
+);
+CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_utc);
+
+-- Os agregados diários (as médias por ciclo horário), materializados a
+-- partir das linhas de cima.
+CREATE TABLE IF NOT EXISTS omie_daily (
+  date TEXT PRIMARY KEY, avg_pt REAL, min_pt REAL, max_pt REAL,
+  bd_v REAL, bd_f REAL, bs_v REAL, bs_f REAL, quarters INTEGER, source TEXT
 );
 
-CREATE TABLE IF NOT EXISTS omie_daily (
-  date TEXT PRIMARY KEY, avg_pt REAL, avg_vazio_pt REAL,
-  avg_fora_vazio_pt REAL, min_pt REAL, max_pt REAL, source TEXT
+-- Estado da ingestão: quando foi o último refresh, o ETag do ficheiro
+-- oficial (para o pedido condicional) e o payload das estatísticas.
+CREATE TABLE IF NOT EXISTS omie_meta (
+  key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS loss_profile (

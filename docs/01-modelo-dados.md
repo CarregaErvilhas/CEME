@@ -16,10 +16,15 @@
 | `tariff_version` | versão com `valid_from`/`valid_to`, `k_index_eur_mwh`, `cgs_eur_mwh`, `omie_aggregation`, estado. Chave única `(tariff_id, valid_from)`: uma versão por tarifário e data. `valid_from` no seed é a **data de captura** (`SHEET_SNAPSHOT`), não a data de início do contrato — a folha CEME não tem coluna de datas |
 | `price_component` | preço €/kWh por período + `activation_eur` (EGME) + `support_eur` + `iec_eur_kwh` |
 | `tar` | TAR por região/tensão/período, versionada |
-| `omie_daily` | agregados diários (schema: `avg_pt`, `avg_vazio_pt`, `avg_fora_vazio_pt`, `min_pt`, `max_pt`) — criada mas **sem uso no POC**: o POC guarda os agregados em cache JSON (`bd_v`/`bd_f`/`bs_v`/`bs_f`, via `/v1/omie/daily`) |
-| `omie_spot` | quartos-horários (preço, instante, origem) — em construção |
+| `omie_daily` | agregados diários materializados a partir de `omie_spot`: `avg_pt`, `min_pt`, `max_pt` e as quatro médias por ciclo (`bd_v`/`bd_f`/`bs_v`/`bs_f`) — é o que serve `/v1/omie/daily` |
+| `omie_spot` | quartos-horários, um por linha, indexados pelo **instante UTC** (`ts_utc`) e pela fonte (`source`: `OMIE_ES` ou `TF`) |
+| `omie_meta` | estado da ingestion: quando foi o último refresh, o ETag do ficheiro oficial (para o pedido condicional), o payload das estatísticas e o lock entre réplicas |
 
-Criadas no schema mas ainda sem uso no POC (fase 2):
+`omie_spot`, `omie_daily` e `omie_meta` são o **store** do OMIE: o backend
+busca o omie.es (primária) e o TF (secundária), reconcilia por instante e
+guarda aqui — ver `03-omie-ingestao.md`.
+
+Criadas no schema mas ainda sem uso (fase 2):
 
 | tabela | para quê |
 |---|---|
@@ -29,7 +34,6 @@ Criadas no schema mas ainda sem uso no POC (fase 2):
 | `audit_log` | quem mudou o quê, e quando |
 
 Nota: `omie_quarter` nunca existiu no schema — o nome certo é `omie_spot`.
-
 ## Decisões
 
 1. **Versionamento temporal.** Um tarifário é um conjunto de versões com

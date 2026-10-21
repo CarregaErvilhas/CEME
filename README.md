@@ -28,10 +28,11 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
   dev/teste. Schema em SQL directo (`backend/src/db/schema.sql` e
   `schema.postgres.sql`), sem ORM — a seed é o bootstrap do ambiente vazio.
 - Auth: HS256 JWT de sessão (24h) + API keys (sha256).
-- OMIE: séries diária, de quartos-horários e futuros via
-  `dados.tiagofelicia.pt` (CC BY 4.0, com atribuição), cache local de 6h. A
-  ingestão directa do `omie.es` ainda não está implementada (ver `docs/03`
-  e `docs/06`).
+- OMIE: o **omie.es** (fonte oficial, o dump acumulado público) é a
+  primária e o **TF** (`dados.tiagofelicia.pt`, CC BY 4.0, com atribuição)
+  a secundária; os dois são reconciliados por instante e guardados na BD.
+  Sem cron: a actualização é a pedido, com pedido condicional ao omie.es
+  (304 quando o ficheiro não mudou). Ver `docs/03`.
 - CI: GitHub Actions (Node 24, o mesmo do deploy). O deploy **não** é feito
   pelo GitHub — ver a secção «Deploy».
 
@@ -71,7 +72,7 @@ A excepção é `POST /v1/session`, que emite o token da sessão web. Detalhe em
 | GET | `/v1/omie/daily?days=60` | agregados diários (7..120 dias) |
 | GET | `/v1/omie/futures` | contratos OMIP |
 | GET | `/v1/omie/stats` | estatísticas mensais OMIE (13 meses + total geral) e as células de referência |
-| GET | `/v1/indexed/quarters` | quartos-horários de um indexado + `winner` vs. o fixo escolhido |
+| GET | `/v1/indexed/quarters` | quartos-horários de um indexado + `winner` vs. o fixo escolhido (`?tz=` define o fuso das horas mostradas) |
 
 Erros em `{error: {code, message}}`; datas em ISO UTC. Um tarifário com
 componentes divergentes entra em quarentena e sai do ranking — os restantes
@@ -147,9 +148,10 @@ em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
       auth/tokens.js          # JWT HS256 e hash das API keys
       db/                     # db.js, pg.js, schema[.postgres].sql, seed[.postgres].js
       engine/                 # quote, indexed, periods, regions, compare
-      omie/                   # cache, parse, convert, fallback, stats
+      omie/                   # omiees (oficial), tf (secundário), store (BD),
+                              #   pipeline (ingestão a pedido), stats, convert
     test/                     # 15 ficheiros, 177 testes (node:test)
-    data/                     # gerado: SQLite + cache OMIE (no .gitignore)
+    data/                     # gerado: SQLite + cache dos ficheiros do TF (no .gitignore)
   frontend/
     index.html                # simulador completo (tudo num ficheiro)
     assistente.html           # assistente passo-a-passo (3 perguntas)

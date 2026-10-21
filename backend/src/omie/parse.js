@@ -52,7 +52,9 @@ export function parseOmieTxt(text) {
       quarantined.push({ line: i + 1, reason: dateErr || 'bad_date', text: line.slice(0, 160) });
       continue;
     }
-    if (!Number.isInteger(period) || period < 1 || period > 96) {
+    // 96 períodos num dia normal; 92 na manhã e 100 no Outono (os dias de
+    // mudança de hora). O que está fora disso é lixo.
+    if (!Number.isInteger(period) || period < 1 || period > 100) {
       quarantined.push({ line: i + 1, reason: `bad_period:${periodoRaw}`, text: line.slice(0, 160) });
       continue;
     }
@@ -91,7 +93,7 @@ export function assessDays(rows, expectedCountFn) {
     list.sort((a, b) => a.marketPeriod - b.marketPeriod);
     const periods = new Set(list.map(r => r.marketPeriod));
     const missing = [];
-    for (let p = 1; p <= 96; p++) if (!periods.has(p)) missing.push(p);
+    for (let p = 1; p <= 100; p++) if (!periods.has(p)) missing.push(p);
     const expected = expectedCountFn ? expectedCountFn(day) : 96;
     days.push({
       day, count: list.length, expected,

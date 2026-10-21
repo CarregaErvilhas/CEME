@@ -1,4 +1,4 @@
-// Servidor POC (Node.js em produção via pg; SQLite em dev/test).
+// Servidor (Node.js em produção via pg; SQLite em dev/test).
 // Serve a web em / e a API em /v1/* (tudo com auth). O hardening da main
 // está re-aplicado sobre a migração assíncrona: nosniff, rate limiting,
 // 405 por método, cap do corpo (413), validação de input, guarda da secret
@@ -11,16 +11,16 @@ import { query, get, run, dbInstance } from './db.js';
 import { signJwt, verifyJwt, hashKey } from './auth/tokens.js';
 import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
-import { REGIONS, periodForWall } from './engine/regions.js';
+import { REGIONS, periodForRegion } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
-import { getDaily, getFutures, getQuarters } from './omie/cache.js';
-import { getStats } from './omie/stats.js';
+import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from './omie/pipeline.js';
+import { migrateOmieTables } from './db/migrate.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed.postgres.js';
 
 const PORT = Number(process.env.PORT || 3001);
 const USE_PG = !!process.env.DATABASE_URL;
-// Secret "de dev" conhecida manteria o POC a arrancar sem configuração —
+// Secret "de dev" conhecida manteria o servidor a arrancar sem configuração —
 // mas no deploy real é a porta para fabricar WEB_SESSION à vontade. O meio
 // termo: o server arranca sempre (dev/CI não rebenta), mas se a secret em
 // uso for a de dev e o processo pareça produção (`NODE_ENV=production`), o
@@ -52,6 +52,13 @@ const SKIP_TAR = READONLY;
 const SKIP_API_KEY = READONLY;
 
 if (READONLY) console.warn('[ceme-v2] modo READONLY: bootstrap de escrita desactivado.');
+
+// Migrações que o CREATE TABLE IF NOT EXISTS não cobre (as tabelas do OMIE
+// passaram a ser indexadas pelo instante UTC). Correm antes do schema.
+if (!SKIP_SCHEMA) {
+  const notes = await migrateOmieTables();
+  for (const n of notes) console.warn(`[ceme-v2] migração: ${n}`);
+}
 
 // Schema executado uma vez no arranque (idempotente). Em modo readonly as
 // tabelas já existem (snapshot ou BD de produção) — saltar evita erros de
@@ -106,6 +113,32 @@ function vmeta(tid) {
   return { loss, formula: v.formula || 'standard' };
 }
 
+// A hora de relógio que se mostra ao utilizador é a do fuso DELE (o browser
+// manda o seu). O backend guarda tudo em UTC — o fuso só aparece aqui, na
+// fronteira da apresentação. Sem fuso válido, UTC.
+function validTz(name) {
+  if (!name || typeof name !== 'string' || name.length > 64) return 'UTC';
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: name });
+    return name;
+  } catch { return 'UTC'; }
+}
+
+// 'HH:MM' de um instante UTC, no fuso pedido.
+function fmtTime(utcIso, tz) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
+  }).formatToParts(new Date(utcIso));
+  const get = (t) => parts.find(p => p.type === t)?.value;
+  return `${get('hour')}:${get('minute')}`;
+}
+
+// O dia pedido (em UTC) ou hoje.
+function quarterDay(date) {
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  return new Date().toISOString().slice(0, 10);
+}
+
 const json = (res, code, obj, extraHeaders = {}) => {
   // nosniff: sem isto, um JSON reflectido podia ser interpretado como
   // text/html em browsers antigos — resposta barata para um ataque real.
@@ -113,7 +146,7 @@ const json = (res, code, obj, extraHeaders = {}) => {
   res.end(JSON.stringify(obj));
 };
 
-// Rate limiting: janela fixa, em memória — suficiente para um POC de nó
+// Rate limiting: janela fixa, em memória — suficiente para um nó
 // único (em produção, um limitador à frente do server). Sessão web conta
 // por IP; terceiros contam pela chave de API. O mapa é podado
 // preguiçosamente e tem teto: sem isso, uma enxurrada de IPs distintos
@@ -169,7 +202,7 @@ async function auth(req) {
 }
 
 async function allTariffs() {
-  // POC: simulam-se TODOS os tarifários para a região escolhida (com o IVA
+  // Simulam-se TODOS os tarifários para a região escolhida (com o IVA
   // e os ciclos dessa região). A disponibilidade comercial (`regions`) é
   // mostrada como informação, não como filtro.
   return await query(`
@@ -316,7 +349,7 @@ function uiCookie(req, ui) {
   return `${UI_COOKIE}=${ui}; Path=/; Max-Age=${UI_COOKIE_MAX_AGE}; SameSite=Lax${https ? '; Secure' : ''}`;
 }
 
-// Um método por endpoint (POC): leitura para os /v1/* de dados, POST para os
+// Um método por endpoint: leitura para os /v1/* de dados, POST para os
 // dois que aceitam corpo. 405 antes de gastar auth.
 const METHODS = {
   '/v1/health': 'GET', '/v1/cemes': 'GET', '/v1/tariffs': 'GET', '/v1/tar': 'GET',
@@ -328,7 +361,7 @@ const MAX_BODY = 64 * 1024; // 64 KB — corpos raquíticos; pedir mais é abuso
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
-  // Web POC sem auth (ficheiros estáticos); a API continua toda com auth.
+  // Web sem auth (ficheiros estáticos); a API continua toda com auth.
   // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
   const readStatic = method => method === 'GET' || method === 'HEAD';
   if (readStatic(req.method) && url.pathname === '/strings.js') {
@@ -438,28 +471,28 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/v1/omie/daily' && req.method === 'GET') {
     const days = Math.min(120, Math.max(7, Number(url.searchParams.get('days') || 60)));
-    getDaily(DATA_DIR, days).then(
+    getDaily(days).then(
       d => json(res, 200, d, headers),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `séries indisponíveis: ${e.message}` } }, headers));
     return;
   }
   if (url.pathname === '/v1/omie/futures' && req.method === 'GET') {
-    getFutures(DATA_DIR).then(
+    getFutures().then(
       d => json(res, 200, d, headers),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `futuros indisponíveis: ${e.message}` } }, headers));
     return;
   }
   if (url.pathname === '/v1/omie/stats' && req.method === 'GET') {
     // As estatísticas mensais: agregados por mês e por ciclo horário, mais
-    // as células de referência. Cache de 24h no backend — a página é
-    // refrescada uma vez por dia.
-    getStats(DATA_DIR).then(
+    // as células de referência. Vêm da BD (calculadas na ingestion).
+    getStats().then(
       d => json(res, 200, d, headers),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `estatísticas indisponíveis: ${e.message}` } }, headers));
     return;
   }
   if (url.pathname === '/v1/indexed/quarters' && req.method === 'GET') {
     const tid = url.searchParams.get('tariff'), region = url.searchParams.get('region') || 'CONT';
+    const tz = validTz(url.searchParams.get('tz'));
     if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } }, headers);
     const t = (await query('SELECT * FROM tariff WHERE id = $1', [tid || ''])).find(x => x.kind === 'INDEXED')
       || (await query("SELECT * FROM tariff WHERE kind = 'INDEXED' ORDER BY id LIMIT 1"))[0];
@@ -493,10 +526,16 @@ const server = http.createServer(async (req, res) => {
 
     const finish = (q) => {
       try {
+        // O período do tarifário sai do INSTANTE (não de uma hora de
+        // relógio): as regras do período horário são as do fuso da região,
+        // e o motor sabe aplicá-las a um instante.
         const withP = q.rows.map(r => {
-          const [sh, sm] = r.start.split(':').map(Number);
-          const per = periodForWall({ region, schedule: t.schedule, cycle: t.cycle, ymd: q.date, minutes: sh * 60 + sm });
-          return { start: r.start, end: r.end, period: per, omieMwh: r.priceMwh };
+          const at = new Date(r.utc);
+          const per = periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at });
+          return {
+            start: fmtTime(r.utc, tz), end: fmtTime(new Date(at.getTime() + 15 * 60000).toISOString(), tz),
+            period: per, omieMwh: r.pt, utc: r.utc, src: r.src,
+          };
         });
         Promise.all(withP.map(async (item) => {
           // TAR vigente (valid_from <= hoje): a coluna pode levar versões futuras
@@ -516,8 +555,8 @@ const server = http.createServer(async (req, res) => {
           const vm2 = vmeta(t.id);
           json(res, 200, {
             date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh,
-            loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], cached: q.cached, source: q.source, cutoff: q.cutoff,
-            estimated: q.estimated, days: q.days, fixed: fixInfo,
+            loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], source: SOURCE_LABEL,
+            estimated: q.rows.some(r => r.est), days: q.days, fixed: fixInfo,
             warning: REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF',
             wins: tallyWinners(comp),
             quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) }))
@@ -525,7 +564,7 @@ const server = http.createServer(async (req, res) => {
         }).catch(e => json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers));
       } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }
     };
-    getQuarters(DATA_DIR, url.searchParams.get('date')).then(finish, e => json(res, 502, { error: { code: 'omie_unavailable', message: e.message } }, headers));
+    getQuarters(quarterDay(url.searchParams.get('date'))).then(finish, e => json(res, 502, { error: { code: 'omie_unavailable', message: e.message } }, headers));
     return;
   }
   if (url.pathname === '/v1/simulate' && req.method === 'POST') {
@@ -617,4 +656,4 @@ server.on('error', (e) => {
   }
   console.error('[ceme-v2] erro no servidor:', e);
 });
-server.listen(PORT, () => console.log(`ceme-v2 POC http://localhost:${PORT}/ db=${USE_PG ? 'postgresql' : 'sqlite'}`));
+server.listen(PORT, () => console.log(`ceme-v2 http://localhost:${PORT}/ db=${USE_PG ? 'postgresql' : 'sqlite'}`));

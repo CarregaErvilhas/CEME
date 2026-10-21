@@ -157,7 +157,7 @@
         warnOmieCont: 'ref. OMIE continental — ilustrativo',
         // rodapé
         footScope: '<b>Âmbito:</b> o simulador calcula só a parcela de energia (tarifário do CEME + TAR + IEC + IVA + EGME). <b>Não inclui a tarifa de utilização do posto (OPC)</b>, que cada operador define e publica no próprio posto — por isso o valor final na fatura será maior.',
-        footRest: 'Valores com IVA da região de carregamento. <code>~</code> marca um preço estimado. Séries OMIE via dados.tiagofelicia.pt (CC BY 4.0); produção usa omie.es. Favoritos ficam neste browser — sem conta, sem tracking.',
+        footRest: 'Valores com IVA da região de carregamento. <code>~</code> marca um preço estimado. Séries OMIE do omie.es (fonte oficial); classificação do período horário via dados.tiagofelicia.pt (CC BY 4.0). Favoritos ficam neste browser — sem conta, sem tracking.',
         cache: ' (cache)',
       },
       en: {
@@ -252,7 +252,7 @@
         warnOmieCont: 'uses the mainland OMIE price — indicative only',
         // rodapé
         footScope: '<b>What this covers:</b> only the energy component — the CEME tariff plus TAR, IEC, VAT and the activation fee. <b>It does not include the CPO tariff for the charging point</b>, which every operator sets and publishes at the point itself, so your final bill will be higher.',
-        footRest: 'Prices include the VAT of the region where you charge. <code>~</code> marks an estimated price. OMIE price data from dados.tiagofelicia.pt (CC BY 4.0). Your saved tariffs stay in this browser — no account, no tracking.',
+        footRest: 'Prices include the VAT of the region where you charge. <code>~</code> marks an estimated price. OMIE price data from omie.es (the official source); period classification from dados.tiagofelicia.pt (CC BY 4.0). Your saved tariffs stay in this browser — no account, no tracking.',
         cache: ' (cached)',
       },
     },

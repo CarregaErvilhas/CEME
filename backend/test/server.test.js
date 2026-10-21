@@ -1,4 +1,4 @@
-// Testes de rede do servidor POC: arranca uma instância como subprocesso
+// Testes de rede do servidor: arranca uma instância como subprocesso
 // (como o smoke manual fazia, mas agora no suite). Cobrem o hardening da
 // API: rate limit (com teto no mapa de buckets), validação do /v1/simulate,
 // 413, 405, nosniff, quarentena de tarifário mau e a secret de dev sem
@@ -34,7 +34,7 @@ const spawnServer = (envOverride, port) => {
   });
 };
 
-describe('server POC: hardening HTTP', () => {
+describe('servidor: hardening HTTP', () => {
   let proc, token;
 
   before(async () => {
@@ -338,7 +338,7 @@ describe('server POC: hardening HTTP', () => {
 
 // Segunda instância: NODE_ENV=production SEM JWT_SECRET — a secret de dev não
 // pode emitir bilhetes de sessão (503 no POST /v1/session).
-describe('server POC: secret de dev não emite tokens em produção', () => {
+describe('servidor: secret de dev não emite tokens em produção', () => {
   let proc;
 
   before(async () => {

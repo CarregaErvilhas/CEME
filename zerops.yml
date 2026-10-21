@@ -55,8 +55,7 @@ zerops:
         # gera connectionString, hostname, user, password e port
         # automaticamente (ref: docs.zerops.io/features/env-variables).
         DATABASE_URL: ${db_connectionString}
-        # As fontes OMIE e o TTL do cache NÃO são env vars: estão fixas em
-        # `backend/src/omie/cache.js` (DAILY_URL, FUT_URL, QUARTERS_URL,
-        # TTL_MS). Declará-las aqui era configuração morta — o código nunca
-        # as lia. Quando a ingestão directa do omie.es existir (docs/03,
-        # roadmap), as variáveis entram com o código que as usa.
+        # As fontes OMIE (o omie.es e os CSV do TF) e os TTLs estão fixos em
+        # `backend/src/omie/` (omiees.js, tf.js, pipeline.js): não são
+        # configuração, são política do produto. Declará-las aqui era
+        # configuração morta — o código nunca as lia.

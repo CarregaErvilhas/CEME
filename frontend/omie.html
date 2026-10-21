@@ -146,12 +146,24 @@ const mesNome = (key) => {
 const nf = (v, d) => (v == null ? '—' : new Intl.NumberFormat(LANG === 'en' ? 'en-GB' : 'pt-PT',
   { minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d }).format(v));
 const euro = (v) => (v == null ? '—' : nf(v) + ' €/MWh');
-const dt = (s) => {
+// Uma hora: se o backend mandou um instante (UTC, termina em 'Z'), converte
+// para o fuso de quem está a ver. O resto é uma data/hora já pronta.
+function dt(s) {
   if (!s) return '';
+  if (typeof s === 'string' && s.endsWith('Z')) {
+    try {
+      const p = new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
+      }).formatToParts(new Date(s));
+      const get = t => p.find(x => x.type === t)?.value;
+      return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`;
+    } catch (e) { /* cai para baixo */ }
+  }
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
   if (!m) return s;
   return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
-};
+}
 const dtDay = (s) => {
   if (!s) return '';
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
@@ -199,12 +211,12 @@ function drawCards(d) {
   const c = d.cards;
   const isToday = c.today.date === d.today;
   const html = [
-    card('now', t('cardNow'), dt(d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price)),
+    card('now', t('cardNow'), dt(d.current.atUtc || d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price)),
     card('today', isToday ? t('cardToday') : t('cardLast'), dtDay(c.today.date), euro(c.today.value)),
     card('rest', t('cardTomorrow'), dtDay(c.tomorrow.date), euro(c.tomorrow.value)),
-    card('rest', t('cardLast30'), `${dt(c.last30.from)}<br>${dt(c.last30.to)}`, euro(c.last30.value)),
+    card('rest', t('cardLast30'), `${dt(c.last30.fromUtc || c.last30.from)}<br>${dt(c.last30.toUtc || c.last30.to)}`, euro(c.last30.value)),
     card('rest', t('cardForecast', { m: mesNome(c.forecast.month) }), '', euro(c.forecast.value)),
-    card('rest', t('cardMonth', { m: mesNome(c.monthToDate.month) }), `${dt(c.monthToDate.from)}<br>${dt(c.monthToDate.to)}`, euro(c.monthToDate.value)),
+    card('rest', t('cardMonth', { m: mesNome(c.monthToDate.month) }), `${dt(c.monthToDate.fromUtc || c.monthToDate.from)}<br>${dt(c.monthToDate.toUtc || c.monthToDate.to)}`, euro(c.monthToDate.value)),
   ].join('');
   document.getElementById('cards').innerHTML = html;
 }

@@ -4,7 +4,7 @@ Substitui as ~100 fórmulas `IF(WEEKDAY/TIME(...))` copiadas em `CEME!X:AD`
 e os `=0,1+TAR!$C$5` manuais por uma função pura, testada, com
 `Europe/Lisbon` real (DST automático via `Intl` / `Temporal`).
 
-> **Estado no POC:** a assinatura `quote()` abaixo é o **alvo da fase 2**.
+> **Estado:** a assinatura `quote()` abaixo é o **alvo da fase 2**.
 > Hoje o motor é `quoteFixed(...)` + `indexedPrice(...)` +
 > `breakevenOmie(...)` (`src/engine/quote.js`, `src/engine/indexed.js`), com
 > `compareWithFixed`/`tallyWinners` (quarter a quarto) em `engine/compare.js`
