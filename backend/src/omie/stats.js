@@ -61,6 +61,20 @@ export function lisbonNow(now = new Date()) {
 // horário (V = vazio, F = fora de vazio) que o TF calcula com as regras da
 // ERSE — são elas que alimentam as colunas "Bi-horário Diário" e
 // "Bi-horário Semanal" da tabela.
+//
+// **Horas em CET, não em hora de Lisboa.** O dia de mercado corre de 00:00 a
+// 24:00 em CET (Madrid), e Madrid está sempre uma hora à frente de Lisboa
+// (ambas seguem a regra de mudança de hora da UE, no mesmo instante). Ou
+// seja: o primeiro quarter do dia de mercado [00:00-00:15[ são 23:00 em
+// Lisboa do dia ANTERIOR, e o último [23:45-00:00[ são 22:45 em Lisboa.
+// É por isso que o dia tem 96 quartos mas o último só chega às 22:45.
+//
+// Por isso cada linha guarda as duas leituras:
+//   `dn`/`mk`  — o dia e o mês de MERCADO (o `dia` do ficheiro): é por esta
+//                coluna que se agrupa, e é assim que o TF publica os seus
+//                agregados diários e mensais;
+//   `lisbonDn`/`lisbonMin` — o mesmo quarter em HORA DE LISBOA, que é o que
+//                se mostra ao utilizador.
 export function parseStatsCsv(text) {
   const lines = String(text || '').replace(/^\uFEFF/, '').split('\n');
   const head = (lines.shift() || '').split(',').map(h => h.trim());
@@ -79,13 +93,19 @@ export function parseStatsCsv(text) {
     const price = Number(c[ix('preco_pt')]);
     if (!dm || !iv || !Number.isFinite(price)) continue;
     const day = Number(dayNum(Number(dm[3]), Number(dm[2]), Number(dm[1])));
+    const min = Number(iv[1]) * 60 + Number(iv[2]);
     const bd = (c[ix('BD')] || '').trim().toUpperCase();
     const bs = (c[ix('BS')] || '').trim().toUpperCase();
+    // CET -> Lisboa: menos uma hora, sempre (Madrid está sempre +1).
+    const lisbonMin = (min + 1440 - 60) % 1440;
+    const lisbonDn = day - (min < 60 ? 1 : 0);
     rows.push({
       dn: day,
       day: isoOf(day),
       mk: monthKey(day),
-      min: Number(iv[1]) * 60 + Number(iv[2]),
+      min,
+      lisbonDn,
+      lisbonMin,
       bd: bd === 'F' ? 'F' : 'V',
       bs: bs === 'F' ? 'F' : 'V',
       price,
@@ -198,31 +218,35 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
   const monthFull = bucket();
   for (const r of rows) if (r.mk === monthKeyNow) push(monthFull, r);
 
-  // Preço "à hora actual": o quarter em curso, se já foi publicado; senão o
-  // último publicado (e dizemos que não é o current).
+  // Preço "à hora actual": o quarter de mercado que está a correr AGORA, em
+  // hora de Lisboa. O ficheiro está em CET, por isso o quarter em curso é o
+  // que tem a hora de Lisboa correspondente — e é o que se mostra.
   const floorMin = Math.floor(lis.minutes / 15) * 15;
   let current = null;
   for (const r of real) {
-    if (r.dn > lis.dayNum) continue;
-    if (r.dn < lis.dayNum) { current = r; continue; }
-    if (r.min > floorMin) break;
+    if (r.lisbonDn > lis.dayNum) continue;
+    if (r.lisbonDn < lis.dayNum) { current = r; continue; }
+    if (r.lisbonMin > floorMin) break;
     current = r;
   }
   current = current || anchor;
 
   const stamp = (dn, min) => `${isoOf(dn)}T${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
+  // O dia de mercado começa às 00:00 CET = 23:00 de Lisboa do dia anterior.
+  const marketDayStart = (dn) => ({ dn: dn - 1, min: 23 * 60 });
 
   return {
     generatedAt: now.toISOString(),
     source: SOURCE,
     cutoff: cutoff || isoOf(anchor.dn),
-    dataThrough: stamp(anchor.dn, anchor.min),
+    // Tudo o que se mostra com hora é hora de Lisboa.
+    dataThrough: stamp(anchor.lisbonDn, anchor.lisbonMin),
     window: { from: isoOf(fromDn), to: isoOf(lastDn) },
     today: lis.day,
     current: {
-      at: stamp(current.dn, current.min),
+      at: stamp(current.lisbonDn, current.lisbonMin),
       price: round2(current.price),
-      live: current.dn === lis.dayNum && current.min === floorMin,
+      live: current.lisbonDn === lis.dayNum && current.lisbonMin === floorMin,
     },
     cards: {
       today: {
@@ -237,15 +261,18 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
         estimated: tomorrowB.all.length > 0,
       },
       last30: {
-        from: stamp(anchor.dn - 30, 0),
-        to: stamp(anchor.dn, anchor.min),
+        from: (() => { const s = marketDayStart(anchor.dn - 30); return stamp(s.dn, s.min); })(),
+        to: stamp(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(last30.all)),
       },
       forecast: { month: monthKeyNow, value: round2(avg(monthFull.all)) },
       monthToDate: {
         month: monthKeyNow,
-        from: stamp(dayNum(Number(monthKeyNow.slice(0, 4)), Number(monthKeyNow.slice(5, 7)), 1), 0),
-        to: stamp(anchor.dn, anchor.min),
+        from: (() => {
+          const s = marketDayStart(dayNum(Number(monthKeyNow.slice(0, 4)), Number(monthKeyNow.slice(5, 7)), 1));
+          return stamp(s.dn, s.min);
+        })(),
+        to: stamp(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(monthB.all)),
       },
     },

@@ -23,11 +23,25 @@ describe('estatísticas OMIE — parser', () => {
   it('lê dia, intervalo e as colunas de período', () => {
     const rows = parseStatsCsv(CSV);
     assert.equal(rows.length, 3, 'o bloco TABELA_ no fim não são dados');
-    assert.deepEqual(rows[0], { dn: Date.UTC(2026, 0, 1) / 86400000, day: '2026-01-01', mk: '2026-01', min: 0, bd: 'V', bs: 'V', price: 104.7 });
+    assert.deepEqual(rows[0], {
+      dn: Date.UTC(2026, 0, 1) / 86400000, day: '2026-01-01', mk: '2026-01',
+      min: 0, lisbonDn: Date.UTC(2025, 11, 31) / 86400000, lisbonMin: 23 * 60,
+      bd: 'V', bs: 'V', price: 104.7,
+    });
     assert.equal(rows[1].bs, 'F');
     assert.equal(rows[1].min, 15);
     assert.equal(rows[2].day, '2026-01-02');
     assert.equal(rows[2].min, 23 * 60 + 30);
+  });
+
+  it('converte CET -> hora de Lisboa (Madrid está sempre uma hora à frente)', () => {
+    const rows = parseStatsCsv(CSV);
+    // 00:00-00:15 CET do dia de mercado D são 23:00 de Lisboa do dia D-1.
+    assert.equal(rows[0].lisbonMin, 23 * 60, 'o primeiro quarter são 23:00 de Lisboa');
+    assert.equal(rows[0].lisbonDn, rows[0].dn - 1, 'e é do dia anterior');
+    // 23:30-23:45 CET são 22:30 de Lisboa — e o dia de mercado acaba às 22:45.
+    assert.equal(rows[2].lisbonMin, 22 * 60 + 30);
+    assert.equal(rows[2].lisbonDn, rows[2].dn, 'mas ainda é o mesmo dia de Lisboa');
   });
 
   it('ordena por data e hora', () => {
@@ -49,11 +63,14 @@ describe('estatísticas OMIE — parser', () => {
   });
 });
 
-// Constrói uma linha como o parser a devolve.
+// Constrói uma linha como o parser a devolve. O ficheiro está em CET: o
+// `min` é a hora de Madrid e a linha traz também a hora de Lisboa.
 function q(day, min, bd, bs, price) {
   const [y, m, d] = day.split('-').map(Number);
   const dn = Math.floor(Date.UTC(y, m - 1, d) / 86400000);
-  return { dn, day, mk: `${y}-${String(m).padStart(2, '0')}`, min, bd, bs, price };
+  const lisbonMin = (min + 1440 - 60) % 1440;
+  const lisbonDn = dn - (min < 60 ? 1 : 0);
+  return { dn, day, mk: `${y}-${String(m).padStart(2, '0')}`, min, lisbonDn, lisbonMin, bd, bs, price };
 }
 
 describe('estatísticas OMIE — agregação', () => {
@@ -85,7 +102,7 @@ describe('estatísticas OMIE — agregação', () => {
     assert.equal(d.cards.tomorrow.value, 300, 'amanhã é estimativa OMIP');
     assert.equal(d.cards.tomorrow.estimated, true);
     assert.equal(d.cards.last30.value, Math.round((100 + 200 + 150 + 110 + 210 + 160) / 6 * 100) / 100);
-    assert.equal(d.cards.last30.from, '2026-09-21T00:00');
+    assert.equal(d.cards.last30.from, '2026-09-20T23:00', 'o dia de mercado começa às 23:00 de Lisboa do dia anterior');
   });
 
   it('as séries por ciclo horário seguem a classificação BD/BS', () => {
@@ -106,15 +123,32 @@ describe('estatísticas OMIE — agregação', () => {
     assert.equal(d.total.quarters, 6);
   });
 
-  it('o preço à hora actual é o quarter em curso', () => {
+  it('o preço à hora actual é o quarter em curso (em hora de Lisboa)', () => {
     const d = aggregate(rows, { cutoff: '2026-10-21', now: NOW });
-    // 13:00 em Lisboa → quarter das 13:00, que não existe; fica o último
-    assert.equal(d.current.at, '2026-10-21T08:00');
+    // 14:00 em Lisboa → o quarter das 14:00; o último publicado que não passa
+    // disso é o das 08:00 CET = 07:00 de Lisboa.
+    assert.equal(d.current.at, '2026-10-21T07:00');
     assert.equal(d.current.price, 160);
     assert.equal(d.current.live, false);
-    const d2 = aggregate(rows, { cutoff: '2026-10-21', now: new Date('2026-10-21T07:05:00Z') });
-    assert.equal(d2.current.at, '2026-10-21T08:00');
+    const d2 = aggregate(rows, { cutoff: '2026-10-21', now: new Date('2026-10-21T06:05:00Z') });
+    assert.equal(d2.current.at, '2026-10-21T07:00');
     assert.equal(d2.current.live, true, 'o quarter em curso está publicado');
+  });
+
+  it('as janelas são mostradas em hora de Lisboa', () => {
+    const d = aggregate(rows, { cutoff: '2026-10-21', now: NOW });
+    // O dia de mercado começa às 00:00 CET = 23:00 de Lisboa do dia anterior.
+    assert.equal(d.cards.last30.from, '2026-09-20T23:00');
+    // A última linha dos dados de teste é 08:00 CET = 07:00 de Lisboa.
+    assert.equal(d.cards.last30.to, '2026-10-21T07:00');
+    assert.equal(d.dataThrough, '2026-10-21T07:00');
+  });
+
+  it('o último quarter do dia de mercado são 22:45 em Lisboa', () => {
+    const comFim = [...rows, q('2026-10-21', 23 * 60 + 45, 'V', 'V', 50)];
+    const d = aggregate(comFim, { cutoff: '2026-10-21', now: NOW });
+    assert.equal(d.dataThrough, '2026-10-21T22:45');
+    assert.equal(d.cards.last30.to, '2026-10-21T22:45');
   });
 
   it('a janela são 366 dias: o que está fora não entra', () => {

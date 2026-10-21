@@ -99,6 +99,43 @@ a mesma regra que o resto do backend usa (`backend/src/omie/cache.js`), e
 que o próprio TF documenta ("as datas posteriores à `ultima_data_real` são
 estimativas OMIP, não preços de mercado").
 
+## As horas: o ficheiro está em CET, não em hora de Lisboa
+
+**O dia de mercado corre de 00:00 a 24:00 em CET (Madrid)**, e Madrid está
+sempre uma hora à frente de Lisboa — as duas zonas seguem a regra de mudança
+de hora da UE, no mesmo instante, por isso a diferença é sempre de uma hora
+(verdade no Inverno como no Verão).
+
+Consequências, que são as que se vêem na página:
+
+- O **primeiro** quarter do dia de mercado (`[00:00-00:15[`) são as **23:00
+  de Lisboa do dia anterior**.
+- O **último** quarter (`[23:45-00:00[`) são as **22:45 de Lisboa**. O dia
+  tem 96 quartos, mas o último só chega às 22:45 — é o que se vê na página.
+- Por isso a janela que aparece no cartão dos 30 dias começa às 23:00 do
+  dia anterior, e o mês em curso começa às 23:00 do último dia do mês
+  anterior.
+
+No `backend/src/omie/stats.js` cada linha guarda as duas leituras:
+
+- `dn`/`mk` — o **dia e o mês de mercado** (a coluna `dia` do ficheiro). É
+  por esta coluna que se agrupa, e é assim que o TF publica os seus
+  agregados diários e mensais (o `omie_diario.csv` e o `omie_mensal.csv`
+  batem com os números da tabela);
+- `lisbonDn`/`lisbonMin` — o mesmo quarter em **hora de Lisboa**, que é o
+  que se mostra ao utilizador (o preço da hora actual, as janelas, a data
+  do último dado).
+
+Isto já estava escrito no código do motor (`backend/src/omie/convert.js`,
+`marketPeriodToLisbon`) e nas réguas do OMIE oficial — o que faltava era
+aplicá-lo aos dados do TF.
+
+> Nota: a folha original rotulava a coluna com as horas como "Hora em
+> Portugal", mas os dados lá copiados são os do ficheiro do TF, em CET. As
+> tabelas (que agrupam por dia de mercado) batem com a folha; as horas
+> mostradas é que estão uma hora adiantadas. A página mostra as horas
+> certas.
+
 ## Cache
 
 `backend/data/omie-stats.json`, gerado, TTL de **24 h** — a página é
