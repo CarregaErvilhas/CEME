@@ -223,6 +223,16 @@ async function comps(vid) {
   let out;
   try { out = pickComponents(rows); }
   catch (e) { throw new Error(`${e.message} na versão ${vid}`); }
+  // A decomposição energia + TAR, quando a folha a tinha (o CEME publicava a
+  // energia separada). Onde não há, fica null — o preço final é o que o
+  // CEME publica, e não se inventa a parte da energia.
+  const split = {};
+  for (const r of rows) {
+    split[r.period] = (r.energy_only_eur_kwh == null || r.tar_eur_kwh == null)
+      ? null
+      : { energy: r.energy_only_eur_kwh, tar: r.tar_eur_kwh };
+  }
+  out.split = split;
   return out;
 }
 
@@ -234,9 +244,25 @@ async function comps(vid) {
 const EGME_LEGAL = 0.1088; // €/carregamento, Regul. ERSE 7/2026 (em vigor 2026-01-01)
 const egmeFlags = (act) => ({ egme_legal: EGME_LEGAL, activation_stale: act > EGME_LEGAL });
 
+// A TAR em vigor para (região, tensão, período) — ou null, se não a temos.
+//
+// A TAR é o acesso à rede: o valor regulado pela ERSE, o mesmo para todos
+// os comercializadores. Onde não a temos (as ilhas não estão semeadas), a
+// resposta é null — não se inventa TAR nenhuma.
+async function tarFor(region, voltage, period) {
+  const row = await get(
+    `SELECT price_eur_kwh FROM tar
+      WHERE region = $1 AND voltage = $2 AND period = $3
+        AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
+      ORDER BY valid_from DESC LIMIT 1`,
+    [region, voltage, period]
+  );
+  return row?.price_eur_kwh ?? null;
+}
+
 async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
-  const { price, act, iec, sup } = await comps(t.vid);
+  const { price, act, iec, sup, split } = await comps(t.vid);
   const meta = {
     id: t.id, ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
     schedule: t.schedule, cycle: t.cycle, green: !!t.green, access: t.access,
@@ -247,17 +273,21 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   };
   if (t.kind === 'FIXED') {
     const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region });
-    return { ...meta, activation: act, iec, prices: price, avail: t.regions, ...egmeFlags(act), ...q };
+    // A decomposição vem dos componentes (a folha): só a há para os
+    // tarifários em que o CEME publicava a energia à parte. Nos outros o
+    // preço é o final, tal como o CEME o publica.
+    return { ...meta, activation: act, iec, prices: price, split, avail: t.regions, ...egmeFlags(act), ...q };
   }
   // INDEXED: PE por período com o OMIE de referência do pedido.
   // Nas ilhas usa-se a ref. continental com aviso (MIBEL não cobre as ilhas).
   const here = REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF';
-  const tarFor = async (per) => {
+  // A TAR do Continente (o MIBEL não cobre as ilhas, e o aviso está lá).
+  const tarOf = async (per) => {
     const row = await get(
       "SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage = $1 AND period = $2 AND valid_from <= CURRENT_DATE ORDER BY valid_from DESC LIMIT 1",
       [t.voltage, per]
     );
-    return row?.price_eur_kwh ?? 0;
+    return row?.price_eur_kwh ?? null;
   };
   const vm = vmeta(t.id);
   const agg = ver.omie_aggregation || 'SPLIT_VAZIO_FORA';
@@ -266,10 +296,17 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     return omie; // SPOT / UNICA / UNICO
   };
   const out = {};
+  // Nos indexados a energia e a TAR estão SEPARADAS por construção: o preço
+  // é (OMIE + K + CGS) × (1 + perdas) + TAR. Logo a decomposição é exacta
+  // — não é aritmética nossa, é a fórmula.
+  const splitIdx = {};
   for (const per of ['VAZIO', 'FORA_VAZIO']) {
     const oref = omieForPeriod(per);
-    const tarEurKwh = await tarFor(per);
-    out[per] = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: vm.loss, formula: vm.formula }).price;
+    const tar = await tarOf(per);
+    const tarEurKwh = tar ?? 0;
+    const price = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: vm.loss, formula: vm.formula }).price;
+    out[per] = price;
+    splitIdx[per] = tar == null ? null : { energy: price - tar, tar };
   }
   const omieRef = (agg === 'SPLIT_VAZIO_FORA') ? (omieVazio ?? omie) : omie;
   // Guarda: indexado com ciclo SIMPLES só tem preço UNICO — o motor só sabe
@@ -282,7 +319,7 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
   }
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region });
-  return { ...meta, activation: act, iec, prices: out, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
+  return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }
 
 // Negociação de idioma a partir do cabeçalho Accept-Language. Só há PT e EN:

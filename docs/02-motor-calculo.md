@@ -69,6 +69,23 @@ Segue o `ROUNDUP(...)*1,23` de `CEME!AC/AD`. A tabela `tar`
 Ex. Atlante MT fora-vazio: `40*0,1812=7,25 + 0,11 + 0,04 → 7,40*1,23 =
 9,11€` (bate certo com o sheet).
 
+### O preço final e a decomposição energia + TAR
+
+O que o CEME publica é o preço **final** (com a TAR dentro) — em pelo menos
+um tarifário (o Atlante) isso é visível na folha: a célula é a fórmula
+`=0,1+TAR!$B$5`, isto é, a energia que o CEME publica mais a TAR
+regulamentada.
+
+Onde a folha tem essa fórmula, guardamos a decomposição
+(`energy_only_eur_kwh` + `tar_eur_kwh`) e o site mostra as duas partes. Onde
+a folha só tem o valor final — a maioria dos comercializadores publica o
+total — **não se decompõe**: fica o preço final e diz-se que inclui a TAR.
+A diferença é aritmética nossa, não do CEME, e um tarifário pode ter sido
+publicado antes de a TAR mudar (sem factura, não há como saber).
+
+A decomposição recuperou-se da folha com `scripts/etl-ceme.js` (as
+fórmulas são a fonte) — ver o `SPLITS` do `backend/src/db/seed.js`.
+
 O `act` (taxa de activação) **é o que a CEME publica no sheet, à data da
 captura** — um único significado, invariante: o valor entra no cálculo como
 está, sem substituição. Algumas CEMEs trocam-lhe o nome de EGME, e à conta

@@ -31,11 +31,16 @@ CREATE TABLE IF NOT EXISTS tariff_version (
   UNIQUE (tariff_id, valid_from)
 );
 
+-- `energy_eur_kwh` é o preço FINAL que o CEME publica (já com a TAR
+-- dentro). `energy_only_eur_kwh` + `tar_eur_kwh` são a decomposição
+-- quando a folha a tinha (o CEME publicava a energia separada e a folha
+-- compunha o total): NULL quando não a temos — não se inventa.
 CREATE TABLE IF NOT EXISTS price_component (
   tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
   period TEXT NOT NULL CHECK (period IN ('VAZIO','FORA_VAZIO','UNICO')),
   energy_eur_kwh REAL, activation_eur REAL DEFAULT 0,
   support_eur REAL DEFAULT 0, iec_eur_kwh REAL DEFAULT 0,
+  energy_only_eur_kwh REAL, tar_eur_kwh REAL,
   PRIMARY KEY (tariff_version_id, period)
 );
 

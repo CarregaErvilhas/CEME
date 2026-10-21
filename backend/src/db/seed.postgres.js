@@ -4,6 +4,7 @@
 // act = EGME, o valor que a CEME publica (só o miio não cobra).
 import { readFile } from 'node:fs/promises';
 import { query, run } from './pg.js';
+import { SPLITS } from './seed.js';
 
 const CEMES = [
   ['acp', "ACP", "#ac2925", "https://www.acp.pt/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
@@ -267,26 +268,31 @@ export async function seed() {
 
     if (prices) {
       for (const [per, val] of Object.entries(prices)) {
+        const sp = (SPLITS[id] || {})[per] || null;
         await query(
-          `INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh)
-           VALUES ($1, $2, $3, $4, $5, $6)
+          `INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh, energy_only_eur_kwh, tar_eur_kwh)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (tariff_version_id, period) DO UPDATE SET
              energy_eur_kwh = EXCLUDED.energy_eur_kwh,
              activation_eur = EXCLUDED.activation_eur,
              support_eur = EXCLUDED.support_eur,
-             iec_eur_kwh = EXCLUDED.iec_eur_kwh`,
-          [vid, per, val, act, support, iec]
+             iec_eur_kwh = EXCLUDED.iec_eur_kwh,
+             energy_only_eur_kwh = EXCLUDED.energy_only_eur_kwh,
+             tar_eur_kwh = EXCLUDED.tar_eur_kwh`,
+          [vid, per, val, act, support, iec, sp ? sp.energy : null, sp ? sp.tar : null]
         );
       }
     } else {
       await query(
-        `INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh)
-         VALUES ($1, $2, NULL, $3, $4, $5)
+        `INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh, energy_only_eur_kwh, tar_eur_kwh)
+         VALUES ($1, $2, NULL, $3, $4, $5, NULL, NULL)
          ON CONFLICT (tariff_version_id, period) DO UPDATE SET
            energy_eur_kwh = EXCLUDED.energy_eur_kwh,
            activation_eur = EXCLUDED.activation_eur,
            support_eur = EXCLUDED.support_eur,
-           iec_eur_kwh = EXCLUDED.iec_eur_kwh`,
+           iec_eur_kwh = EXCLUDED.iec_eur_kwh,
+           energy_only_eur_kwh = EXCLUDED.energy_only_eur_kwh,
+           tar_eur_kwh = EXCLUDED.tar_eur_kwh`,
         [vid, 'VAZIO', act, support, iec]
       );
     }

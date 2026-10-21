@@ -104,6 +104,10 @@
   details table{border-collapse:collapse;width:100%;margin-top:8px}
   details td,details th{border-bottom:1px solid var(--line);padding:6px 2px;text-align:right;font-variant-numeric:tabular-nums}
   details td:first-child,details th:first-child{text-align:left}
+  details tr.usado{background:#f0fdf4}
+  details tr.usado td:first-child{box-shadow:inset 3px 0 0 #16a34a}
+  details tr.sub td{font-size:12px;color:var(--mut)}
+  .tag-usado{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#166534;background:#dcfce7;border-radius:999px;padding:2px 7px;white-space:nowrap}
   a.src{font-size:12px;color:#166534;font-weight:600}
   .kpi{display:flex;gap:10px;flex-wrap:wrap}
   .kpi>div{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;flex:1;min-width:150px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
@@ -481,8 +485,19 @@ function badges(q) {
   return b;
 }
 function detail(q) {
-  const rows = Object.entries(q.prices || {}).map(([p, v]) =>
-    `<tr><td>${perName(p)}</td><td>${kwhe(v)}</td><td>${eur(v * effKwh())}</td></tr>`).join('');
+  // A tabela de preços por período. O período que foi USADO no cálculo
+  // (o do total acima) vem assinalado — sem isso, dois preços e nenhuma
+  // pista de qual deles entrou na conta.
+  const usado = q.period;
+  const rows = Object.entries(q.prices || {}).map(([p, v]) => {
+    const s = q.split && q.split[p];
+    const linha = `<tr class="${p === usado ? 'usado' : ''}"><td>${p === usado ? '<b>' + perName(p) + '</b> <span class="tag-usado">' + i18n('periodUsed') + '</span>' : perName(p)}</td><td>${kwhe(v)}</td><td>${eur(v * effKwh())}</td></tr>`;
+    // A decomposição energia + TAR, só quando a temos (o CEME publicava a
+    // energia à parte). Onde não a temos, não se inventa: fica só o preço.
+    const sub = s ? `<tr class="sub"><td>&nbsp;&nbsp;${i18n('rowEnergy')}</td><td>${kwhe(s.energy)}</td><td>${eur(s.energy * effKwh())}</td></tr>`
+      + `<tr class="sub"><td>&nbsp;&nbsp;${i18n('rowTar')}</td><td>${kwhe(s.tar)}</td><td>${eur(s.tar * effKwh())}</td></tr>` : '';
+    return linha + sub;
+  }).join('');
   return `<details><summary>${i18n('breakdown')}</summary>
     <table><tr><th>${i18n('period')}</th><th>${i18n('noVat')}</th><th>${i18n('kwhVat', { k: kwhTxt() })}</th></tr>${rows}</table>
     <table>
