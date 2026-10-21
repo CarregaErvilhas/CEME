@@ -37,18 +37,37 @@ if (WEAK_SECRET) console.warn('[ceme-v2] AVISO: JWT_SECRET não definida — a s
 const BACKEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA_DIR = path.join(BACKEND_DIR, 'data');
 
-// Schema executado uma vez no arranque (idempotente).
-const schemaFile = USE_PG
-  ? new URL('./db/schema.postgres.sql', import.meta.url)
-  : new URL('./db/schema.sql', import.meta.url);
-const schemaSql = await readFile(schemaFile, 'utf8');
-await run(schemaSql);
+// Flags de bootstrap (opcionais, para previews/snapshots/readonly):
+//   CEME_READONLY=1     -> não escreve nada na BD (schema/seed/tar/api_key).
+//                         Usar com DB de produção readonly ou com snapshot já
+//                         restaurado. O server só lê.
+//   CEME_SKIP_SEED=1    -> salta o seed (upsert massivo), mas corre schema +
+//                         tar + api_key. Útil com snapshot restaurado, para não
+//                         sobrescrever edições manuais da produção.
+const READONLY = process.env.CEME_READONLY === '1';
+const SKIP_SEED = READONLY || process.env.CEME_SKIP_SEED === '1';
+const SKIP_SCHEMA = READONLY;
+const SKIP_TAR = READONLY;
+const SKIP_API_KEY = READONLY;
+
+if (READONLY) console.warn('[ceme-v2] modo READONLY: bootstrap de escrita desactivado.');
+
+// Schema executado uma vez no arranque (idempotente). Em modo readonly as
+// tabelas já existem (snapshot ou BD de produção) — saltar evita erros de
+// permissão (CREATE TABLE exige privilégio CREATE no schema).
+if (!SKIP_SCHEMA) {
+  const schemaFile = USE_PG
+    ? new URL('./db/schema.postgres.sql', import.meta.url)
+    : new URL('./db/schema.sql', import.meta.url);
+  const schemaSql = await readFile(schemaFile, 'utf8');
+  await run(schemaSql);
+}
 
 // API key para terceiros: o valor claro é provido pela env (CEME_API_KEY) e
 // NUNCA fica na BD — só o sha256. Sem chave configurada, X-API-Key devolve
 // 401 (o caminho web usa Bearer JWT). UPSERT: refresca o hash se a env mudar
 // entre restarts; em PG e SQLite a sintaxe upsert coincide.
-if (process.env.CEME_API_KEY) {
+if (process.env.CEME_API_KEY && !SKIP_API_KEY) {
   await run(`INSERT INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')
     ON CONFLICT (id) DO NOTHING`);
   await run(`INSERT INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', $1, $2)
@@ -58,20 +77,26 @@ if (process.env.CEME_API_KEY) {
 }
 
 // TAR 2026 Continente (ERSE) — ilhas entram na fase de seed completo
-await run(`
+if (!SKIP_TAR) {
+  await run(`
 INSERT INTO tar (valid_from, valid_to, region, voltage, period, price_eur_kwh) VALUES
  ('2026-01-01', NULL, 'CONT','BT','VAZIO',0.0266), ('2026-01-01', NULL,'CONT','BT','FORA_VAZIO',0.1192),
  ('2026-01-01', NULL, 'CONT','MT','VAZIO',0.0157), ('2026-01-01', NULL,'CONT','MT','FORA_VAZIO',0.0812)
 ON CONFLICT (valid_from, region, voltage, period) DO NOTHING
 `);
+}
 
-// Seed — depende do backend ativo.
-if (USE_PG) {
-  const { seed } = await import('./db/seed.postgres.js');
-  await seed();
+// Seed — depende do backend ativo. Saltado em modo readonly ou com snapshot.
+if (!SKIP_SEED) {
+  if (USE_PG) {
+    const { seed } = await import('./db/seed.postgres.js');
+    await seed();
+  } else {
+    const { seed } = await import('./db/seed.js');
+    await seed(dbInstance);
+  }
 } else {
-  const { seed } = await import('./db/seed.js');
-  await seed(dbInstance);
+  console.warn('[ceme-v2] seed saltado (CEME_SKIP_SEED/CEME_READONLY).');
 }
 
 function vmeta(tid) {
