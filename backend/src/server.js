@@ -276,6 +276,16 @@ const UI_ROUTES = { '/': null, '/index.html': null, '/assistente': 'assistente',
 const UI_COOKIE = 'ceme_ui';
 const UI_COOKIE_MAX_AGE = 31536000; // 1 ano
 
+// Páginas institucionais do site (Sobre, Contactos). São as mesmas para toda
+// a gente — a escolha do cookie é só da interface (assistente vs simulador),
+// por isso aqui não há cookie para ler nem para gravar. O English existe
+// porque metade dos nossos utilizadores escreve em inglês: `/sobre` e
+// `/about` são a mesma página.
+const INFO_ROUTES = {
+  '/sobre': 'about.html', '/about': 'about.html',
+  '/contactos': 'contact.html', '/contact': 'contact.html',
+};
+
 function readCookie(req, name) {
   const raw = req.headers.cookie;
   if (!raw) return null;
@@ -320,6 +330,28 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
       return res.end(js);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/strings.js em falta' } }); }
+  }
+  if (readStatic(req.method) && url.pathname === '/pages.css') {
+    // Estilo das páginas Sobre/Contactos (frontend/pages.css). Vive fora
+    // porque as duas páginas são irmãs e não vale a pena duplicar o CSS.
+    try {
+      const css = await readFile(new URL('../../frontend/pages.css', import.meta.url), 'utf8');
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      return res.end(css);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/pages.css em falta' } }); }
+  }
+  if (readStatic(req.method) && Object.hasOwn(INFO_ROUTES, url.pathname)) {
+    // Sobre e Contactos: HTML estático com a mesma negociação de língua das
+    // interfaces (o cabeçalho Accept-Language decide, a bandeira decide
+    // depois). Sem cookie — estas páginas não são uma "interface" a escolher.
+    const lang = negotiateLang(req.headers['accept-language']);
+    try {
+      const html = (await readFile(new URL(`../../frontend/${INFO_ROUTES[url.pathname]}`, import.meta.url), 'utf8'))
+        .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
+        .replace('window.__LANG__=null', `window.__LANG__=${JSON.stringify(lang)}`);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language' });
+      return res.end(html);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${INFO_ROUTES[url.pathname]} em falta` } }); }
   }
   if (readStatic(req.method) && Object.hasOwn(UI_ROUTES, url.pathname)) {
     // A escolha da interface vive num cookie que o servidor lê: `GET /` já

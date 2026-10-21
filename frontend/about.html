@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sobre o Comparador CEME</title>
+<meta name="description" content="Porque é que o Comparador CEME existe, o que faz, e como é útil também a quem tem um ponto de carregamento.">
+<link rel="stylesheet" href="/pages.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="logo" href="/"><span class="mark">⚡</span><span class="ttl" id="logoTxt"></span></a>
+  <nav>
+    <a href="/simulador" id="nSim"></a>
+    <a href="/assistente" id="nAssistant"></a>
+    <a href="/sobre" id="nSobre" class="on"></a>
+    <a href="/contactos" id="nContactos"></a>
+  </nav>
+  <span class="langs" role="group" aria-label="Idioma / Language">
+    <button data-lang="pt" title="Português" aria-label="Português"><svg viewBox="0 0 35 20" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="14" height="20" fill="#046A38"/><rect x="14" width="21" height="20" fill="#DA291C"/></svg></button>
+    <button data-lang="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="uJack"><path d="M0,0 H60 V30 H0 Z"/></clipPath></defs><g clip-path="url(#uJack)"><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" stroke-width="6"/><path d="M30,0 V30 M0,15 H60" stroke="#FFFFFF" stroke-width="10"/></g><path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V30 M0,15 H60" stroke="#C8102E" stroke-width="6"/></svg></button>
+  </span>
+</div></header>
+<div class="hero"><div class="in" id="hero"></div></div>
+<main id="app"></main>
+<footer id="foot"></footer>
+<script>window.__LANG__=null;</script>
+<script src="/strings.js"></script>
+<script>
+'use strict';
+/* Página "Sobre": a história do projecto, o que o simulador faz e porque é
+ * que é útil também a quem tem um ponto de carregamento (DPC).
+ *
+ * Os textos vivem em strings.js (namespace "about"), como nas outras
+ * páginas — a única diferença é que aqui não há API nem estado: é uma
+ * página estática que troca de língua e volta a desenhar-se. */
+const STR = CEME_STR('about');
+// Mesma precedência do resto do site: bandeira escolhida > Accept-Language
+// injectado pelo servidor > português.
+let LANG = (function () {
+  try { const s = localStorage.getItem('ceme:lang'); if (s === 'pt' || s === 'en') return s; } catch (e) {}
+  return (typeof window.__LANG__ === 'string' && window.__LANG__ === 'en') ? 'en' : 'pt';
+})();
+const t = (k) => STR[LANG][k] ?? STR.pt[k] ?? k;
+const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+function chrome() {
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
+  document.title = t('docTitle');
+  set('logoTxt', t('logoA') + ' <b class="lg2">' + t('logoB') + '</b>');
+  set('nSim', t('navSim'));
+  set('nAssistant', t('navAssistant'));
+  set('nSobre', t('navSobre'));
+  set('nContactos', t('navContactos'));
+  document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === LANG));
+}
+
+function render() {
+  chrome();
+  set('hero', `<h1>${t('h1')}</h1><p>${t('lede')}</p>`);
+  set('app', `
+    <article>
+      <h2>${t('s1h')}</h2>
+      <p>${t('s1p1')}</p>
+      <p>${t('s1p2')}</p>
+      <p>${t('s1p3')}</p>
+    </article>
+    <article>
+      <h2>${t('s2h')}</h2>
+      <ul>
+        <li>${t('s2li1')}</li>
+        <li>${t('s2li2')}</li>
+        <li>${t('s2li3')}</li>
+      </ul>
+    </article>
+    <article>
+      <h2>${t('s3h')}</h2>
+      <ul>
+        <li>${t('s3li1')}</li>
+        <li>${t('s3li2')}</li>
+        <li>${t('s3li3')}</li>
+        <li>${t('s3li4')}</li>
+      </ul>
+      <div class="cta">
+        <a href="/simulador">${t('navSim')}</a>
+        <a href="/assistente" class="sec">${t('navAssistant')}</a>
+      </div>
+    </article>
+    <article>
+      <h2>${t('s4h')}</h2>
+      <p>${t('s4p1')}</p>
+      <div class="note">${t('s4p2')}</div>
+      <ul>
+        <li>${t('s4li1')}</li>
+        <li>${t('s4li2')}</li>
+        <li>${t('s4li3')}</li>
+      </ul>
+    </article>
+    <article>
+      <h2>${t('s5h')}</h2>
+      <p>${t('s5p1')}</p>
+      <p>${t('s5p2')}</p>
+    </article>
+    <article>
+      <h2>${t('s8h')}</h2>
+      <p>${t('s8p1')}</p>
+    </article>
+    <article>
+      <h2>${t('s6h')}</h2>
+      <ul>
+        <li>${t('s6li1')}</li>
+        <li>${t('s6li2')}</li>
+        <li>${t('s6li3')}</li>
+      </ul>
+    </article>
+    <article>
+      <h2>${t('s7h')}</h2>
+      <p>${t('s7p1')}</p>
+    </article>`);
+  set('foot', `${t('footNote')} <a href="/simulador">${t('navSim')}</a><span class="sep">·</span><a href="/contactos">${t('navContactos')}</a><span class="sep">·</span><a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">GitHub</a>`);
+}
+
+document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => {
+  LANG = b.dataset.lang === 'en' ? 'en' : 'pt';
+  try { localStorage.setItem('ceme:lang', LANG); } catch (e) {}
+  render();
+});
+render();
+</script>
+</body>
+</html>

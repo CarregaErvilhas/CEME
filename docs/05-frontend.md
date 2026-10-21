@@ -5,6 +5,11 @@ até ao tarifário mais barato) e o **simulador completo** (ranking, filtros,
 comparador indexado vs fixo). HTML + CSS + JS vanilla, sem build, servidos
 pelo próprio `server.js`.
 
+A este par juntam-se duas **páginas institucionais** estáticas — **Sobre** e
+**Contactos** — que não usam a API: são a explicação do projecto (porque
+existe, o que faz, para quem é útil) e o sítio onde se escreve para reportar
+um problema ou pedir uma melhoria.
+
 ## Duas interfaces e a escolha do utilizador
 
 | Rota | O que serve |
@@ -14,6 +19,9 @@ pelo próprio `server.js`.
 | `GET /simulador` | simulador completo + grava `ceme_ui=completo` |
 | `GET /index.html` | alias de `/` (segue o cookie) |
 | `GET /strings.js` | dicionário partilhado (ver i18n) |
+| `GET /pages.css` | estilo partilhado por Sobre/Contactos |
+| `GET /sobre`, `GET /about` | página "Sobre" (aliases PT/EN) |
+| `GET /contactos`, `GET /contact` | página "Contactos" (aliases PT/EN) |
 
 O assistente é a porta de entrada: é a página que um visitante novo vê em `/`.
 Cada interface tem um link para a outra (`Abrir o simulador completo` /
@@ -55,6 +63,33 @@ O fluxo de cada interface:
   comparação, não uma vista filtrada. A selecção guardar-se por
   `ceme|nome` e não por `id`, para sobreviver à troca BT ⇄ MT (o id muda, o
   tarifário não).
+
+## Páginas institucionais (Sobre, Contactos)
+
+HTML estático, sem API e sem estado — a única coisa dinâmica é a língua. O
+servidor serve-os com a mesma negociação de `Accept-Language` das interfaces
+(`<html lang>` + `window.__LANG__`), injectados da mesma forma, e **sem
+cookie**: a escolha do cookie `ceme_ui` é só da interface (assistente vs
+simulador), não da página.
+
+| rota | ficheiro | conteúdo |
+|---|---|---|
+| `/sobre` (`/about`) | `frontend/about.html` | a história (a folha de cálculo do `@ofelgueiras2` que inspirou o projecto), porque é que comparar um carregamento é difícil, o que o simulador faz, **a secção dos DPC** (Detentor de Ponto de Carregamento: o que é, e porque é que no ponto dele não há OPC — logo a energia é quase toda a factura), de onde vêm os dados e o que o projecto **não** é |
+| `/contactos` (`/contact`) | `frontend/contact.html` | GitHub issues (caminho mais rápido para uma correcção), email `info@ocarroeletrico.com`, Messenger, os sítios onde nos encontrar (O Carro Elétrico, Mobi.E, simulador da ERSE) e o que vale a pena escrever para se poder reproduzir um erro |
+
+Duas decisões que valem a pena registar:
+
+- **O texto vive em `strings.js`**, como em todas as outras páginas — os
+  namespaces `about` e `contact` entram no teste de sincronia PT/EN
+  (`backend/test/strings.test.js`) como os restantes.
+- **O chrome (logo e navegação) vive em `common`**, porque as quatro páginas
+  mostram as mesmas coisas. As chaves `logoA`/`logoB` e `navSim`/`navAssistant`/
+  `navSobre`/`navContactos` saíram do namespace `simulador` para `common` — o
+  texto repetido entre páginas é a coisa que o teste apanha.
+
+Em telefone o header passa a duas linhas (logo + bandeiras em cima, nav por
+baixo, a deslizar na horizontal): com cinco links na nav do simulador já não
+cabia tudo numa linha, e espremer os rótulos ficava ilegível.
 
 ## Aviso de âmbito (a peça mais importante da UI)
 
@@ -156,11 +191,12 @@ inclui `Vary: Accept-Language` (e `Vary: Cookie` no HTML, que também depende
 do cookie da interface).
 
 No cliente:
-- **Um dicionário para os dois sites**: `frontend/strings.js`, carregado com
-  `<script src="/strings.js">`. Cada página pede o seu namespace com
-  `CEME_STR('simulador')` / `CEME_STR('assistente')`, que devolve
-  `{pt, en}` já com o vocabulário **comum** (filtros e etiquetas dos
-  tarifários, `Agora`, `Energia a carregar`, `Tentar outra vez`) por cima.
+- **Um dicionário para as quatro páginas**: `frontend/strings.js`, carregado
+  com `<script src="/strings.js">`. Cada página pede o seu namespace com
+  `CEME_STR('simulador')` / `CEME_STR('assistente')` / `CEME_STR('about')` /
+  `CEME_STR('contact')`, que devolve `{pt, en}` já com o vocabulário **comum**
+  (filtros e etiquetas dos tarifários, `Agora`, `Energia a carregar`,
+  `Tentar outra vez`, e o logo + a navegação) por cima.
   `CEME_I18N.regions` tem nome, IVA e fuso de cada região — a UI do simulador
   usa o nome longo, o assistente o `curto` (a mesma fonte, duas larguras).
 - `i18n('chave', {vars})` (simulador) e `t('chave', {vars})` (assistente)
@@ -169,7 +205,7 @@ No cliente:
   com as mesmas chaves e os mesmos placeholders em todos os namespaces,
   nenhuma chave de `common` redefinida por uma página, nenhuma chave usada que
   não exista, nenhuma chave morta, e **nenhum texto igual em dois sítios** —
-  se as duas interfaces dizem o mesmo, a chave passa para `common`. É a regra
+  se duas páginas dizem o mesmo, a chave passa para `common`. É a regra
   que impede o divórcio entre os dois dicionários.
 - `setLang(id, persist)` (simulador) muda a linguagem, actualiza `<html lang>`,
   as bandeiras e o chrome estático (`applyChrome()`: `<title>`, logo, nav,
