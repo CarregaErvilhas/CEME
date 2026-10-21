@@ -286,6 +286,10 @@ function draw(d) {
   document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
   document.title = t('docTitle');
   document.getElementById('logoTxt').innerHTML = t('logoA') + ' <b class="lg2">' + t('logoB') + '</b>';
+  // No domínio próprio a raiz é esta página — o logo tem de levar ao site
+  // principal, senão seria um loop.
+  const own = location.hostname === 'omie.cocofree.dev';
+  document.getElementById('logoLink').href = own ? 'https://ceme-beta.ocarroeletrico.com/' : '/';
   document.getElementById('nSim').textContent = t('navSim');
   document.getElementById('nAssistant').textContent = t('navAssistant');
   document.getElementById('nSobre').textContent = t('navSobre');
@@ -298,8 +302,7 @@ function draw(d) {
   // Os meses truncados llevan asterisco: o primeiro porque a janela de 366
   // dias não começa no dia 1, o último porque o mês ainda não acabou.
   const notas = [];
-  if (d.months.some(m => m.cut === 'start')) notas.push(t('noteCutStart'));
-  if (d.months.some(m => m.cut === 'end')) notas.push(t('noteCutEnd'));
+  if (d.months.some(m => m.cut === 'start') || d.months.some(m => m.cut === 'end')) notas.push(t('noteCutStart'));
   document.getElementById('notePartial').innerHTML = notas.length
     ? `<span class="partial">*</span> ${notas.join(' ')}` : '';
   const st = document.getElementById('status');
