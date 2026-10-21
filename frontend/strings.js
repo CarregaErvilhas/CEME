@@ -439,7 +439,6 @@
     omie: {
       pt: {
         docTitle: 'Estatísticas OMIE',
-        lede: 'Preços do mercado diário (OMIE) agregados por mês e por ciclo horário.',
         // cartões da esquerda
         cardNow: 'Valor OMIE à hora actual em Portugal',
         cardToday: 'Média OMIE de Hoje',
@@ -460,15 +459,13 @@
         capAnnual: 'Coloração de média Anual',
         capMonthly: 'Coloração mês-a-mês, expondo vazio vs cheias',
         // notas
-        noteCutStart: 'o primeiro mês é parcial: a janela de 366 dias não começa no dia 1.',
-        noteCutEnd: 'o mês corrente ainda não acabou.',
+        noteCutStart: 'o primeiro mês é parcial (a janela de 366 dias não começa no dia 1) e o mês corrente ainda não acabou.',
         footData: 'Dados de {src}. Actualizado uma vez por dia; último dado: {d}.',
         noteStale: 'A actualizar em segundo plano — estes ainda são os dados de {d}.',
         err: 'Não foi possível ir buscar as estatísticas OMIE: {m}',
       },
       en: {
         docTitle: 'OMIE statistics',
-        lede: 'Day-ahead market (OMIE) prices aggregated by month and by time-of-use cycle.',
         cardNow: 'OMIE value at the current hour in Portugal',
         cardToday: 'OMIE average for today',
         cardLast: 'OMIE average for the last market day',
@@ -486,8 +483,7 @@
         thTotal: 'Overall',
         capAnnual: 'Annual-average colouring',
         capMonthly: 'Month-by-month colouring, showing off-peak vs peak',
-        noteCutStart: 'the first month is partial: the 366-day window does not start on the 1st.',
-        noteCutEnd: 'the current month is not over yet.',
+        noteCutStart: 'the first month is partial (the 366-day window does not start on the 1st) and the current month is not over yet.',
         footData: 'Data from {src}. Refreshed once a day; last data point: {d}.',
         noteStale: 'Refreshing in the background — these are still the {d} data.',
         err: 'Could not fetch the OMIE statistics: {m}',
