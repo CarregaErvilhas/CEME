@@ -519,22 +519,27 @@ const server = http.createServer(async (req, res) => {
         if (fp && Object.keys(fp).length) {
           fixPrice = fp;
           const fc = await get('SELECT name FROM ceme WHERE id = $1', [ft.ceme_id]);
-          fixInfo = { id: ft.id, name: ft.name, ceme: fc?.name || ft.ceme_id, voltage: ft.voltage, schedule: ft.schedule };
+          fixInfo = { id: ft.id, name: ft.name, ceme: fc?.name || ft.ceme_id, voltage: ft.voltage, schedule: ft.schedule, cycle: ft.cycle };
         }
       }
     }
 
     const finish = (q) => {
       try {
-        // O período do tarifário sai do INSTANTE (não de uma hora de
-        // relógio): as regras do período horário são as do fuso da região,
-        // e o motor sabe aplicá-las a um instante.
+        // Cada tarifario e' cotado no SEU periodo, no SEU instante: um
+        // indexado DIARIO e um fixo SEMANAL nao partilham as fronteiras.
+        // (Usar o periodo do indexado para cotar o fixo dava um preco
+        // fixo errado — o fixo mudava de preco as 22:00, que e' a
+        // fronteira do ciclo diario, e nao a do semanal.)
         const withP = q.rows.map(r => {
           const at = new Date(r.utc);
           const per = periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at });
+          const fixPer = fixInfo
+            ? periodForRegion({ region, schedule: fixInfo.schedule, cycle: fixInfo.cycle, at })
+            : null;
           return {
             start: fmtTime(r.utc, tz), end: fmtTime(new Date(at.getTime() + 15 * 60000).toISOString(), tz),
-            period: per, omieMwh: r.pt, utc: r.utc, src: r.src,
+            period: per, fixPeriod: fixPer, omieMwh: r.pt, utc: r.utc, src: r.src,
           };
         });
         Promise.all(withP.map(async (item) => {
