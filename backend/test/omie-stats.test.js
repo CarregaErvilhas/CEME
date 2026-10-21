@@ -7,7 +7,12 @@
 // das médias.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStatsCsv, parseOmieCutoff, aggregate, lisbonNow } from '../src/omie/stats.js';
+import { parseStatsCsv, parseOmieCutoff, aggregate, lisbonNow, currentPrice } from '../src/omie/stats.js';
+
+const dnOf = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+};
 
 const CSV = [
   '﻿dia,hora,intervalo,Simples,BD,BS,TD,TS,preco_pt,preco_es',
@@ -195,5 +200,51 @@ describe('estatísticas OMIE — hora de Lisboa', () => {
   it('no Inverno é UTC+0', () => {
     const l = lisbonNow(new Date('2026-01-21T12:00:00Z'));
     assert.equal(l.minutes, 12 * 60);
+  });
+});
+
+describe('estatísticas OMIE — o preço à hora actual é vivo', () => {
+  const NOW = new Date('2026-10-21T13:00:00Z'); // 14:00 em Lisboa
+  // A cauda de um dia de mercado: o dia 21/10 em CET (00:00-23:45) é, em
+  // Lisboa, das 23:00 do dia anterior às 22:45. Preço = 10 + índice.
+  const tail = (marketDay) => {
+    const out = [];
+    for (let cet = 0; cet < 96 * 15; cet += 15) {
+      out.push({
+        dn: dnOf(marketDay),
+        lisbonDn: cet < 60 ? dnOf(marketDay) - 1 : dnOf(marketDay),
+        lisbonMin: (cet + 1440 - 60) % 1440,
+        price: 10 + out.length,
+      });
+    }
+    return out;
+  };
+  const payload = { cutoff: '2026-10-21', recent: tail('2026-10-21') };
+  const priceAt = (lisbonMin) => payload.recent.find(r => r.lisbonDn === dnOf('2026-10-21') && r.lisbonMin === lisbonMin).price;
+
+  it('acompanha o relógio: cada 15 minutos muda o quarter', () => {
+    const c = currentPrice(payload, NOW);
+    assert.equal(c.at, '2026-10-21T14:00');
+    assert.equal(c.live, true);
+    assert.equal(c.price, priceAt(14 * 60));
+  });
+
+  it('quando o quarter em curso ainda não saiu, fica o último e diz que não é "live"', () => {
+    // cauda truncada às 12:00: o quarter das 13:00 ainda não foi publicado
+    const curto = { ...payload, recent: payload.recent.filter(r => r.lisbonMin <= 12 * 60) };
+    const c = currentPrice(curto, new Date('2026-10-21T12:05:00Z')); // 13:05 em Lisboa
+    assert.equal(c.at, '2026-10-21T12:00');
+    assert.equal(c.live, false);
+  });
+
+  it('marca como estimativa o quarter de um dia que a OMIE ainda não publicou', () => {
+    const comFuturo = {
+      cutoff: '2026-10-21',
+      recent: [...payload.recent, { dn: dnOf('2026-10-22'), lisbonDn: dnOf('2026-10-22'), lisbonMin: 0, price: 99 }],
+    };
+    const c = currentPrice(comFuturo, new Date('2026-10-22T00:05:00Z')); // 01:05 em Lisboa
+    assert.equal(c.at, '2026-10-22T00:00', 'o quarter das 01:00 ainda não existe');
+    assert.equal(c.price, 99);
+    assert.equal(c.estimated, true, 'o dia 22/10 ainda é estimativa OMIP');
   });
 });

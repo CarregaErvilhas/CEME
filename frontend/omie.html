@@ -200,7 +200,7 @@ function drawCards(d) {
   const c = d.cards;
   const isToday = c.today.date === d.today;
   const html = [
-    card('now', t('cardNow'), dt(d.current.at), euro(d.current.price)),
+    card('now', t('cardNow'), dt(d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price)),
     card('today', isToday ? t('cardToday') : t('cardLast'), dtDay(c.today.date), euro(c.today.value)),
     card('rest', t('cardTomorrow'), dtDay(c.tomorrow.date), euro(c.tomorrow.value)),
     card('rest', t('cardLast30'), `${dt(c.last30.from)}<br>${dt(c.last30.to)}`, euro(c.last30.value)),
@@ -297,6 +297,11 @@ function draw(d) {
 
 /* --- dados ----------------------------------------------------------- */
 const API = location.origin;
+// De quanto em quanto se volta a pedir os dados. O preço "à hora actual"
+// muda de quarter a cada 15 minutos, e o cartão tem de acompanhar o
+// relógio — a página não pode ficar parada a mostrar o valor de quando
+// carregou.
+const REFRESH_MS = 60_000;
 let token = null;
 async function sess() {
   if (token) return token;
@@ -316,12 +321,20 @@ async function api(path) {
 }
 
 (async function () {
+  const status = document.getElementById('status');
   try {
-    const d = await api('/v1/omie/stats');
-    draw(d);
+    draw(await api('/v1/omie/stats'));
   } catch (e) {
-    document.getElementById('status').innerHTML = `<span class="err">${t('err', { m: e.message })}</span>`;
+    status.innerHTML = `<span class="err">${t('err', { m: e.message })}</span>`;
   }
+  // De minuto a minuto, para o preço à hora actual acompanhar o quarter.
+  setInterval(async () => {
+    try {
+      const d = await api('/v1/omie/stats');
+      status.innerHTML = '';   // limpa um erro anterior
+      draw(d);
+    } catch (e) { /* fica o que está no ecrã */ }
+  }, REFRESH_MS);
 })();
 </script>
 </body>

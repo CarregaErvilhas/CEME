@@ -38,9 +38,11 @@
       navSim: 'Simulador', navAssistant: 'Assistente',
       navSobre: 'Sobre', navContactos: 'Contactos',
       footNote: 'Ferramenta comunitária, sem fins lucrativos.',
-      // conceito partilhado: a tarifa de preço único (o simulador e a
-      // tabela de estatísticas OMIE precisam do mesmo nome)
+      // conceitos partilhados: a tarifa de preço único e a marca de
+      // "estimativa OMIP" são as mesmas no simulador e na página de
+      // estatísticas OMIE
       simple: 'Simples',
+      omipEst: 'estimativa OMIP',
     },
     en: {
       fPopular: '★ popular', tagPopular: 'popular',
@@ -53,6 +55,7 @@
       navSobre: 'About', navContactos: 'Contact',
       footNote: 'A community tool, non-profit.',
       simple: 'Simple rate',
+      omipEst: 'OMIP estimate',
     },
   };
 
@@ -132,7 +135,7 @@
         calcQ: 'A calcular quartos-horários…',
         chartDays: ' · {n} dias', legendIdxPeak: 'indexado fora de vazio', legendIdxOff: 'indexado vazio',
         legendFixed: 'fixo', legendWins: 'dias em que o indexado ganha',
-        omipEst: 'estimativa OMIP', byTime: 'por hora', cheapestQ: 'mais baratos',
+        byTime: 'por hora', cheapestQ: 'mais baratos',
         eightCheap: '8 quartos mais baratos:', thTime: 'Hora', thOmie: 'OMIE €/MWh',
         thIdx: 'Indexado €/kWh', thFix: 'Fixo €/kWh', thWin: 'Melhor',
         winIdx: 'indexado', winFix: 'fixo', winEq: 'empate',
@@ -228,7 +231,7 @@
         calcQ: 'Working out the quarter-hourly slots…',
         chartDays: ' · {n} days', legendIdxPeak: 'indexed tariff, peak', legendIdxOff: 'indexed tariff, off-peak',
         legendFixed: 'fixed tariff', legendWins: 'days the indexed tariff was cheaper',
-        omipEst: 'OMIP estimate', byTime: 'by time', cheapestQ: 'cheapest first',
+        byTime: 'by time', cheapestQ: 'cheapest first',
         eightCheap: 'The 8 cheapest quarter-hour slots:', thTime: 'Time', thOmie: 'OMIE €/MWh',
         thIdx: 'Indexed €/kWh', thFix: 'Fixed €/kWh', thWin: 'Better',
         winIdx: 'indexed', winFix: 'fixed', winEq: 'tie',
@@ -460,7 +463,7 @@
         capMonthly: 'Coloração mês-a-mês, expondo vazio vs cheias',
         // notas
         noteCutStart: 'o primeiro mês é parcial (a janela de 366 dias não começa no dia 1) e o mês corrente ainda não acabou.',
-        footData: 'Dados de {src}. Actualizado uma vez por dia; último dado: {d}.',
+        footData: 'Dados de {src}. Actualização horária; último dado: {d}.',
         noteStale: 'A actualizar em segundo plano — estes ainda são os dados de {d}.',
         err: 'Não foi possível ir buscar as estatísticas OMIE: {m}',
       },
@@ -484,7 +487,7 @@
         capAnnual: 'Annual-average colouring',
         capMonthly: 'Month-by-month colouring, showing off-peak vs peak',
         noteCutStart: 'the first month is partial (the 366-day window does not start on the 1st) and the current month is not over yet.',
-        footData: 'Data from {src}. Refreshed once a day; last data point: {d}.',
+        footData: 'Data from {src}. Refreshed hourly; last data point: {d}.',
         noteStale: 'Refreshing in the background — these are still the {d} data.',
         err: 'Could not fetch the OMIE statistics: {m}',
       },

@@ -138,13 +138,27 @@ aplicá-lo aos dados do TF.
 
 ## Cache
 
-`backend/data/omie-stats.json`, gerado, TTL de **24 h** — a página é
-refrescada uma vez por dia, que é o que se pediu.
+`backend/data/omie-stats.json`, gerado, TTL de **2 h**.
 
 Um cache vencido é **devolvido na mesma** e a actualização corre em
 segundo plano: a primeira visita depois do prazo não espera por ~4 MB de
 CSV, e mesmo assim os dados não ficam velhos. A resposta diz a idade dos
 dados (`dataThrough`) e se estão a ser actualizados (`stale`).
+
+### O preço "à hora actual" é calculado a cada pedido
+
+O cache é de horas, mas o **quarter em curso muda a cada 15 minutos** — por
+isso o preço à hora actual **não vem do cache**. O payload guarda uma cauda
+com os últimos quartos (o dia de mercado e o seguinte) e o preço é
+recalculado a cada pedido, contra o relógio do servidor. A página volta a
+pedir os dados de minuto a minuto, para o cartão acompanhar o quarter.
+
+Nota sobre o que é "actual": o mercado à vista de dia publica a curva
+inteira do dia de uma vez (o preço é por quarter, não um tick), por isso o
+**preço** só muda quando a OMIE publica ou quando o TF vai buscar o
+ficheiro — o que muda a cada 15 minutos é **a hora** que se mostra. Quando o
+dia de mercado ainda não foi publicado, o cartão acrescenta "estimativa
+OMIP".
 
 ## Routing por domínio
 
