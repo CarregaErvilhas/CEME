@@ -285,6 +285,15 @@ const server = http.createServer(async (req, res) => {
       return res.end(html);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/index.html em falta' } }); }
   }
+  // Protótipo do assistente passo-a-passo (estático, mesma API). A língua
+  // escolhe-se no cliente, por isso não há injecção como em `/`.
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/prototipo') {
+    try {
+      const html = await readFile(new URL('../../frontend/prototipo.html', import.meta.url), 'utf8');
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      return res.end(html);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/prototipo.html em falta' } }); }
+  }
   // Um método por pathname: os handlers de leitura respondiam 200 a
   // PUT/DELETE (não faziam nada, mas fingiam que sim). 405 com `allow`.
   const allowed = METHODS[url.pathname];
