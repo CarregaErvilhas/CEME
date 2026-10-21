@@ -18,7 +18,12 @@ zerops:
       # resto do build no mesmo shell.
       buildCommands:
         - cd backend && npm ci
-      cache: backend/node_modules
+      # Sem `cache:`. A cache do build só ajuda `npm install`, que é
+      # incremental; com `npm ci` o node_modules é apagado e reinstalado do
+      # zero de qualquer maneira (docs do npm e o FAQ do Zerops), portanto o
+      # restore era trabalho perdido: mover para /build/source, apagar,
+      # reinstalar. A cache HTTP do npm (~/.npm) vive fora de /build/source e
+      # é preservada na mesma, sem config; é ela que faz os ~3s do npm ci.
       deployFiles:
         - backend
         - frontend
