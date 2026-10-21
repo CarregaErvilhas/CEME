@@ -25,11 +25,14 @@ const CURRENT_URL = `${BASE}/omie/omie_dados_atuais.csv`;
 const HISTORY_URL = (year) => `${BASE}/omie/historico/omie_historico_${year}.csv`;
 const FUT_URL = `${BASE}/omie/futuros_omip.csv`;
 
-const TTL_MS = 24 * 3600 * 1000;
+const TTL_MS = 2 * 3600 * 1000;
 // Janela da tabela: os últimos 366 dias de mercado. Dá 13 linhas (do mês
 // corrente a 12 meses atrás) e é o que a folha mostrava — o primeiro mês
 // aparece truncado, porque a janela não começa no dia 1.
 const WINDOW_DAYS = 366;
+// Quantos quartos recentes ficam no cache, para o "preço à hora actual"
+// poder ser recalculado a cada pedido (ver currentPrice).
+const TAIL_ROWS = 400;
 const SOURCE = 'dados.tiagofelicia.pt (CC BY 4.0)';
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -221,33 +224,28 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
   // Preço "à hora actual": o quarter de mercado que está a correr AGORA, em
   // hora de Lisboa. O ficheiro está em CET, por isso o quarter em curso é o
   // que tem a hora de Lisboa correspondente — e é o que se mostra.
-  const floorMin = Math.floor(lis.minutes / 15) * 15;
-  let current = null;
-  for (const r of real) {
-    if (r.lisbonDn > lis.dayNum) continue;
-    if (r.lisbonDn < lis.dayNum) { current = r; continue; }
-    if (r.lisbonMin > floorMin) break;
-    current = r;
-  }
-  current = current || anchor;
-
   const stamp = (dn, min) => `${isoOf(dn)}T${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
   // O dia de mercado começa às 00:00 CET = 23:00 de Lisboa do dia anterior.
   const marketDayStart = (dn) => ({ dn: dn - 1, min: 23 * 60 });
 
+  // Os últimos quartos (dia de mercado + o dia seguinte), para o preço "à
+  // hora actual" poder ser recalculado a cada pedido em vez de ficar
+  // preso no que foi calculado quando o cache foi feito.
+  const recent = rows
+    .filter(r => r.dn <= lastDn + 1)
+    .slice(-TAIL_ROWS)
+    .map(r => ({ dn: r.dn, lisbonDn: r.lisbonDn, lisbonMin: r.lisbonMin, price: r.price }));
+  const cutoffIso = cutoff || isoOf(lastDn);
+
   return {
     generatedAt: now.toISOString(),
     source: SOURCE,
-    cutoff: cutoff || isoOf(anchor.dn),
+    cutoff: cutoffIso,
     // Tudo o que se mostra com hora é hora de Lisboa.
     dataThrough: stamp(anchor.lisbonDn, anchor.lisbonMin),
     window: { from: isoOf(fromDn), to: isoOf(lastDn) },
     today: lis.day,
-    current: {
-      at: stamp(current.lisbonDn, current.lisbonMin),
-      price: round2(current.price),
-      live: current.lisbonDn === lis.dayNum && current.lisbonMin === floorMin,
-    },
+    current: currentPrice({ recent, cutoff: cutoffIso }, now),
     cards: {
       today: {
         date: isoOf(dayBuckets.has(lis.dayNum) ? lis.dayNum : anchor.dn),
@@ -278,6 +276,37 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
     },
     months,
     total: shape(win),
+    recent,
+  };
+}
+
+// O preço "à hora actual": o quarter de mercado que está a correr AGORA.
+// Calculado a cada pedido a partir da cauda guardada no cache — o cache
+// é de horas, mas a hora que está a correr muda a cada 15 minutos.
+//
+// Nota: o mercado à vista de dia publica a curva inteira do dia de uma
+// vez, por isso este preço não é um "tick" — muda quando a OMIE publica
+// (e quando o TF vai buscar o ficheiro). O que muda a cada 15 minutos é o
+// quarter em que estamos.
+export function currentPrice(payload, now = new Date()) {
+  const lis = lisbonNow(now);
+  const floorMin = Math.floor(lis.minutes / 15) * 15;
+  let best = null;
+  for (const r of payload.recent || []) {
+    if (r.lisbonDn > lis.dayNum) continue;
+    if (r.lisbonDn < lis.dayNum) { best = r; continue; }
+    if (r.lisbonMin > floorMin) break;
+    best = r;
+  }
+  if (!best) return { at: null, price: null, live: false, estimated: false };
+  const cut = payload.cutoff ? dayNum(Number(payload.cutoff.slice(0, 4)), Number(payload.cutoff.slice(5, 7)), Number(payload.cutoff.slice(8, 10))) : Infinity;
+  return {
+    at: `${isoOf(best.lisbonDn)}T${pad2(Math.floor(best.lisbonMin / 60))}:${pad2(best.lisbonMin % 60)}`,
+    price: round2(best.price),
+    live: best.lisbonDn === lis.dayNum && best.lisbonMin === floorMin,
+    // O dia de mercado ainda não foi publicado: o preço é uma estimativa
+    // OMIP, não um preço de mercado.
+    estimated: best.dn > cut,
   };
 }
 
@@ -317,31 +346,38 @@ async function build(now = new Date()) {
   return { ...payload, fetchedAt: Date.now() };
 }
 
-// Payload fresco, com cache de 24h em disco. Cache vencido devolve-se na
-// mesma e a actualização fica em segundo plano: quem chega ao site não
-// espera por 4 MB de CSV, e mesmo assim os dados não ficam velhos.
+// Payload fresco, com cache em disco. Cache vencido devolve-se na mesma e a
+// actualização fica em segundo plano: quem chega ao site não espera por
+// 4 MB de CSV, e mesmo assim os dados não ficam velhos.
+//
+// O "preço à hora actual" não vem do cache: recalcula-se a cada pedido a
+// partir da cauda de quartos guardados, para acompanhar o relógio.
 export async function getStats(dataDir) {
   mkdirSync(dataDir, { recursive: true });
   const path = `${dataDir}/omie-stats.json`;
   const cached = readJson(path);
   const fresh = cached && Date.now() - cached.fetchedAt < TTL_MS;
-  if (fresh) return { ...cached, cached: true, stale: false };
 
-  if (cached) {
-    if (!inflight) {
-      inflight = build()
-        .then(payload => { try { writeFileSync(path, JSON.stringify(payload)); } catch { /* cache opcional */ } })
-        .catch(() => { /* fica o cache velho; o próximo pedido tenta outra vez */ })
-        .finally(() => { inflight = null; });
+  if (!fresh) {
+    if (cached) {
+      // Cache velho: devolve-se já e actualiza-se em segundo plano.
+      if (!inflight) {
+        inflight = build()
+          .then(p => { try { writeFileSync(path, JSON.stringify(p)); } catch { /* cache opcional */ } })
+          .catch(() => { /* fica o cache velho; o próximo pedido tenta outra vez */ })
+          .finally(() => { inflight = null; });
+      }
+    } else {
+      try {
+        const payload = await build();
+        try { writeFileSync(path, JSON.stringify(payload)); } catch { /* cache opcional */ }
+      } catch (e) {
+        throw new Error(`séries OMIE indisponíveis: ${e.message}`);
+      }
     }
-    return { ...cached, cached: true, stale: true };
   }
 
-  try {
-    const payload = await build();
-    try { writeFileSync(path, JSON.stringify(payload)); } catch { /* cache opcional */ }
-    return { ...payload, cached: false, stale: false };
-  } catch (e) {
-    throw new Error(`séries OMIE indisponíveis: ${e.message}`);
-  }
+  const payload = readJson(path) || cached;
+  if (!payload) throw new Error('séries OMIE indisponíveis');
+  return { ...payload, current: currentPrice(payload, new Date()), stale: !fresh };
 }
