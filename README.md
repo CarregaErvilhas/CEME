@@ -70,6 +70,7 @@ A excepção é `POST /v1/session`, que emite o token da sessão web. Detalhe em
 | POST | `/v1/simulate` | todos os tarifários cotados para o instante/região pedidos |
 | GET | `/v1/omie/daily?days=60` | agregados diários (7..120 dias) |
 | GET | `/v1/omie/futures` | contratos OMIP |
+| GET | `/v1/omie/stats` | estatísticas mensais OMIE (13 meses + total geral) e as células de referência |
 | GET | `/v1/indexed/quarters` | quartos-horários de um indexado + `winner` vs. o fixo escolhido |
 
 Erros em `{error: {code, message}}`; datas em ISO UTC. Um tarifário com
@@ -96,6 +97,15 @@ seguem (nunca um 400 vindo de um seed mau).
   contactos (email, Messenger) e o GitHub issues para reportar problemas e
   sugestões. São HTML estático, sem API, com o mesmo dicionário e a mesma
   negociação de língua das outras páginas.
+- **Estatísticas OMIE** (`https://omie.cocofree.dev`, e `/omie` no site
+  principal): as tabelas mensais de preços (13 meses + total geral, com as
+  séries Simples / Bi-horário Semanal / Bi-horário Diário) e as células de
+  referência — valor à hora actual, média de hoje e de amanhã, últimos 30
+  dias, previsão e média do mês. As **duas escalas de cor** são a
+  informação: a de cima compara os meses entre si (uma escala
+  verde→amarelo→vermelho sobre toda a tabela), a de baixo compara dentro de
+  cada mês (escala divergente azul↔vermelho por linha). Detalhe em
+  `docs/09-omie-estatisticas.md`.
 
 O ranking mostra **128 tarifários versionados** (55 ofertas distintas em ecrã) /
 24 CEME — seed completo da folha da ERSE, incluindo Atlante, EDP, Galp, 6
@@ -137,18 +147,20 @@ em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
       auth/tokens.js          # JWT HS256 e hash das API keys
       db/                     # db.js, pg.js, schema[.postgres].sql, seed[.postgres].js
       engine/                 # quote, indexed, periods, regions, compare
-      omie/                   # cache, parse, convert, fallback
-    test/                     # 14 ficheiros, 141 testes (node:test)
+      omie/                   # cache, parse, convert, fallback, stats
+    test/                     # 15 ficheiros, 177 testes (node:test)
     data/                     # gerado: SQLite + cache OMIE (no .gitignore)
   frontend/
     index.html                # simulador completo (tudo num ficheiro)
     assistente.html           # assistente passo-a-passo (3 perguntas)
     about.html                # "Sobre": o projecto, o DPC, de onde vêm os dados
     contact.html              # "Contactos": email, Messenger, GitHub issues
+    omie.html                 # "Estatísticas OMIE": as tabelas mensais e as células
     pages.css                 # estilo partilhado por Sobre/Contactos
-    strings.js                # dicionário PT/EN das quatro páginas
+    strings.js                # dicionário PT/EN das cinco páginas
   docs/                       # 01-modelo, 02-motor, 03-omie, 04-api-auth,
-                              # 05-frontend, 06-roadmap, 07-ilhas, 08-migracao-sqlite-postgres
+                              # 05-frontend, 06-roadmap, 07-ilhas, 08-migracao-sqlite-postgres,
+                              # 09-omie-estatisticas
   scripts/etl-sheets.sh
   .github/workflows/ci.yml
 ```

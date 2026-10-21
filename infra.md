@@ -74,6 +74,13 @@ Criação dos serviços: `zerops-import.yaml` na raiz do repo + `zcli project se
 - Domínio: **`https://ceme-beta.ocarroeletrico.com`** → 200, serve o frontend e a API.
 - Registos Cloudflare: **só `AAAA`** → o IPv6 dedicado do projecto, **proxy activo**. O endereço **não** está neste documento (ver "Segredo: o IP da origem" abaixo).
 - Zeroops: hostname registado no L7 balancer (`public-http-routing`), com certificado Let's Encrypt **ACTIVE** para `ceme-beta.ocarroeletrico.com`.
+- **Segundo domínio:** `https://omie.cocofree.dev` → a página das estatísticas
+  OMIE (ver `docs/09-omie-estatisticas.md`). Vive no **mesmo** balancer e no
+  **mesmo** serviço `api`: o que muda é o `Host` — o servidor passa a ler o
+  cabeçalho `Host` e, nesse domínio, a raiz é a página OMIE em vez do
+  simulador. A zona `cocofree.dev` (uma zona diferente da do
+  `ocarroeletrico.com`) já tinha `ssl: strict`, `ipv6: on` e
+  `always_use_https: on` — não foi preciso mexer nas settings.
 
 ### IP da origem
 
@@ -103,6 +110,23 @@ São **dois** registos em sistemas diferentes, e o Zerops tem de ser o primeiro:
    ```
 
    A resposta fica com `dnsCheckStatus: PENDING` e `sslStatus: WAITING_FOR_DNS` — o Zerops espera pelo registo DNS antes de emitir o certificado (HTTP-01).
+
+   > **Para juntar um domínio a um balancer que já existe:** o `POST` de
+   > cima **cria** um routing novo e falha com
+   > `publicHttpRoutingDuplicateDomainNameInAnotherRouting` se o hostname já
+   > lá estiver. O que se usa é o **PUT** do routing existente:
+   >
+   > ```bash
+   > PUT /api/rest/public/public-http-routing/<routing-id>
+   > { "domains": [...], "locations": [...], "sslEnabled": true, "cdnEnabled": false }
+   > ```
+   >
+   > E **depois** de o `PUT`, o routing fica `isSynced: false` — a tabela de
+   > routing só entra no balancer depois de um
+   > `PUT /api/rest/public/project/<project-id>/sync-public-http-routing`
+   > (sem body). Sem esse sync, o balancer continua a responder **404** ao
+   > `Host` novo. O `locations` copia-se tal e qual do que já lá está — é
+   > onde vive o `accessPolicy` que só aceita tráfego da Cloudflare.
 
 2. **Cloudflare — o registo DNS.** Só depois de o hostname estar registado no Zerops (para o `Host` ser reconhecido) é que o AAAA faz sentido.
 
