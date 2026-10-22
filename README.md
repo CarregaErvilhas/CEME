@@ -57,6 +57,10 @@ tokens fabricáveis. Ver `backend/.env.example`.
 
 ## API
 
+Developer guide: <https://ceme-beta.ocarroeletrico.com/api> (also available
+locally at `/api`). It covers authentication, endpoints, examples, and
+guidance for app developers and AI agents.
+
 Todos os `/v1/*` exigem `Authorization: Bearer <jwt>` ou `X-API-Key: <chave>`.
 A excepção é `POST /v1/session`, que emite o token da sessão web. Detalhe em
 `docs/04-api-auth.md`.
