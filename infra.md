@@ -130,6 +130,42 @@ em ~1 min); o deploy sem downtime não precisa desse segundo pod permanente.
 Aí o que faz o trabalho é o `maxContainerCount: 2`, que é o que dá a
 sobreposição.
 
+### Verificado em produção (2026-10-22)
+
+O guard foi testado nos dois sentidos, no serviço real.
+
+**Deploy bom** (PR #29, appVersion `XlHwZJdIQnKfUqaSQ85aoA`):
+
+```
+00:45:39  Readiness check: container check failed - attempt 1/12 - connection refused
+00:45:40  ceme-v2 http://localhost:3001/ db=postgresql
+00:45:49  Readiness check: container check successful - ready after 2 attempts (took 10s)
+00:45:55  ✅ exec npm start        (o container velho sai de serviço)
+```
+
+O pod novo só entrou no balancer 10 s depois de o app abrir a porta, e o
+velho saiu depois disso. O site esteve a 200 durante todo o deploy.
+
+**Deploy mau** (PR #30, appVersion `A7AiBuznT0i5vkaRAIHVAQ`): o
+`readinessCheck` apontava para um caminho que não existe, de propósito.
+
+```
+00:48:41  Readiness check: container check failed - attempt 1/12
+00:50:31  Readiness check: container check failed - attempt 12/12 (failing for 1m50s)
+00:50:32  DEPLOY_FAILED
+```
+
+- A appVersion ficou `DEPLOY_FAILED`; a anterior (`XlHwZJdIQnKfUqaSQ85aoA`)
+  continuou **`ACTIVE`** e a servir.
+- Os containers: o velho (`api-runtime-23-645`) `ACTIVE`, o novo `FAILED` —
+  o velho **não** foi removido.
+- O site respondeu **200** nos dois domínios em todos os 127 polls (2 s de
+  intervalo) durante a janela toda, `/healthz` incluído.
+
+Nota: o probe do Zerops aceita códigos em `[200,400)` — 3xx passa, 401/404/503
+reprovam. E o `readinessCheck` só corre de dentro do container
+(`127.0.0.1:3001/...`), como o `healthCheck`.
+
 Docs: <https://docs.zerops.io/guides/readiness-health-checks> e
 <https://docs.zerops.io/guides/deployment-lifecycle>.
 
