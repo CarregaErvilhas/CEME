@@ -401,6 +401,9 @@ const UI_COOKIE_MAX_AGE = 31536000; // 1 ano
 const INFO_ROUTES = {
   '/sobre': 'about.html', '/about': 'about.html',
   '/contactos': 'contact.html', '/contact': 'contact.html',
+  // Subpágina sem links (rota subterrânea): a tabela em bruto dos
+  // tarifários em vigor, directa da BD.
+  '/tabela': 'tabela.html',
 };
 
 // Página das estatísticas OMIE (omie.cocofree.dev, e /omie no site
@@ -436,6 +439,7 @@ function uiCookie(req, ui) {
 // dois que aceitam corpo. 405 antes de gastar auth.
 const METHODS = {
   '/v1/health': 'GET', '/v1/cemes': 'GET', '/v1/tariffs': 'GET', '/v1/tar': 'GET',
+  '/v1/tabela': 'GET',
   '/v1/omie/daily': 'GET', '/v1/omie/futures': 'GET', '/v1/omie/stats': 'GET',
   '/v1/indexed/quarters': 'GET',
   '/v1/session': 'POST', '/v1/simulate': 'POST',
@@ -579,6 +583,26 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/v1/tar') {
     return json(res, 200, { data: await query("SELECT * FROM tar WHERE valid_from <= CURRENT_DATE AND (valid_to IS NULL OR valid_to > CURRENT_DATE)") }, headers);
+  }
+  if (url.pathname === '/v1/tabela') {
+    // Página /tabela: o espelho da folha. Os mesmos allTariffs + comps da
+    // API (e a mesma janela de validade — o que expirou não sai). Reaproveito
+    // tal como estão: se um tarifário com componente divergente rebentar
+    // aqui, é o mesmo sinal que o simulador já dava — não há silêncio.
+    const out = [];
+    for (const t of await allTariffs()) {
+      if (t.vid == null) continue; // sem versão em vigência (ex.: campanha expirada)
+      const cp = await comps(t.vid);
+      out.push({
+        ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
+        schedule: t.schedule, cycle: t.cycle, green: t.green, bundle: t.bundle,
+        popular: t.popular, access: t.access,
+        prices: cp.price, activation: cp.act, iec: cp.iec, split: cp.split,
+      });
+    }
+    const ver = await get(
+      'SELECT MAX(valid_from) AS d FROM tariff_version WHERE valid_from <= CURRENT_DATE AND (valid_to IS NULL OR valid_to > CURRENT_DATE)');
+    return json(res, 200, { at: ver?.d ?? null, data: out }, headers);
   }
   if (url.pathname === '/v1/omie/daily' && req.method === 'GET') {
     const days = Math.min(120, Math.max(7, Number(url.searchParams.get('days') || 60)));

@@ -496,6 +496,48 @@
         cvdToggle: 'Colour-blind friendly colours',
       },
     },
+    // Página "Tabela de tarifários" (frontend/tabela.html, sem link no site):
+    // os tarifários em vigor, directamente da BD, na grelha da folha.
+    tabela: {
+      pt: {
+        docTitle: 'Tabela — Comparador CEME',
+        h1: 'Tabela de tarifários',
+        lede: 'Todos os tarifários em vigor, directamente da base de dados — a grelha da folha, para comparar ao lado.',
+        thCeme: 'CEME',
+        thTariff: 'Tarifário',
+        thVolt: 'Nível de Tensão',
+        thOp: 'Opção Horária',
+        thCycle: 'Ciclo',
+        thCheias: 'Cheias (energia + TAR)',
+        thVazio: 'Vazio (energia + TAR)',
+        thAct: 'Tarifa de Activação',
+        biho: 'Bi-horário',
+        cDia: 'diário',
+        cSem: 'semanal',
+        idx: 'indexado ao OMIE',
+        footData: '{n} tarifários · validade desde {d} · sem o OPC, o IVA e o OMIE.',
+        err: 'Não foi possível ir buscar os tarifários: {m}',
+      },
+      en: {
+        docTitle: 'Tariff table — EV Tariff Comparison',
+        h1: 'Tariff table',
+        lede: 'Every tariff in force, straight from the database — the spreadsheet grid, easy to compare side by side.',
+        thCeme: 'CEME',
+        thTariff: 'Tariff',
+        thVolt: 'Voltage level',
+        thOp: 'Rate option',
+        thCycle: 'Cycle',
+        thCheias: 'Peak (energy + TAR)',
+        thVazio: 'Off-peak (energy + TAR)',
+        thAct: 'Activation fee per charge',
+        biho: 'Bi-hourly',
+        cDia: 'daily',
+        cSem: 'weekly',
+        idx: 'indexed to OMIE',
+        footData: '{n} tariffs · valid since {d} · excluding OPC, VAT and OMIE.',
+        err: 'Could not fetch the tariffs: {m}',
+      },
+    },
   };
 
   // Junta `common` ao namespace pedido e devolve { pt, en } plano, que é a

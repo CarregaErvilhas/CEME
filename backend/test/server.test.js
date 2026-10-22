@@ -291,6 +291,41 @@ describe('servidor: hardening HTTP', () => {
     });
   });
 
+  // Tabela: subpágina sem links no site — só quem sabe a rota a abre.
+  describe('página tabela (subpágina sem links)', () => {
+    const abrir = async (caminho, headers = {}) => {
+      const r = await fetch(`${BASE}${caminho}`, { headers });
+      return { status: r.status, html: await r.text() };
+    };
+
+    it('/tabela serve a página da tabela', async () => {
+      const { status, html } = await abrir('/tabela');
+      assert.equal(status, 200);
+      assert.ok(html.includes('<title>Tabela — Comparador CEME</title>'), 'título em falta');
+      assert.ok(html.includes("CEME_STR('tabela')"), 'não pede o namespace certo');
+    });
+
+    it('o HTML da página não aponta para /tabela (subpágina sem links)', async () => {
+      const html = (await fetch(`${BASE}/tabela`).then(r => r.text()));
+      assert.ok(!/href=["'][^"']*\/tabela/.test(html), 'não devia haver nenhum link para /tabela');
+    });
+
+    it('/v1/tabela exige auth', async () => {
+      assert.equal((await fetch(`${BASE}/v1/tabela`)).status, 401);
+    });
+
+    it('/v1/tabela com sessão devolve todos os tarifários em vigor', async () => {
+      const r = await fetch(`${BASE}/v1/tabela`, { headers: { Authorization: `Bearer ${token}` } });
+      assert.equal(r.status, 200);
+      const j = await r.json();
+      assert.ok(j.data.length >= 120, `devolve tarifários (${j.data?.length})`);
+      assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(j.at || ''), `data de validade (${j.at})`);
+      const bi = j.data.find(x => x.kind === 'FIXED' && x.schedule === 'BI_HORARIA');
+      assert.ok(bi.prices.FORA_VAZIO > 0 && bi.prices.VAZIO > 0, 'preços por período em falta');
+      assert.ok(!j.data.some(x => x.ceme === 'EZU' && x.name === 'AB Energia'), 'campanha expirada não devia aparecer');
+    });
+  });
+
   it('401 sem auth', async () => {
     assert.equal((await fetch(`${BASE}/v1/cemes`)).status, 401);
   });
