@@ -34,7 +34,7 @@ import {
   upsertSpot, upsertDaily, spotForDay, spotBetween, reconcile, spotRange, recentDays, lastMarketDay,
   getMeta, setMeta, getMetaJson, setMetaJson, dailyRows, shiftDays,
 } from './store.js';
-import { aggregate } from './stats.js';
+import { aggregate, currentPrice } from './stats.js';
 
 export const SOURCE_LABEL = `${OMIE_LABEL} + ${TF_SOURCE}`;
 
@@ -219,7 +219,7 @@ export async function rebuildDerived() {
       est: !!r.est,
       utc: r.utc,
     };
-  }).sort((a, b) => (a.dn - b.dn) || (a.min - b.min));
+  }).sort((a, b) => (a.utc && b.utc ? (a.utc < b.utc ? -1 : 1) : (a.dn - b.dn) || (a.min - b.min)));
 
   // A fronteira do mercado: o último dia com preço publicado. Sai dos
   // próprios dados (e não do `Data_Valores_OMIE` do TF, que é uma data e
@@ -308,10 +308,16 @@ export async function getQuarters(dayUtc) {
 // As estatísticas: do payload guardado na BD.
 export async function getStats() {
   const cached = await getMetaJson('stats');
-  if (cached) return cached;
+  if (cached) {
+    // O preço "à hora actual" recalcula-se a cada pedido, a partir da cauda
+    // guardada no cache, para acompanhar o relógio.
+    if (cached.recent) cached.current = currentPrice(cached, new Date());
+    return cached;
+  }
   await ensureFresh({ wait: true });
   const payload = await getMetaJson('stats');
   if (!payload) throw new Error('séries OMIE indisponíveis');
+  if (payload.recent) payload.current = currentPrice(payload, new Date());
   return payload;
 }
 
