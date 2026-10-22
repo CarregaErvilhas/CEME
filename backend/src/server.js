@@ -14,7 +14,7 @@ import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
 import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from './omie/pipeline.js';
-import { migrateOmieTables } from './db/migrate.js';
+import { migrateOmieTables, migrateAddedColumns } from './db/migrate.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed.postgres.js';
 
@@ -69,6 +69,15 @@ if (!SKIP_SCHEMA) {
     : new URL('./db/schema.sql', import.meta.url);
   const schemaSql = await readFile(schemaFile, 'utf8');
   await run(schemaSql);
+}
+
+// Colunas novas em tabelas que já existem: o `CREATE TABLE IF NOT EXISTS`
+// não as acrescenta, e sem isto o seed vai à vida contra a forma antiga da
+// BD de produção. Corre DEPOIS do schema (numa BD nova, a tabela já nasce
+// com as colunas) e ANTES do seed (que é quem as usa).
+if (!SKIP_SCHEMA) {
+  const notes = await migrateAddedColumns();
+  for (const n of notes) console.warn(`[ceme-v2] migração: ${n}`);
 }
 
 // API key para terceiros: o valor claro é provido pela env (CEME_API_KEY) e

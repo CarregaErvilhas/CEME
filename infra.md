@@ -66,6 +66,39 @@ Criação dos serviços: `zerops-import.yaml` na raiz do repo + `zcli project se
 - **Health check na rota errada é pior que nenhum.** `/v1/health` está atrás de auth e responde **401 sem token** — usá-la no `healthCheck` marcaria o serviço como unhealthy para sempre. O check aponta a `/`, que serve o frontend e é pública.
 - `zcli push` com o default `-w all` faz `git archive`, que falha (exit 128) quando o `zerops.yml` só existe em working tree não-commitado; commitar antes de fazer push.
 
+### Armadilhas de schema (o `CREATE TABLE IF NOT EXISTS` não é uma migração)
+
+O schema é aplicado no arranque com `CREATE TABLE IF NOT EXISTS`. Isso
+cria as tabelas que faltam, mas **nunca acrescenta colunas a uma tabela que
+já existe** — e a BD de produção tem as tabelas todas.
+
+> **Ao acrescentar uma coluna a uma tabela que já existe em produção: o
+> deploy rebenta com o site em 502.** O seed vai à vida com
+> `column "<coluna>" of relation "<tabela>" does not exist`, o serviço entra
+> em crash loop e o health check falha — os dois domínios devolvem 502.
+> Foi o que aconteceu a 2026-10-22 com `price_component.energy_only_eur_kwh`.
+
+A correcção é uma migração em `backend/src/db/migrate.js`
+(`ADDED_COLUMNS` + `migrateAddedColumns()`), que corre no arranque **depois
+do schema e antes do seed** e faz o `ALTER TABLE ... ADD COLUMN` do que
+falta. Quando se acrescenta uma coluna:
+
+1. acrescentá-la ao schema — `backend/src/db/schema.sql` **e**
+   `backend/src/db/schema.postgres.sql` (os dois dialetos);
+2. acrescentá-la a `ADDED_COLUMNS` em `backend/src/db/migrate.js`;
+3. o teste `backend/test/migrate.test.js` verifica que as duas coisas batem
+   certo — se falhar, é porque falta uma das duas.
+
+Duas notas:
+
+- A introspecção das colunas no Postgres usa `to_regclass` (resolve o nome
+  pelo `search_path`), e não `information_schema`: é o mesmo caminho pelo
+  qual as queries do servidor acedem às tabelas, portanto a migração vê a
+  mesma tabela que o seed vai escrever.
+- A coluna nova nasce **nula e sem default** — não se inventa valor para as
+  linhas que já lá estavam. O seed (que é um upsert) preenche depois o que
+  sabe.
+
 ---
 
 ## 3. DNS e Cloudflare (domínio próprio)

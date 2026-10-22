@@ -304,12 +304,20 @@ if (process.argv[1] && process.argv[1].endsWith('seed.postgres.js')) {
   // vazia falhava com "relation does not exist", porque o schema só era
   // aplicado pelo server.js no arranque. Idempotente (CREATE TABLE IF NOT
   // EXISTS), portanto correr novamente é seguro.
+  //
+  // E depois as colunas em falta: o `CREATE TABLE IF NOT EXISTS` não as
+  // acrescenta a uma tabela que já existe, e sem esta migração o seed
+  // rebentava contra a forma antiga da BD ("column ... does not exist").
   const schemaSql = await readFile(
     new URL('./schema.postgres.sql', import.meta.url),
     'utf8'
   );
 
   run(schemaSql)
+    .then(async () => {
+      const { migrateAddedColumns } = await import('./migrate.js');
+      for (const n of await migrateAddedColumns()) console.warn(`migração: ${n}`);
+    })
     .then(() => seed())
     .then(async () => {
       const cemeCount = await query('SELECT COUNT(*) c FROM ceme');
