@@ -63,6 +63,8 @@ A excepção é `POST /v1/session`, que emite o token da sessão web. Detalhe em
 
 | Método | Rota | O que devolve |
 |---|---|---|
+| GET | `/healthz` | liveness do processo (rota interna do Zerops, sem auth) |
+| GET | `/readyz` | readiness: processo + BD (a BD só é consultada de loopback) |
 | POST | `/v1/session` | JWT `WEB_SESSION` (24h) — sem auth, com rate limit por IP |
 | GET | `/v1/health` | estado do serviço e o `kind` da credencial usada |
 | GET | `/v1/cemes` | comercializadores |

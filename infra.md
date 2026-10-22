@@ -23,7 +23,7 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 
 
 Recursos (fixados via autoscaling, ver abaixo):
-- `api`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco, 1 container.
+- `api`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco, **1 container em repouso / 2 durante o deploy** (ver "Deploy sem downtime" abaixo).
 - `db`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco (Postgres `:single`).
 (serviço `cache` removido — não usado)
 
@@ -33,7 +33,7 @@ Os serviços managed `db` e `cache` herdaram dos perfis `oltp-staging`/`staging`
 
 | Serviço | max antes | max agora | min |
 |---|---|---|---|
-| `api` | 2 CPU / 1 GB / 10 GB, 1–2 containers | 2 CPU / 1 GB / 5 GB | 1 CPU / 0.25 GB / 1 GB, 1 container |
+| `api` | 2 CPU / 1 GB / 10 GB, 1–2 containers | 2 CPU / 1 GB / 5 GB | 1 CPU / 0.25 GB / 1 GB, **1–2 containers** |
 | `db` | 8 CPU / 48 GB / 250 GB | **2 CPU / 1 GB / 5 GB** | 1 CPU / 0.25 GB / 1 GB |
 | `cache` | — | removido | — |
 
@@ -47,6 +47,11 @@ Todos em `SHARED`, `startCpuCoreCount: 1`.
   "minFreeResource": { "cpuCoreCount": 0.1, "cpuCorePercent": 0, "memoryGBytes": 0.125, "memoryPercent": 0 },
   "startCpuCoreCount": 1, "swapEnabled": true } } }
 ```
+
+O `horizontalAutoscaling` do `api` é `{ "minContainerCount": 1, "maxContainerCount": 2 }`.
+O `minContainerCount: 1` é de propósito: a app é stateless e o custo de um
+pod de reserva permanente não se justifica. O `maxContainerCount: 2` é o que
+dá a sala de sobreposição ao deploy (o pod novo nasce ao lado do velho).
 
 Duas regras da API que custaram tempo:
 - `minFreeResource.memoryGBytes` aceita **no máximo 3 casas decimais** → `0.0625` é rejeitado, tem de ser `0.1` (ou `0.125`).
@@ -63,8 +68,70 @@ Criação dos serviços: `zerops-import.yaml` na raiz do repo + `zcli project se
 ### Armadilhas do `run.start` (encontradas no primeiro deploy)
 
 - **`run.start` é executado por `exec`, não por um shell.** `start: cd backend && npm start` falha com `exec: cd: not found` (exit 127) e o serviço entra em crash loop. O directório vai em `startCommands[].workingDir` (default `/var/www`); o código, com `deployFiles: [backend, frontend]`, fica em `/var/www/backend`.
-- **Health check na rota errada é pior que nenhum.** `/v1/health` está atrás de auth e responde **401 sem token** — usá-la no `healthCheck` marcaria o serviço como unhealthy para sempre. O check aponta a `/`, que serve o frontend e é pública.
+- **Health check na rota errada é pior que nenhum.** `/v1/health` está atrás de auth e responde **401 sem token** — usá-la no `healthCheck` marcaria o serviço como unhealthy para sempre. O `healthCheck` aponta a `/healthz` e o `readinessCheck` a `/readyz` (ver abaixo).
 - `zcli push` com o default `-w all` faz `git archive`, que falha (exit 128) quando o `zerops.yml` só existe em working tree não-commitado; commitar antes de fazer push.
+
+### Deploy sem downtime (rolling)
+
+O `zerops.yml` do serviço `api` está configurado para **rolling deploy** — o
+serviço nunca fica sem um pod a servir:
+
+```yaml
+deploy:
+  temporaryShutdown: false
+  readinessCheck:
+    httpGet: { port: 3001, path: /readyz }
+    failureTimeout: "120s"
+    retryPeriod: "10s"
+run:
+  healthCheck:
+    httpGet: { port: 3001, path: /healthz }
+    failureTimeout: "60s"
+    disconnectTimeout: "30s"
+    recoveryTimeout: "30s"
+    execPeriod: "10s"
+```
+
+O que acontece, por ordem:
+
+1. O build corre num container temporário — o `api` vivo não se mexe.
+2. O artefacto vai para o storage interno do Zerops.
+3. O container novo arranca **ao lado** do velho (`temporaryShutdown: false`;
+   `maxContainerCount: 2` dá a sala para os dois coexistirem).
+4. O `readinessCheck` pergunta a `/readyz` no container novo: 200 só quando o
+   processo responde **e a BD responde**.
+5. Passando o check, o container novo entra no balancer; o velho sai de lá e é
+   apagado.
+6. Se o check não passar em 120 s, o container novo é apagado, a appVersion fica
+   `DEPLOY_FAILED` e **a versão anterior continua a servir**. Um deploy mau
+   não é uma queda do site.
+
+Duas rotas novas no `server.js`, sem auth (o balancer tem de as alcançar de
+dentro do container):
+
+| rota | usada por | toca na BD |
+|---|---|---|
+| `GET /healthz` | `run.healthCheck` (liveness) | não |
+| `GET /readyz` | `deploy.readinessCheck` | sim (`SELECT 1`, com prazo de 3 s), **só de loopback** |
+
+Porque não o mesmo check para os dois: com **um só pod**, um health check que
+dependa da BD tira o pod do balancer quando a BD tem uma blip — e o site
+inteiro cai, em vez de só a API. O liveness responde só "o processo está vivo";
+o readiness, que só corre durante o deploy, é que exige a BD.
+
+De fora do loopback, o `/readyz` responde 200 com `db: unknown` e não toca na
+BD: é um check interno (ninguém de fora precisa dele) e um `SELECT 1` por
+pedido seria um caminho grátis para esgotar o pool. E o 200 (e não 403) é
+deliberado — um probe mal endereçado nunca pode chumbar um deploy.
+
+`minContainers: 1` continua a ser de propósito. Com dois pods em repouso o
+custo dobra e o gain é só contra a queda de um pod (o health check reinicia-o
+em ~1 min); o deploy sem downtime não precisa desse segundo pod permanente.
+Aí o que faz o trabalho é o `maxContainerCount: 2`, que é o que dá a
+sobreposição.
+
+Docs: <https://docs.zerops.io/guides/readiness-health-checks> e
+<https://docs.zerops.io/guides/deployment-lifecycle>.
 
 ### Armadilhas de schema (o `CREATE TABLE IF NOT EXISTS` não é uma migração)
 
@@ -328,4 +395,7 @@ Substituição futura: MCP server para gestão de tarifários (a discutir depois
 - [x] Ruleset do `main` com o check `test` obrigatório e PR obrigatório.
 - [x] Webhook do Zerops ligado ao repo (trigger: push para `main`; secção 4.2) — webhook `701068038`.
 - [x] Merge to `main` → build+deploy automático pelo Zerops (1 min 11 s, verificado).
+- [x] Deploy sem downtime: `readinessCheck` (`/readyz`) + `temporaryShutdown: false` no `zerops.yml`.
+- [x] Rotas de liveness/readiness no `server.js` (`/healthz`, `/readyz`) + testes.
+- [x] `maxContainerCount: 2` no serviço `api` (via API) e no `zerops-import.yaml`.
 - [ ] (futuro) Preview por PR.

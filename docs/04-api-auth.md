@@ -59,6 +59,8 @@ da UI.
 ## Endpoints implementados
 
 ```
+GET  /healthz                           # liveness, sem auth; só o processo
+GET  /readyz                            # readiness, sem auth e só de loopback; processo + BD
 POST /v1/session                      # emite WEB_SESSION (24h), sem auth
 GET  /v1/health                       # exige Authorization; confirma o token
 GET  /v1/cemes                        # lista de comercializadores
@@ -76,6 +78,13 @@ GET  /v1/indexed/quarters?tariff=&region=&date=&fixed=
      colunas — não há vencedor por omissão.
                                      # quartos de um indexado; 400 se region ≠ CONT|MAD|AZO
 ```
+
+`/healthz` e `/readyz` são as rotas do Zerops (`run.healthCheck` e
+`deploy.readinessCheck`, ver `infra.md`). São as únicas sem auth, porque o
+balancer tem de as alcançar de dentro do container. `/readyz` faz um
+`SELECT 1` à BD **só quando vem de loopback**; de fora responde 200 com
+`db: unknown` (sem tocar na BD e sem chumbar um deploy por um probe
+mal endereçado).
 
 `POST /v1/simulate` (o que a web usa):
 
