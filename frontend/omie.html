@@ -30,6 +30,24 @@
   --div-lo: #CFE2F3;
   --div-mid: #FFFFFF;
   --div-hi: #E6B8AF;
+  --card-now: #E67C73;
+  --card-today: #FFD666;
+  --card-rest: #F9CB9C;
+}
+/* Modo daltonismo: paleta alternativa, escolhida por medição (ver
+ * backend/test/cores.mjs). A tinta das células passa a #1A1A1A para manter
+ * a legibilidade sobre os fundos saturados. */
+html[data-paleta="daltonismo"] {
+  --ramp-lo: #6BAED6;
+  --ramp-mid: #FFF3C4;
+  --ramp-hi: #F0A868;
+  --div-lo: #BFD9EC;
+  --div-mid: #FFFFFF;
+  --div-hi: #E07070;
+  --card-now: #E07070;
+  --card-today: #FFD666;
+  --card-rest: #7FB7E2;
+  --ink: #1A1A1A;
 }
 body { background: #FFFFFF; color: var(--ink); }
 main.grid {
@@ -69,11 +87,12 @@ main.grid {
   padding: 7px 8px;
   border-top: 1px solid #B7B7B7;
 }
-/* as cores dos valores são as da folha: vermelho no preço vivo, amarelo na
- * média de hoje, laranja nos restantes cartões */
-.card.now .v { background: #E67C73; }
-.card.today .v { background: #FFD666; }
-.card.rest .v { background: #F9CB9C; }
+/* as cores dos valores: vermelho no preço vivo, amarelo na média de hoje,
+ * laranja nos restantes cartões (folha); em modo daltonismo trocam-se por
+ * uma paleta segura para daltonismo (ver html[data-paleta]). */
+.card.now .v { background: var(--card-now); }
+.card.today .v { background: var(--card-today); }
+.card.rest .v { background: var(--card-rest); }
 
 /* --- tabelas -------------------------------------------------------- */
 .tables { display: flex; flex-direction: column; gap: 6px; }
@@ -115,6 +134,12 @@ table.tb tr.total td { font-weight: 700; }
   </section>
 </main>
 <p id="status"></p>
+<p id="paleta" class="note" style="max-width:1180px;margin:0 auto;padding:0 16px 10px;display:flex;align-items:center;gap:8px;">
+  <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+    <input type="checkbox" id="cvd" style="cursor:pointer;">
+    <span id="cvdLabel"></span>
+  </label>
+</p>
 <script src="/strings.js"></script>
 <script>
 'use strict';
@@ -197,8 +222,35 @@ const median = (vs) => {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
-const RAMP = ['#57BB8A', '#FFD666', '#E67C73'];
-const DIV = ['#CFE2F3', '#FFFFFF', '#E6B8AF'];
+// Paletas: a da folha (reprodução fiel) e a adaptada a daltonismo
+// (escolhida por medição, ver backend/test/cores.mjs). A tinta das
+// células segue --ink: #424242 na folha, #1A1A1A em modo daltonismo.
+const PALETAS = {
+  folha: {
+    rampa: ['#57BB8A', '#FFD666', '#E67C73'],
+    div: ['#CFE2F3', '#FFFFFF', '#E6B8AF'],
+  },
+  daltonismo: {
+    rampa: ['#6BAED6', '#FFF3C4', '#F0A868'],
+    div: ['#BFD9EC', '#FFFFFF', '#E07070'],
+  },
+};
+let paleta = 'folha';
+let RAMP = PALETAS.folha.rampa.slice();
+let DIV = PALETAS.folha.div.slice();
+let lastData = null;
+
+function aplicarPaleta(modo) {
+  paleta = (modo === 'daltonismo') ? 'daltonismo' : 'folha';
+  RAMP = PALETAS[paleta].rampa.slice();
+  DIV = PALETAS[paleta].div.slice();
+  document.documentElement.dataset.paleta = paleta;
+  const cb = document.getElementById('cvd');
+  if (cb) cb.checked = (paleta === 'daltonismo');
+  const lbl = document.getElementById('cvdLabel');
+  if (lbl) lbl.textContent = t('cvdToggle');
+  try { localStorage.setItem('ceme:paleta', paleta); } catch (e) {}
+}
 
 /* --- desenho --------------------------------------------------------- */
 function card(cls, title, meta, value) {
@@ -285,9 +337,11 @@ function drawMonthly(d) {
 }
 
 function draw(d) {
+  lastData = d;
   document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
   document.title = t('docTitle');
   document.getElementById('capAnnual').textContent = t('capAnnual');
+  const cvdLbl = document.getElementById('cvdLabel'); if (cvdLbl) cvdLbl.textContent = t('cvdToggle');
   document.getElementById('capMonthly').textContent = t('capMonthly');
   drawCards(d);
   drawAnnual(d);
@@ -328,6 +382,31 @@ async function api(path) {
   if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j?.error?.message || ('erro ' + r.status)); }
   return r.json();
 }
+
+// --- paleta: escolha inicial (persistida ou auto-detectada) ----------
+(function initPaleta() {
+  let inicial = 'folha';
+  try { const s = localStorage.getItem('ceme:paleta'); if (s === 'folha' || s === 'daltonismo') inicial = s; } catch (e) {}
+  // gancho para a proposta CSSWG `color-vision-adjustment` (ainda não
+  // implementada em nenhum browser): quando existir, a página adapta-se
+  // sozinha. Hoje é um no-op.
+  if (inicial === 'folha') {
+    const Q = ['red-green-blindness','protanopia','deuteranopia','tritanopia','blue-yellow-blindness','achromatopsia'];
+    for (const q of Q) {
+      try {
+        const m = window.matchMedia(`(color-vision-adjustment: ${q})`);
+        if (m.media !== 'not all' && m.matches) { inicial = 'daltonismo'; break; }
+      } catch (e) {}
+    }
+  }
+  aplicarPaleta(inicial);
+})();
+
+const cvdCb = document.getElementById('cvd');
+if (cvdCb) cvdCb.addEventListener('change', (e) => {
+  aplicarPaleta(e.target.checked ? 'daltonismo' : 'folha');
+  if (lastData) draw(lastData);
+});
 
 (async function () {
   const status = document.getElementById('status');

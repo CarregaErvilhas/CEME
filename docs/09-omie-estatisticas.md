@@ -144,6 +144,35 @@ inteira do dia de uma vez (o preço é por quarter, não um tick), por isso o
 **a hora** que se mostra. Quando o dia ainda não foi publicado, o cartão
 acrescenta "estimativa OMIP".
 
+## Modo daltonismo
+
+A página reproduz as cores da folha por omissão. Como as cores da folha
+(verde↔vermelho nas tabelas, vermelho↔laranja nos cartões) são
+praticamente indistinguíveis para quem tem protanopia ou deuteranopia, há
+um botão no fundo da página ("Cores para daltonismo" / "Colour-blind
+friendly colours") que troca as paletas por versões escolhidas por
+medição:
+
+- escala do preço (verde→amarelo→vermelho) → azul → creme → laranja;
+- escala do desvio (azul claro→branco→salmão) → azul claro → branco →
+  vermelho claro;
+- cartões: vermelho/amarelo/laranja → vermelho/amarelo/azul claro.
+
+As paletas mantêm a estrutura da folha (mesma rampa de 3 paragens, mesmo
+pivô por linha) e cumprem, sob simulação de protanopia, deuteranopia e
+tritanopia (matrizes de Machado 2009, severidade 1.0): extremos com
+ΔE ≥ 25, pivô com ΔE ≥ 12, e as duas escalas não se confundem entre si
+(ΔE ≥ 15). Em modo daltonismo a tinta das células passa a `#1A1A1A`, o que
+garante contraste ≥ 4,5:1 sobre todos os fundos. A escolha é persistida em
+`localStorage` (`ceme:paleta`) e é reposta ao voltar à página.
+
+Não existe (ainda) um standard em que o browser comunique ao site que o
+utilizador é daltónico: `color-vision-adjustment` é apenas uma proposta do
+CSSWG. A página tem um gancho preparado para essa proposta (via
+`matchMedia`), que hoje é um no-op e activará o modo daltonismo
+automaticamente assim que os browsers o implementarem. Até lá, o botão
+manual é o único mecanismo fiável.
+
 ## Routing por domínio
 
 Até agora o servidor só olhava para o *path* do pedido. Com dois domínios
