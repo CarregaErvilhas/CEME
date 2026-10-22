@@ -401,6 +401,7 @@ const UI_COOKIE_MAX_AGE = 31536000; // 1 ano
 const INFO_ROUTES = {
   '/sobre': 'about.html', '/about': 'about.html',
   '/contactos': 'contact.html', '/contact': 'contact.html',
+  '/api': 'api.html',
   // Subpágina sem links (rota subterrânea): a tabela em bruto dos
   // tarifários em vigor, directa da BD.
   '/tabela': 'tabela.html',

@@ -120,6 +120,41 @@ describe('cobertura do seed', () => {
     assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 128);
   });
 
+  it('preços finais têm no máximo 4 casas e foram arredondados para cima', () => {
+    const db = seeded();
+    const prices = db.prepare('SELECT energy_eur_kwh FROM price_component WHERE energy_eur_kwh IS NOT NULL').all();
+    assert.ok(prices.length > 0);
+    for (const { energy_eur_kwh: value } of prices) {
+      assert.ok(Math.abs(value * 10_000 - Math.round(value * 10_000)) < 1e-8,
+        `${value} tem mais de 4 casas decimais`);
+    }
+    assert.equal(db.prepare(`SELECT energy_eur_kwh FROM price_component p
+      JOIN tariff_version v ON v.id=p.tariff_version_id
+      WHERE v.tariff_id='edp-bt-cartoedp-2' AND p.period='UNICO'`).get().energy_eur_kwh, 0.2411);
+    assert.equal(db.prepare(`SELECT energy_eur_kwh FROM price_component p
+      JOIN tariff_version v ON v.id=p.tariff_version_id
+      WHERE v.tariff_id='edp-bt-cartoedp-12' AND p.period='VAZIO'`).get().energy_eur_kwh, 0.1446);
+  });
+
+  it('ACP não-sócio, Hyundai Blue e miio têm decomposição energia + TAR', () => {
+    const db = seeded();
+    const check = (id, period, energy, tar, final) => {
+      const row = db.prepare(`SELECT p.energy_eur_kwh, p.energy_only_eur_kwh, p.tar_eur_kwh
+        FROM price_component p JOIN tariff_version v ON v.id=p.tariff_version_id
+        WHERE v.tariff_id=? AND p.period=?`).get(id, period);
+      assert.ok(row, `${id}/${period} não existe`);
+      assert.equal(row.energy_only_eur_kwh, energy);
+      assert.equal(row.tar_eur_kwh, tar);
+      assert.ok(Math.abs(row.energy_only_eur_kwh + row.tar_eur_kwh - row.energy_eur_kwh) < 1e-10,
+        `${id}/${period}: energia + TAR não fecha no preço final`);
+      if (final != null) assert.equal(row.energy_eur_kwh, final);
+    };
+    check('acp-bt-acpelectricb-2', 'FORA_VAZIO', 0.169, 0.1192, 0.2882);
+    check('evio-bt-hyundaiblue', 'VAZIO', 0.169, 0.0266, 0.1956);
+    check('miio-bt-miiobihor', 'FORA_VAZIO', 0.24, 0.1192, 0.3592);
+    check('miio-bt-miioonebi', 'VAZIO', 0.17, 0.0266, 0.1966);
+  });
+
   // seed() corre em CADA arranque do servidor. Sem chave unica em
   // tariff_version, cada arranque duplicava as 128 versoes.
   it('seed() é idempotente: arrancar duas vezes não duplica versões', () => {
