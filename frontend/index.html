@@ -104,6 +104,10 @@
   details table{border-collapse:collapse;width:100%;margin-top:8px}
   details td,details th{border-bottom:1px solid var(--line);padding:6px 2px;text-align:right;font-variant-numeric:tabular-nums}
   details td:first-child,details th:first-child{text-align:left}
+  details tr.aplicado{background:#f0fdf4}
+  details tr.aplicado td:first-child{box-shadow:inset 3px 0 0 #16a34a}
+  details tr.sub td{font-size:12px;color:var(--mut)}
+  .tag-aplicado{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#166534;background:#dcfce7;border-radius:999px;padding:2px 7px;white-space:nowrap}
   a.src{font-size:12px;color:#166534;font-weight:600}
   .kpi{display:flex;gap:10px;flex-wrap:wrap}
   .kpi>div{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;flex:1;min-width:150px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
@@ -404,6 +408,11 @@ async function sess() {
   try { sessionStorage.setItem('ceme:jwt', token); } catch (e) {} // modo privado pode recusar
   return token;
 }
+// O fuso do browser: a hora de relógio que se mostra ao utilizador é a
+// dele. O backend guarda tudo em UTC e só converte aqui, na apresentação.
+const BROWSER_TZ = (() => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
+})();
 async function api(path, opts = {}) {
   let tk = await sess();
   let r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
@@ -476,8 +485,19 @@ function badges(q) {
   return b;
 }
 function detail(q) {
-  const rows = Object.entries(q.prices || {}).map(([p, v]) =>
-    `<tr><td>${perName(p)}</td><td>${kwhe(v)}</td><td>${eur(v * effKwh())}</td></tr>`).join('');
+  // A tabela de preços por período. O período que foi USADO no cálculo
+  // (o do total acima) vem assinalado — sem isso, dois preços e nenhuma
+  // pista de qual deles entrou na conta.
+  const aplicado = q.period;
+  const rows = Object.entries(q.prices || {}).map(([p, v]) => {
+    const s = q.split && q.split[p];
+    const linha = `<tr class="${p === aplicado ? 'aplicado' : ''}"><td>${p === aplicado ? '<b>' + perName(p) + '</b> <span class="tag-aplicado">' + i18n('periodUsed') + '</span>' : perName(p)}</td><td>${kwhe(v)}</td><td>${eur(v * effKwh())}</td></tr>`;
+    // A decomposição energia + TAR, só quando a temos (o CEME publicava a
+    // energia à parte). Onde não a temos, não se inventa: fica só o preço.
+    const sub = s ? `<tr class="sub"><td>&nbsp;&nbsp;${i18n('rowEnergy')}</td><td>${kwhe(s.energy)}</td><td>${eur(s.energy * effKwh())}</td></tr>`
+      + `<tr class="sub"><td>&nbsp;&nbsp;${i18n('rowTar')}</td><td>${kwhe(s.tar)}</td><td>${eur(s.tar * effKwh())}</td></tr>` : '';
+    return linha + sub;
+  }).join('');
   return `<details><summary>${i18n('breakdown')}</summary>
     <table><tr><th>${i18n('period')}</th><th>${i18n('noVat')}</th><th>${i18n('kwhVat', { k: kwhTxt() })}</th></tr>${rows}</table>
     <table>
@@ -760,7 +780,7 @@ async function loadQuarters(a, date) {
   const box = document.getElementById('cmpQ');
   if (!a) return;
   try {
-    const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
+    const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}&tz=${encodeURIComponent(BROWSER_TZ)}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
     const byPrice = [...q.quarters].sort((x, y) => x.price - y.price);
     const cheapSorted = byPrice.slice(0, 8).map(x => x.start).sort();
     const wins = ranges(cheapSorted);
@@ -785,7 +805,7 @@ async function loadQuarters(a, date) {
       <small style="display:block;margin-top:6px">${i18n('eightCheap')} <b>${wins.join(' · ') || '—'}</b></small>
       <small style="display:block;margin-top:4px;color:${temFixo ? 'var(--ink)' : 'var(--mut)'}">${resumo}</small>
       <div class="qwrap" style="margin-top:8px"><table class="q"><tr><th>${i18n('thTime')}</th><th>${i18n('period')}</th><th>${i18n('thOmie')}</th><th>${i18n('thIdx')}</th>${temFixo ? `<th>${i18n('thFix')}</th><th>${i18n('thWin')}</th>` : ''}</tr>
-      ${show.map(x => `<tr class="${x.winner === 'IDX' ? 'win-idx' : x.winner === 'FIX' ? 'win-fix' : ''}${x.cheap ? ' cheap' : ''}"><td>${x.start}–${x.end}${x.cheap ? ' ★' : ''}</td><td>${perName(x.period)}</td><td>${x.omieMwh.toFixed(1)}</td><td class="p-idx">${x.price.toFixed(4)}</td>${temFixo ? `<td class="p-fix">${x.fixed == null ? '—' : x.fixed.toFixed(4)}</td><td class="w">${x.winner === 'IDX' ? i18n('winIdx') : x.winner === 'FIX' ? i18n('winFix') : x.winner === 'EQ' ? i18n('winEq') : '—'}</td>` : ''}</tr>`).join('')}
+      ${show.map(x => `<tr class="${x.winner === 'IDX' ? 'win-idx' : x.winner === 'FIX' ? 'win-fix' : ''}${x.cheap ? ' cheap' : ''}"><td>${x.start}–${x.end}${x.cheap ? ' ★' : ''}</td><td>${perName(temFixo ? (x.fixPeriod || x.period) : x.period)}</td><td>${x.omieMwh.toFixed(1)}</td><td class="p-idx">${x.price.toFixed(4)}</td>${temFixo ? `<td class="p-fix">${x.fixed == null ? '—' : x.fixed.toFixed(4)}</td><td class="w">${x.winner === 'IDX' ? i18n('winIdx') : x.winner === 'FIX' ? i18n('winFix') : x.winner === 'EQ' ? i18n('winEq') : '—'}</td>` : ''}</tr>`).join('')}
       </table></div>
       ${temFixo ? `<small style="display:block;margin-top:6px">${i18n('qCompareNote')}</small>` : ''}</div>`;
     document.getElementById('qTime').onclick = () => { window._qOrder = 'time'; loadQuarters(a, q.date); };

@@ -8,35 +8,19 @@
 // azul↔vermelho POR LINHA) e as seis células de referência à esquerda.
 // Aqui essas três coisas passam a ser calculadas, não copiadas.
 //
-// Fonte: dados.tiagofelicia.pt (CC BY 4.0) — o CSV de quartos-horários do ano
-// corrente (que traz as datas futuras estimadas a partir dos futuros OMIP) e
-// o histórico anual do ano anterior, para a janela de 12 meses + o mês
-// corrente. Nada disto é versionado: vive em `backend/data/`, gerado.
+// Este módulo só faz a AGREGAÇÃO: recebe as linhas dos quartos-horários
+// (já reconciliadas entre omie.es e TF, em `pipeline.js`) e devolve o
+// payload. Quem busca os dados e quem escreve o cache é o pipeline.
 //
-// Cache de 24h: a página é refrescada uma vez por dia, que é o que o dono
-// pediu. Um cache vencido devolve-se já (a página mostra a idade dos dados) e
-// a actualização corre em segundo plano — a primeira visita depois do prazo
-// não fica à espera de 4 MB de CSV.
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { fetchText } from './cache.js';
-
-const BASE = 'https://dados.tiagofelicia.pt/data';
-const CURRENT_URL = `${BASE}/omie/omie_dados_atuais.csv`;
-const HISTORY_URL = (year) => `${BASE}/omie/historico/omie_historico_${year}.csv`;
-const FUT_URL = `${BASE}/omie/futuros_omip.csv`;
-
-const TTL_MS = 2 * 3600 * 1000;
-// Janela da tabela: os últimos 366 dias de mercado. Dá 13 linhas (do mês
-// corrente a 12 meses atrás) e é o que a folha mostrava — o primeiro mês
-// aparece truncado, porque a janela não começa no dia 1.
-const WINDOW_DAYS = 366;
-// Quantos quartos recentes ficam no cache, para o "preço à hora actual"
+// O "preço à hora actual" não vem do payload em cache: recalcula-se a cada
+// pedido a partir da cauda de quartos guardados, para acompanhar o relógio.
+export const WINDOW_DAYS = 366;
+// Quantos quartos recentes ficam no payload, para o "preço à hora actual"
 // poder ser recalculado a cada pedido (ver currentPrice).
-const TAIL_ROWS = 400;
-const SOURCE = 'dados.tiagofelicia.pt (CC BY 4.0)';
+export const TAIL_ROWS = 400;
 
 const pad2 = (n) => String(n).padStart(2, '0');
-// Dia do calendário como número inteiro (epoch em UTC). Sirve para ordenar,
+// Dia do calendário como número inteiro (epoch em UTC). Serve para ordenar,
 // para subtrair dias e para agrupar por mês sem tocar em fusos: os dados
 // estão em hora de Lisboa, mas a agregação é por dia local, e o epoch UTC
 // de uma data (sem hora) é uma bijection data→inteiro.
@@ -45,87 +29,19 @@ const numToDay = (n) => new Date(n * 86400000);
 const isoOf = (n) => { const d = numToDay(n); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; };
 const monthKey = (n) => { const d = numToDay(n); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`; };
 
-// "Agora" em hora de Lisboa. O servidor corre em UTC e os dados estão em
-// hora local: sem esta conversão o "preço à hora actual" aponta para o
-// quarter errado (e no limite para o dia errado).
-export function lisbonNow(now = new Date()) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    }).formatToParts(now).map(p => [p.type, p.value]));
-  const day = `${parts.year}-${parts.month}-${parts.day}`;
-  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
-  return { day, minutes, dayNum: dayNum(Number(parts.year), Number(parts.month), Number(parts.day)) };
-}
-
-// CSV de quartos-horários do TF: dia,hora,intervalo,Simples,BD,BS,TD,TS,
-// preco_pt,preco_es. As colunas BD/BS são a classificação de período
-// horário (V = vazio, F = fora de vazio) que o TF calcula com as regras da
-// ERSE — são elas que alimentam as colunas "Bi-horário Diário" e
-// "Bi-horário Semanal" da tabela.
+// "Agora" — em UTC, como tudo o resto.
 //
-// **Horas em CET, não em hora de Lisboa.** O dia de mercado corre de 00:00 a
-// 24:00 em CET (Madrid), e Madrid está sempre uma hora à frente de Lisboa
-// (ambas seguem a regra de mudança de hora da UE, no mesmo instante). Ou
-// seja: o primeiro quarter do dia de mercado [00:00-00:15[ são 23:00 em
-// Lisboa do dia ANTERIOR, e o último [23:45-00:00[ são 22:45 em Lisboa.
-// É por isso que o dia tem 96 quartos mas o último só chega às 22:45.
-//
-// Por isso cada linha guarda as duas leituras:
-//   `dn`/`mk`  — o dia e o mês de MERCADO (o `dia` do ficheiro): é por esta
-//                coluna que se agrupa, e é assim que o TF publica os seus
-//                agregados diários e mensais;
-//   `lisbonDn`/`lisbonMin` — o mesmo quarter em HORA DE LISBOA, que é o que
-//                se mostra ao utilizador.
-export function parseStatsCsv(text) {
-  const lines = String(text || '').replace(/^\uFEFF/, '').split('\n');
-  const head = (lines.shift() || '').split(',').map(h => h.trim());
-  const ix = (n) => head.indexOf(n);
-  if (ix('dia') < 0 || ix('intervalo') < 0 || ix('preco_pt') < 0 || ix('BD') < 0 || ix('BS') < 0) {
-    throw new Error('schema inesperado no CSV de quartos-horários');
-  }
-  const rows = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    if (line.startsWith('TABELA_')) break; // blocos de futuros no fim do ficheiro
-    const c = line.split(',');
-    if (c.length < 10) continue;
-    const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((c[ix('dia')] || '').trim());
-    const iv = /^\[(\d{2}):(\d{2})-/.exec((c[ix('intervalo')] || '').trim());
-    const price = Number(c[ix('preco_pt')]);
-    if (!dm || !iv || !Number.isFinite(price)) continue;
-    const day = Number(dayNum(Number(dm[3]), Number(dm[2]), Number(dm[1])));
-    const min = Number(iv[1]) * 60 + Number(iv[2]);
-    const bd = (c[ix('BD')] || '').trim().toUpperCase();
-    const bs = (c[ix('BS')] || '').trim().toUpperCase();
-    // CET -> Lisboa: menos uma hora, sempre (Madrid está sempre +1).
-    const lisbonMin = (min + 1440 - 60) % 1440;
-    const lisbonDn = day - (min < 60 ? 1 : 0);
-    rows.push({
-      dn: day,
-      day: isoOf(day),
-      mk: monthKey(day),
-      min,
-      lisbonDn,
-      lisbonMin,
-      bd: bd === 'F' ? 'F' : 'V',
-      bs: bs === 'F' ? 'F' : 'V',
-      price,
-    });
-  }
-  rows.sort((a, b) => (a.dn - b.dn) || (a.min - b.min));
-  return rows;
-}
-
-// Dia de mercado: o último dia com preço publicado. Sai do bloco
-// TABELA_ATUALIZACOES do ficheiro de futuros OMIP (Data_Valores_OMIE) —
-// é a mesma regra que o resto do backend usa, e o que separa mercado de
-// estimativa OMIP.
-export function parseOmieCutoff(text) {
-  const m = /Data_Valores_OMIE,(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(text || ''));
-  if (!m) return null;
-  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+// O quarter em curso é o que contém o instante actual: a grelha de 15
+// minutos do mercado coincide com a de UTC (as duas difere de um número
+// inteiro de horas), por isso não é preciso converter para o fuso local
+// para saber qual é o quarter. O que o relógio local decide é o *período
+// do tarifário* — e isso é do motor (`engine/regions.js`), que tem as
+// regras da ERSE por região.
+export function utcNow(now = new Date()) {
+  const iso = now.toISOString();
+  const day = iso.slice(0, 10);
+  const minutes = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
+  return { day, minutes, dayNum: dayNum(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))) };
 }
 
 const avg = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
@@ -166,12 +82,22 @@ function partialOf(mk, b) {
 }
 
 // Agrega os quartos-horários no payload da página.
+//
+// As linhas vêm do store (já reconciliadas): cada uma tem o dia civil de
+// LISBOA (`dn`), os minutos desde a meia-noite local (`min`), a mesma
+// leitura em `lisbonDn`/`lisbonMin`, a classificação do período (`bd`/`bs`),
+// o preço e — quando o preço é uma estimativa OMIP e não um preço de
+// mercado — a marca `est`.
+//
 // `cutoff` é o último dia de mercado ('YYYY-MM-DD'); o que está depois disso
 // são estimativas OMIP e entra só na previsão do mês.
 export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
   if (!rows.length) throw new Error('sem dados de quartos-horários');
   const cutDn = cutoff ? dayNum(Number(cutoff.slice(0, 4)), Number(cutoff.slice(5, 7)), Number(cutoff.slice(8, 10))) : Infinity;
-  const real = rows.filter(r => r.dn <= cutDn);
+  // Uma linha é de mercado se o dia está dentro do corte E não está
+  // marcada como estimativa (um dia pode ter preços de mercado e estimativas
+  // ao mesmo tempo — é o que acontece no dia em que a OMIE publica).
+  const real = rows.filter(r => r.dn <= cutDn && !r.est);
   if (!real.length) throw new Error('sem preços de mercado');
 
   const lastDn = real[real.length - 1].dn;
@@ -207,7 +133,7 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
     push(dayBuckets.get(r.dn), r);
   }
   const dayOf = (dn) => dayBuckets.get(dn) || bucket();
-  const lis = lisbonNow(now);
+  const lis = utcNow(now);
   const todayB = dayBuckets.has(lis.dayNum) ? dayBuckets.get(lis.dayNum) : dayOf(anchor.dn);
   const tomorrowB = dayOf(lis.dayNum + 1);
   const last30 = bucket();
@@ -225,8 +151,11 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
   // hora de Lisboa. O ficheiro está em CET, por isso o quarter em curso é o
   // que tem a hora de Lisboa correspondente — e é o que se mostra.
   const stamp = (dn, min) => `${isoOf(dn)}T${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
-  // O dia de mercado começa às 00:00 CET = 23:00 de Lisboa do dia anterior.
-  const marketDayStart = (dn) => ({ dn: dn - 1, min: 23 * 60 });
+  // O mesmo instante, em UTC ISO-8601 — é o que a página converte para o
+  // fuso de quem a vê (o backend não sabe o fuso do utilizador).
+  const stampUtc = (dn, min) => new Date(numToDay(dn).getTime() + min * 60000).toISOString();
+  // O dia civil (UTC) começa à meia-noite.
+  const dayStart = (dn) => ({ dn, min: 0 });
 
   // Os últimos quartos (dia de mercado + o dia seguinte), para o preço "à
   // hora actual" poder ser recalculado a cada pedido em vez de ficar
@@ -239,10 +168,10 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
 
   return {
     generatedAt: now.toISOString(),
-    source: SOURCE,
     cutoff: cutoffIso,
     // Tudo o que se mostra com hora é hora de Lisboa.
     dataThrough: stamp(anchor.lisbonDn, anchor.lisbonMin),
+    dataThroughUtc: stampUtc(anchor.lisbonDn, anchor.lisbonMin),
     window: { from: isoOf(fromDn), to: isoOf(lastDn) },
     today: lis.day,
     current: currentPrice({ recent, cutoff: cutoffIso }, now),
@@ -259,18 +188,25 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
         estimated: tomorrowB.all.length > 0,
       },
       last30: {
-        from: (() => { const s = marketDayStart(anchor.dn - 30); return stamp(s.dn, s.min); })(),
+        from: (() => { const s = dayStart(anchor.dn - 30); return stamp(s.dn, s.min); })(),
+        fromUtc: (() => { const s = dayStart(anchor.dn - 30); return stampUtc(s.dn, s.min); })(),
         to: stamp(anchor.lisbonDn, anchor.lisbonMin),
+        toUtc: stampUtc(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(last30.all)),
       },
       forecast: { month: monthKeyNow, value: round2(avg(monthFull.all)) },
       monthToDate: {
         month: monthKeyNow,
         from: (() => {
-          const s = marketDayStart(dayNum(Number(monthKeyNow.slice(0, 4)), Number(monthKeyNow.slice(5, 7)), 1));
+          const s = dayStart(dayNum(Number(monthKeyNow.slice(0, 4)), Number(monthKeyNow.slice(5, 7)), 1));
           return stamp(s.dn, s.min);
         })(),
+        fromUtc: (() => {
+          const s = dayStart(dayNum(Number(monthKeyNow.slice(0, 4)), Number(monthKeyNow.slice(5, 7)), 1));
+          return stampUtc(s.dn, s.min);
+        })(),
         to: stamp(anchor.lisbonDn, anchor.lisbonMin),
+        toUtc: stampUtc(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(monthB.all)),
       },
     },
@@ -289,7 +225,7 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
 // (e quando o TF vai buscar o ficheiro). O que muda a cada 15 minutos é o
 // quarter em que estamos.
 export function currentPrice(payload, now = new Date()) {
-  const lis = lisbonNow(now);
+  const lis = utcNow(now);
   const floorMin = Math.floor(lis.minutes / 15) * 15;
   let best = null;
   for (const r of payload.recent || []) {
@@ -300,84 +236,14 @@ export function currentPrice(payload, now = new Date()) {
   }
   if (!best) return { at: null, price: null, live: false, estimated: false };
   const cut = payload.cutoff ? dayNum(Number(payload.cutoff.slice(0, 4)), Number(payload.cutoff.slice(5, 7)), Number(payload.cutoff.slice(8, 10))) : Infinity;
+  const iso = new Date(numToDay(best.lisbonDn).getTime() + best.lisbonMin * 60000).toISOString();
   return {
     at: `${isoOf(best.lisbonDn)}T${pad2(Math.floor(best.lisbonMin / 60))}:${pad2(best.lisbonMin % 60)}`,
+    atUtc: iso,
     price: round2(best.price),
     live: best.lisbonDn === lis.dayNum && best.lisbonMin === floorMin,
     // O dia de mercado ainda não foi publicado: o preço é uma estimativa
     // OMIP, não um preço de mercado.
     estimated: best.dn > cut,
   };
-}
-
-function readJson(path) {
-  try {
-    if (!existsSync(path)) return null;
-    return JSON.parse(readFileSync(path, 'utf8'));
-  } catch { return null; }
-}
-
-// Ficheiros do ano corrente e do anterior: a janela de 366 dias atravessa
-// sempre dois anos, e o "ano corrente" do TF é o ficheiro omie_dados_atuais
-// (que traz as estimativas OMIP em cima).
-async function fetchYearRows(year) {
-  const isCurrentYear = year === new Date().getFullYear();
-  const url = isCurrentYear ? CURRENT_URL : HISTORY_URL(year);
-  const text = await fetchText(url);
-  const rows = parseStatsCsv(text);
-  return rows;
-}
-
-let inflight = null;
-
-async function build(now = new Date()) {
-  const futText = await fetchText(FUT_URL);
-  const cutoff = parseOmieCutoff(futText);
-  const years = new Set();
-  const ref = cutoff ? Number(cutoff.slice(0, 4)) : now.getFullYear();
-  years.add(ref - 1);
-  years.add(ref);
-  const rows = [];
-  for (const y of [...years].sort()) {
-    rows.push(...(await fetchYearRows(y)));
-  }
-  rows.sort((a, b) => (a.dn - b.dn) || (a.min - b.min));
-  const payload = aggregate(rows, { cutoff, now });
-  return { ...payload, fetchedAt: Date.now() };
-}
-
-// Payload fresco, com cache em disco. Cache vencido devolve-se na mesma e a
-// actualização fica em segundo plano: quem chega ao site não espera por
-// 4 MB de CSV, e mesmo assim os dados não ficam velhos.
-//
-// O "preço à hora actual" não vem do cache: recalcula-se a cada pedido a
-// partir da cauda de quartos guardados, para acompanhar o relógio.
-export async function getStats(dataDir) {
-  mkdirSync(dataDir, { recursive: true });
-  const path = `${dataDir}/omie-stats.json`;
-  const cached = readJson(path);
-  const fresh = cached && Date.now() - cached.fetchedAt < TTL_MS;
-
-  if (!fresh) {
-    if (cached) {
-      // Cache velho: devolve-se já e actualiza-se em segundo plano.
-      if (!inflight) {
-        inflight = build()
-          .then(p => { try { writeFileSync(path, JSON.stringify(p)); } catch { /* cache opcional */ } })
-          .catch(() => { /* fica o cache velho; o próximo pedido tenta outra vez */ })
-          .finally(() => { inflight = null; });
-      }
-    } else {
-      try {
-        const payload = await build();
-        try { writeFileSync(path, JSON.stringify(payload)); } catch { /* cache opcional */ }
-      } catch (e) {
-        throw new Error(`séries OMIE indisponíveis: ${e.message}`);
-      }
-    }
-  }
-
-  const payload = readJson(path) || cached;
-  if (!payload) throw new Error('séries OMIE indisponíveis');
-  return { ...payload, current: currentPrice(payload, new Date()), stale: !fresh };
 }

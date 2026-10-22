@@ -14,20 +14,20 @@ token.
 
 | cliente | emissão | envia |
 |---|---|---|
-| Sessão web anónima | `POST /v1/session` → JWT `WEB_SESSION` 24h (sem dados pessoais; `sid` é um identificador aleatório gerado no servidor — *no POC não há IP hash; em produção, uuid + hash de IP anti-abuso*) | `Bearer <jwt>` |
+| Sessão web anónima | `POST /v1/session` → JWT `WEB_SESSION` 24h (sem dados pessoais; `sid` é um identificador aleatório gerado no servidor — *ainda não há IP hash; em produção, uuid + hash de IP anti-abuso*) | `Bearer <jwt>` |
 | Conta (admin/CEME) | registo com email + magic link local (sem SendGrid; token impresso no log em dev) → JWT `USER` com `roles` | `Bearer <jwt>` |
-| App terceira | POC: chave provida via env `CEME_API_KEY` → inserida no arranque com **só o sha256** na BD (`api_key`); portal de emissão fica para fase 2 | `X-API-Key: <valor>` |
+| App terceira | Chave provida via env `CEME_API_KEY` → inserida no arranque com **só o sha256** na BD (`api_key`); portal de emissão fica para fase 2 | `X-API-Key: <valor>` |
 
 O `X-API-Key` é **validado** contra o hash em BD (chaves revogadas ou
 expiradas excluem) — qualquer string desconhecida recebe 401. O lookup
-tem índice (`idx_api_key_hash`). Em POC, a chave vem da env
+tem índice (`idx_api_key_hash`). A chave vem da env
 (`CEME_API_KEY`), inserida em cada arranque: sem `UNIQUE` em
 `api_key.prefix` e com `INSERT OR REPLACE` no id fixo, **a revogação
 real é remover a env** — a BD não sobrevive ao restart.
 
 ## Secret de sessão (`JWT_SECRET`)
 
-O POC arranca sempre; sem `JWT_SECRET` usa a secret de dev
+O servidor arranca sempre; sem `JWT_SECRET` usa a secret de dev
 (`dev-only-change-me`) com aviso no stdout. Em produção
 (`NODE_ENV=production`), com a secret de dev em uso, o `POST /v1/session`
 devolve **503** em vez de emitir tokens — `export
@@ -40,7 +40,7 @@ endpoint aceita só o seu método (405 com `Allow`). com componentes divergentes
 (`skipped`, fora do ranking, com `id` no output) — os restantes seguem;
 não há 400 vindo de um seed mal.
 
-## Rate limit (POC, em memória)
+## Rate limit (em memória)
 
 Janela fixa de 60 s, por processo — em produção, um limitador à frente do
 server. Sessão web (Bearer) conta por IP: 60/min. `POST /v1/session` conta
@@ -56,7 +56,7 @@ da UI.
 
 ## Endpoints (MVP)
 
-## Endpoints implementados (POC)
+## Endpoints implementados
 
 ```
 POST /v1/session                      # emite WEB_SESSION (24h), sem auth
@@ -121,7 +121,7 @@ POST /v1/admin/suggestions/:id/approve  # cria tariff_version
 POST /v1/admin/suggestions/:id/reject
 ```
 
-Erros em `{error:{code,message}}`; datas ISO (UTC, como no POC);
+Erros em `{error:{code,message}}`; datas ISO (UTC);
 €/kWh com 4 casas, totais com 2 — `ROUNDUP` por componente antes de somar,
 como na fatura.
 
@@ -140,7 +140,7 @@ português. O cliente pode sobrepor via bandeira, que persiste em
 
 ## Autorização
 
-(Plano de fase 2 — no POC o `kind` do payload só é informativo, ver
+(Plano de fase 2 — o `kind` do payload só é informativo, ver
 `GET /v1/health`; os endpoints de escrita ainda existem.)
 
 - `WEB_SESSION`: só leitura + `POST /suggestions`.

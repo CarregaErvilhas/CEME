@@ -54,4 +54,24 @@ describe('comparacao indexado vs fixo, quarto a quarto', () => {
     ], { VAZIO: 0.1157 });
     assert.deepEqual(tallyWinners(out), { idx: 1, fix: 1, eq: 1, na: 0, total: 3 });
   });
+
+  // O bug: um indexado DIARIO e um fixo SEMANAL nao partilham as fronteiras.
+  // As 22:00 o ciclo diario pasa a vazio, mas o semanal continua em
+  // fora-de-vazio ate a meia-noite — cotar o fixo pelo periodo do indexado
+  // dava-lhe o preco de vazio a partir das 22:00, quando so muda a meia-noite.
+  it('o fixo e cotado no SEU periodo, nao no do indexado', () => {
+    const fix = { VAZIO: 0.1066, FORA_VAZIO: 0.1992 };
+    const out = compareWithFixed([
+      { start: '21:45', period: 'FORA_VAZIO', fixPeriod: 'FORA_VAZIO', price: 0.3 },
+      { start: '22:00', period: 'VAZIO', fixPeriod: 'FORA_VAZIO', price: 0.3 },   // o indexado ja' passou a vazio
+      { start: '00:00', period: 'VAZIO', fixPeriod: 'VAZIO', price: 0.3 },         // o fixo so agora passa a vazio
+    ], fix);
+    assert.deepEqual(out.map(x => x.fixed), [0.1992, 0.1992, 0.1066],
+      'o fixo semanal so muda a meia-noite, nao as 22:00');
+  });
+
+  it('sem o periodo do fixo, cai no do indexado (compatibilidade)', () => {
+    const out = compareWithFixed([Q('22:00', 'VAZIO', 0.3)], { VAZIO: 0.1066, FORA_VAZIO: 0.1992 });
+    assert.equal(out[0].fixed, 0.1066);
+  });
 });

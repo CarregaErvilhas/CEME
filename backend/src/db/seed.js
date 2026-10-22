@@ -40,6 +40,56 @@ const CEMES = [
   ['ynerluz', "Ynerluz", "#888888", "https://www.ynerluz.com/aderir-mobilidade-eletrica/"],
 ];
 
+// A decomposição do preço em energia + TAR — só para os tarifários em que a
+// FOLHA tinha as duas partes separadas.
+//
+// Na aba "CEME" do sheet, a coluna "Valores outras fontes" é uma fórmula
+// `=energia + TAR!$B$5` (ou `$C$5`, `$B$4`, `$C$4`) quando o CEME publicava
+// a energia à parte; nos outros é o valor final, tal como o CEME o publica.
+// O seed só transcreveu o valor final e a decomposição perdeu-se — aqui está
+// recuperada da folha (30 tarifários de 11 CEMEs).
+//
+// A referência da célula (o `tar` de cada período) vem da folha e não da
+// tabela `tar`: um tarifário pode ter sido publicado com a TAR de 2025 e o
+// valor não bater certo com a TAR em vigor. Onde não há decomposição,
+// `energy_only` fica NULL — não se inventa.
+export const SPLITS = {
+  'acp-bt-acpelectricb': { FORA_VAZIO: { energy: 0.1315, tar: 0.1192 }, VAZIO: { energy: 0.1315, tar: 0.0266 } },
+  'acp-mt-acpelectricb': { FORA_VAZIO: { energy: 0.1315, tar: 0.0812 }, VAZIO: { energy: 0.1315, tar: 0.0157 } },
+  'atlante-bt-myatlanteac': { FORA_VAZIO: { energy: 0.1, tar: 0.1192 }, VAZIO: { energy: 0.1, tar: 0.0266 } },
+  'atlante-bt-myatlantebus': { FORA_VAZIO: { energy: 0.08, tar: 0.1192 }, VAZIO: { energy: 0.08, tar: 0.0266 } },
+  'atlante-mt-myatlanteac': { FORA_VAZIO: { energy: 0.1, tar: 0.0812 }, VAZIO: { energy: 0.1, tar: 0.0157 } },
+  'atlante-mt-myatlantebus': { FORA_VAZIO: { energy: 0.08, tar: 0.0812 }, VAZIO: { energy: 0.08, tar: 0.0157 } },
+  'charge2go-bt-ecogreen': { FORA_VAZIO: { energy: 0.1697, tar: 0.1192 }, VAZIO: { energy: 0.1697, tar: 0.0266 } },
+  'charge2go-bt-ecogreen-2': { FORA_VAZIO: { energy: 0.1697, tar: 0.1192 }, VAZIO: { energy: 0.1697, tar: 0.0266 } },
+  'charge2go-mt-ecogreen': { FORA_VAZIO: { energy: 0.1697, tar: 0.0812 }, VAZIO: { energy: 0.1697, tar: 0.0157 } },
+  'charge2go-mt-ecogreen-2': { FORA_VAZIO: { energy: 0.1697, tar: 0.0812 }, VAZIO: { energy: 0.1697, tar: 0.0157 } },
+  'enable-bt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.0922 } },
+  'enable-mt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.0922 } },
+  'evio-bt-evio': { FORA_VAZIO: { energy: 0.169, tar: 0.1192 }, VAZIO: { energy: 0.169, tar: 0.0266 } },
+  'evio-bt-gochargeby': { FORA_VAZIO: { energy: 0.169, tar: 0.1192 }, VAZIO: { energy: 0.169, tar: 0.0266 } },
+  'evio-mt-evio': { FORA_VAZIO: { energy: 0.169, tar: 0.0812 }, VAZIO: { energy: 0.169, tar: 0.0157 } },
+  'evio-mt-gochargeby': { FORA_VAZIO: { energy: 0.169, tar: 0.0812 }, VAZIO: { energy: 0.169, tar: 0.0157 } },
+  'evpower-bt-cartoevpower': { FORA_VAZIO: { energy: 0.1952, tar: 0.1192 }, VAZIO: { energy: 0.1729, tar: 0.0266 } },
+  'evpower-mt-cartoevpower': { FORA_VAZIO: { energy: 0.1884, tar: 0.0812 }, VAZIO: { energy: 0.1691, tar: 0.0157 } },
+  'ezu-bt-abenergia': { FORA_VAZIO: { energy: 0.099, tar: 0.1192 }, VAZIO: { energy: 0.099, tar: 0.0266 } },
+  'ezu-bt-tarifrioceme': { FORA_VAZIO: { energy: 0.15, tar: 0.1192 }, VAZIO: { energy: 0.15, tar: 0.0266 } },
+  'ezu-mt-abenergia': { FORA_VAZIO: { energy: 0.099, tar: 0.0812 }, VAZIO: { energy: 0.099, tar: 0.0157 } },
+  'ezu-mt-tarifrioceme': { FORA_VAZIO: { energy: 0.15, tar: 0.0812 }, VAZIO: { energy: 0.15, tar: 0.0157 } },
+  'hgp-bt-cartoceme': { FORA_VAZIO: { energy: 0.27, tar: 0.1192 }, VAZIO: { energy: 0.27, tar: 0.0266 } },
+  'hgp-mt-cartoceme': { FORA_VAZIO: { energy: 0.27, tar: 0.0812 }, VAZIO: { energy: 0.27, tar: 0.0157 } },
+  'mobismart-bt-cartode': { FORA_VAZIO: { energy: 0.25, tar: 0.1192 }, VAZIO: { energy: 0.2, tar: 0.0266 } },
+  'mobismart-bt-cartode-2': { FORA_VAZIO: { energy: 0.3, tar: 0.1192 }, VAZIO: { energy: 0.25, tar: 0.0266 } },
+  'mobismart-mt-cartode': { FORA_VAZIO: { energy: 0.25, tar: 0.0812 }, VAZIO: { energy: 0.2, tar: 0.0157 } },
+  'mobismart-mt-cartode-2': { FORA_VAZIO: { energy: 0.3, tar: 0.0812 }, VAZIO: { energy: 0.25, tar: 0.0157 } },
+  'prio-bt-prioelectric': { FORA_VAZIO: { energy: 0.1399, tar: 0.1192 }, VAZIO: { energy: 0.1499, tar: 0.0266 } },
+  'prio-mt-prioelectric': { FORA_VAZIO: { energy: 0.1399, tar: 0.0812 }, VAZIO: { energy: 0.1499, tar: 0.0157 } },
+  'viaverde-bt-viaverdeelec': { FORA_VAZIO: { energy: 0.148, tar: 0.1192 }, VAZIO: { energy: 0.148, tar: 0.0266 } },
+  'viaverde-bt-viaverdeelec-2': { FORA_VAZIO: { energy: 0.148, tar: 0.1192 }, VAZIO: { energy: 0.148, tar: 0.0266 } },
+  'viaverde-mt-viaverdeelec': { FORA_VAZIO: { energy: 0.148, tar: 0.0812 }, VAZIO: { energy: 0.148, tar: 0.0157 } },
+  'viaverde-mt-viaverdeelec-2': { FORA_VAZIO: { energy: 0.148, tar: 0.0812 }, VAZIO: { energy: 0.148, tar: 0.0157 } },
+};
+
 const TARIFFS = [
   // (AC) = carregamento em corrente alternada. A Atlante tem um preço
   // promocional flat nos postos DC, com CEME + OPC included — por isso o
@@ -247,23 +297,30 @@ export function seed(db) {
       status=excluded.status, origin=excluded.origin,
       k_index_eur_mwh=excluded.k_index_eur_mwh, cgs_eur_mwh=excluded.cgs_eur_mwh,
       omie_aggregation=excluded.omie_aggregation, notes=excluded.notes`);
-  const insP = db.prepare(`INSERT INTO price_component (tariff_version_id,period,energy_eur_kwh,activation_eur,support_eur,iec_eur_kwh)
-    VALUES (?,?,?,?,?,?)
+  const insP = db.prepare(`INSERT INTO price_component (tariff_version_id,period,energy_eur_kwh,activation_eur,support_eur,iec_eur_kwh,energy_only_eur_kwh,tar_eur_kwh)
+    VALUES (?,?,?,?,?,?,?,?)
     ON CONFLICT(tariff_version_id, period) DO UPDATE SET
       energy_eur_kwh=excluded.energy_eur_kwh, activation_eur=excluded.activation_eur,
-      support_eur=excluded.support_eur, iec_eur_kwh=excluded.iec_eur_kwh`);
+      support_eur=excluded.support_eur, iec_eur_kwh=excluded.iec_eur_kwh,
+      energy_only_eur_kwh=excluded.energy_only_eur_kwh, tar_eur_kwh=excluded.tar_eur_kwh`);
   try { db.exec('ALTER TABLE tariff ADD COLUMN bundle INTEGER DEFAULT 0'); } catch { /* já existe */ }
   try { db.exec('ALTER TABLE tariff ADD COLUMN regions TEXT DEFAULT \'CONT\''); } catch { /* já existe */ }
+  try { db.exec('ALTER TABLE price_component ADD COLUMN energy_only_eur_kwh REAL'); } catch { /* já existe */ }
+  try { db.exec('ALTER TABLE price_component ADD COLUMN tar_eur_kwh REAL'); } catch { /* já existe */ }
   for (const t of TARIFFS) {
     const [id, ceme, name, kind, volt, sched, cyc, green, access, pop, bundle, regions, prices, act, support, iec, est, url] = t;
     insT.run(id, ceme, name + (est && kind === 'FIXED' ? ' ~' : ''), kind, volt, sched, cyc, green, access, pop, bundle, regions, url);
     const v = VERSIONS[id] || {};
     insV.run(id, SHEET_SNAPSHOT, SHEET_SNAPSHOT, v.k ?? null, v.cgs ?? null, NOTES[id] ?? null);
     const vid = db.prepare('SELECT id FROM tariff_version WHERE tariff_id=? ORDER BY id DESC LIMIT 1').get(id).id;
-    if (prices) for (const [per, val] of Object.entries(prices)) insP.run(vid, per, val, act, support, iec);
+    const split = SPLITS[id] || {};
+    if (prices) for (const [per, val] of Object.entries(prices)) {
+      const sp = split[per] || null;
+      insP.run(vid, per, val, act, support, iec, sp ? sp.energy : null, sp ? sp.tar : null);
+    }
     // INDEXED: o €/kWh é calculado em runtime, mas a ativação (EGME),
     // o apoio e o IEC são os mesmos — têm de vir da linha do sheet.
-    else insP.run(vid, 'VAZIO', null, act, support, iec);
+    else insP.run(vid, 'VAZIO', null, act, support, iec, null, null);
   }
 }
 

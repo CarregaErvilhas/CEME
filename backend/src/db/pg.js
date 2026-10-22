@@ -14,9 +14,20 @@ import { Pool, types } from 'pg';
 // como '2026-10-14T23:00:00.000Z', ou seja o dia anterior e dependente do
 // fuso do servidor. O SQLite devolvia a string tal como está, por isso
 // repor a string é o que mantém os dois modos equivalentes.
-// OIDs: 1082 = date, 1114 = timestamp without time zone.
+// OIDs: 1082 = date, 1114 = timestamp without time zone, 1184 = timestamptz.
+//
+// O TIMESTAMPTZ (o instante do OMIE) volta como ISO-8601 UTC ('...Z'),
+// normalizado — para o backend falar uma só língua com o SQLite e nunca
+// depender do fuso da sessão.
 types.setTypeParser(1082, (v) => v);
 types.setTypeParser(1114, (v) => v);
+types.setTypeParser(1184, (v) => {
+  // '2026-10-20 00:00:00+00' -> '2026-10-20T00:00:00.000Z'
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})([+-]\d{2})(?::(\d{2}))?$/.exec(v);
+  if (!m) return v;
+  const off = m[3] === '+00' ? 'Z' : `${m[3]}:${m[4] || '00'}`;
+  return `${m[1]}T${m[2]}.000${off}`;
+});
 
 let pool = null;
 const getPool = () => {
@@ -27,6 +38,9 @@ const getPool = () => {
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
+      // A sessão em UTC: o instante do OMIE é lido e escrito em UTC, sem
+      // depender do fuso do servidor (o que mudaria a chave primária!).
+      options: '-c timezone=UTC',
     });
     pool.on('error', (err) => console.error('Erro inesperado no pool pg:', err));
   }

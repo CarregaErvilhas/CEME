@@ -35,11 +35,16 @@ CREATE TABLE IF NOT EXISTS tariff_version (
   UNIQUE (tariff_id, valid_from)
 );
 
+-- `energy_eur_kwh` é o preço FINAL que o CEME publica (já com a TAR
+-- dentro). `energy_only_eur_kwh` + `tar_eur_kwh` são a decomposição
+-- quando a folha a tinha (o CEME publicava a energia separada e a folha
+-- compunha o total): NULL quando não a temos — não se inventa.
 CREATE TABLE IF NOT EXISTS price_component (
   tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
   period TEXT NOT NULL CHECK (period IN ('VAZIO','FORA_VAZIO','UNICO')),
   energy_eur_kwh REAL, activation_eur REAL DEFAULT 0,
   support_eur REAL DEFAULT 0, iec_eur_kwh REAL DEFAULT 0,
+  energy_only_eur_kwh REAL, tar_eur_kwh REAL,
   PRIMARY KEY (tariff_version_id, period)
 );
 
@@ -49,15 +54,34 @@ CREATE TABLE IF NOT EXISTS tar (
   PRIMARY KEY (valid_from, region, voltage, period)
 );
 
+-- Os quartos-horários do OMIE, um por linha, indexados pelo INSTANTE (UTC).
+--
+-- A chave é o instante, nunca a hora local: a hora repetida da mudança de
+-- hora de Outono daria duas linhas com a mesma hora de relógio, e a chave
+-- tem de as distinguir. Em UTC não há duplicados — o instante é único.
+--
+-- `source` diz de onde veio o preço: 'OMIE_ES' (o ficheiro oficial) ou 'TF'
+-- (o Tiago Felícia, que traz também a classificação do período horário).
 CREATE TABLE IF NOT EXISTS omie_spot (
-  ts_lisbon TIMESTAMP PRIMARY KEY, market_day DATE, market_period INTEGER,
+  ts_utc TIMESTAMPTZ NOT NULL, day_utc DATE NOT NULL, min_utc INTEGER NOT NULL,
   price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL,
-  source TEXT NOT NULL, flags TEXT, ingested_at TIMESTAMP DEFAULT now()
+  bd TEXT, bs TEXT,
+  source TEXT NOT NULL, flags TEXT, ingested_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (ts_utc, source)
+);
+CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_utc);
+
+-- Os agregados diários (as médias por ciclo horário), materializados a
+-- partir das linhas de cima.
+CREATE TABLE IF NOT EXISTS omie_daily (
+  date DATE PRIMARY KEY, avg_pt REAL, min_pt REAL, max_pt REAL,
+  bd_v REAL, bd_f REAL, bs_v REAL, bs_f REAL, quarters INTEGER, source TEXT
 );
 
-CREATE TABLE IF NOT EXISTS omie_daily (
-  date DATE PRIMARY KEY, avg_pt REAL, avg_vazio_pt REAL,
-  avg_fora_vazio_pt REAL, min_pt REAL, max_pt REAL, source TEXT
+-- Estado da ingestão: quando foi o último refresh, o ETag do ficheiro
+-- oficial (para o pedido condicional) e o payload das estatísticas.
+CREATE TABLE IF NOT EXISTS omie_meta (
+  key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS loss_profile (

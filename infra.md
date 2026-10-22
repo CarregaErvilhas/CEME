@@ -9,7 +9,7 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 - **Sem painel de admin nem de editor** (desistido). Atualizações de tarifários via seed/MCP server, discutido à parte.
 - **Backend e frontend vivem no Zerops.** O serviço `api` (Node.js) serve tanto a API REST em `/v1/*` como o frontend estático em `/`.
 - **Base de dados:** PostgreSQL gerenciado no Zerops (substitui o SQLite local). A seed passa a ser bootstrap inicial; a source of truth é a BD ao vivo.
-- **Cache:** filesystem (JSON local, 6h) para OMIE — ver `backend/src/omie/cache.js`. Sem serviço Redis/Valkey.
+- **Cache:** o OMIE vive na **BD** (`omie_spot`, `omie_daily`, `omie_meta`) — persiste entre deploys e é partilhado entre réplicas. Só os CSV grandes do TF ficam em disco, como cache descartável (por réplica). Sem serviço Redis/Valkey.
 - **DNS:** subdomínio no Cloudflare, proxy activo, origem IPv6 no Zerops.
 
 ---
@@ -19,7 +19,7 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 | Serviço | Tipo | Versão | Função |
 |---|---|---|---|
 | `api` | nodejs | 24 (topo da base list do Zerops; `nodejs@latest` = 24) | Node.js puro (`src/server.js`). Serve frontend + API. Escuta em `PORT=3001`. |
-| `db` | postgresql | 18 | BD principal. Tabelas: `ceme`, `tariff`, `tariff_version`, `price_component`, `tar`, `omie_spot`, `omie_daily`, `api_client`, `api_key`, `audit_log`, etc. |
+| `db` | postgresql | 18 | BD principal. Tabelas: `ceme`, `tariff`, `tariff_version`, `price_component`, `tar`, `omie_spot`, `omie_daily`, `omie_meta`, `api_client`, `api_key`, `audit_log`, etc. |
 
 
 Recursos (fixados via autoscaling, ver abaixo):

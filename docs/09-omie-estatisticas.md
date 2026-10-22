@@ -85,80 +85,64 @@ de D+1), e nesse caso o valor de "hoje" é a estimativa OMIP.
 
 ## De onde vêm os dados
 
-Fonte: **`dados.tiagofelicia.pt`** (Tiago Felícia, CC BY 4.0) — atribuição
-obrigatória, e é o que a coluna `source` da API devolve.
+Duas fontes, reconciliadas por **instante** (ver `03-omie-ingestao.md`):
 
-| Ficheiro | Para que serve |
+| fonte | o que traz |
 |---|---|
-| `data/omie/omie_dados_atuais.csv` | o ano corrente: preços de mercado **e** as datas futuras estimadas a partir dos futuros OMIP |
-| `data/omie/historico/omie_historico_<ano>.csv` | o ano anterior (a janela de 366 dias atravessa sempre dois anos) |
-| `data/omie/futuros_omip.csv` | o `Data_Valores_OMIE`, que separa o mercado das estimativas |
+| **omie.es** (primária) | o preço de cada quarto-horário (o dump acumulado público) |
+| **dados.tiagofelicia.pt** (TF, CC BY 4.0) | a classificação do período horário (BD/BS, as regras da ERSE) e as estimativas OMIP dos dias que a OMIE ainda não publicou |
 
-O "último dia de mercado" é o `Data_Valores_OMIE` do ficheiro de futuros —
-a mesma regra que o resto do backend usa (`backend/src/omie/cache.js`), e
-que o próprio TF documenta ("as datas posteriores à `ultima_data_real` são
-estimativas OMIP, não preços de mercado").
+A atribuição do TF é obrigatória (CC BY 4.0) e é o que a coluna `source` da
+API devolve (`omie.es (OMIE/MIBEL) + dados.tiagofelicia.pt (CC BY 4.0)`).
 
-## As horas: o ficheiro está em CET, não em hora de Lisboa
+O "último dia de mercado" é o **último instante publicado pelo omie.es**: o
+que estiver para além são estimativas OMIP e ficam marcadas como tal.
 
-**O dia de mercado corre de 00:00 a 24:00 em CET (Madrid)**, e Madrid está
-sempre uma hora à frente de Lisboa — as duas zonas seguem a regra de mudança
-de hora da UE, no mesmo instante, por isso a diferença é sempre de uma hora
-(verdade no Inverno como no Verão).
+## As horas: tudo em UTC
 
-Consequências, que são as que se vêem na página:
+A página mostra as horas no **fuso de quem a vê** (o browser converte os
+instantes; o backend guarda tudo em UTC e nunca converte para o fuso de
+Madrid nem para o de Lisboa).
 
-- O **primeiro** quarter do dia de mercado (`[00:00-00:15[`) são as **23:00
-  de Lisboa do dia anterior**.
-- O **último** quarter (`[23:45-00:00[`) são as **22:45 de Lisboa**. O dia
-  tem 96 quartos, mas o último só chega às 22:45 — é o que se vê na página.
-- Por isso a janela que aparece no cartão dos 30 dias começa às 23:00 do
-  dia anterior, e o mês em curso começa às 23:00 do último dia do mês
-  anterior.
+Isto importa porque o dia de mercado do OMIE corre 00:00-24:00 em
+**Madrid** (uma hora à frente de Lisboa) e o ficheiro do TF está em hora de
+**Lisboa**. Os dois alinham pelo instante, e não pelo período — o dia civil
+de Lisboa tem 96 quartos, de 00:00 a 23:45, ao passo que o dia de mercado
+de Madrid tem 96 quartos, de 00:00 a 23:45 *dele*.
 
-No `backend/src/omie/stats.js` cada linha guarda as duas leituras:
+Na alteração do backend cada linha passou a guardar as duas leituras:
 
-- `dn`/`mk` — o **dia e o mês de mercado** (a coluna `dia` do ficheiro). É
-  por esta coluna que se agrupa, e é assim que o TF publica os seus
-  agregados diários e mensais (o `omie_diario.csv` e o `omie_mensal.csv`
-  batem com os números da tabela);
-- `lisbonDn`/`lisbonMin` — o mesmo quarter em **hora de Lisboa**, que é o
-  que se mostra ao utilizador (o preço da hora actual, as janelas, a data
-  do último dado).
+- `dn`/`mk` — o **dia e o mês civis** (em UTC), por onde se agrupa;
+- `lisbonDn`/`lisbonMin` — a mesma leitura na hora local, que é o que se
+  mostra ao utilizador.
 
-Isto já estava escrito no código do motor (`backend/src/omie/convert.js`,
-`marketPeriodToLisbon`) e nas réguas do OMIE oficial — o que faltava era
-aplicá-lo aos dados do TF.
-
-> Nota: a folha original rotulava a coluna com as horas como "Hora em
-> Portugal", mas os dados lá copiados são os do ficheiro do TF, em CET. As
-> tabelas (que agrupam por dia de mercado) batem com a folha; as horas
-> mostradas é que estão uma hora adiantadas. A página mostra as horas
-> certas.
+A conversão do período do mercado (Madrid) para o instante é directa:
+meia-noite de Madrid no dia do mercado + (N-1) × 15 minutos. O offset da
+meia-noite é o **antigo** no dia da mudança de hora, porque a transição
+acontece às 01:00 UTC — sempre depois da meia-noite local. É isso que dá
+ao dia de Lisboa 23 horas em Março e 25 em Outubro.
 
 ## Cache
 
-`backend/data/omie-stats.json`, gerado, TTL de **2 h**.
+Os dados estão na **base de dados** (`omie_spot`, `omie_daily`,
+`omie_meta`) — não em ficheiros do contentor: a BD persiste entre deploys e
+é partilhada por todas as réplicas.
 
-Um cache vencido é **devolvido na mesma** e a actualização corre em
-segundo plano: a primeira visita depois do prazo não espera por ~4 MB de
-CSV, e mesmo assim os dados não ficam velhos. A resposta diz a idade dos
-dados (`dataThrough`) e se estão a ser actualizados (`stale`).
+O payload das estatísticas é materializado em `omie_meta` na ingestion (e
+recalculado a cada refresh, que acontece **a pedido**, sem cron — ver
+`03-omie-ingestao.md`).
 
 ### O preço "à hora actual" é calculado a cada pedido
 
-O cache é de horas, mas o **quarter em curso muda a cada 15 minutos** — por
-isso o preço à hora actual **não vem do cache**. O payload guarda uma cauda
-com os últimos quartos (o dia de mercado e o seguinte) e o preço é
+O payload guarda uma cauda com os últimos quartos (400) e o preço é
 recalculado a cada pedido, contra o relógio do servidor. A página volta a
 pedir os dados de minuto a minuto, para o cartão acompanhar o quarter.
 
 Nota sobre o que é "actual": o mercado à vista de dia publica a curva
 inteira do dia de uma vez (o preço é por quarter, não um tick), por isso o
-**preço** só muda quando a OMIE publica ou quando o TF vai buscar o
-ficheiro — o que muda a cada 15 minutos é **a hora** que se mostra. Quando o
-dia de mercado ainda não foi publicado, o cartão acrescenta "estimativa
-OMIP".
+**preço** só muda quando a OMIE publica — o que muda a cada 15 minutos é
+**a hora** que se mostra. Quando o dia ainda não foi publicado, o cartão
+acrescenta "estimativa OMIP".
 
 ## Modo daltonismo
 

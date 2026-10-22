@@ -1,4 +1,4 @@
-# 05 — Frontend (POC)
+# 05 — Frontend
 
 Duas interfaces, o mesmo motor e a mesma API: o **assistente** (três perguntas
 até ao tarifário mais barato) e o **simulador completo** (ranking, filtros,
@@ -242,7 +242,7 @@ Exemplos do que mudou e porquê:
 | O valor apresentado é o mínimo… | The figure shown is the minimum… | **What you see here is the cheapest the energy component can be.** |
 | A fatura final será maior | Your final invoice will be higher | **Your final bill will be higher** |
 | OMIE de referência | Reference OMIE | **OMIE reference price** |
-| ~ = vazio estimado no seed do POC | estimated in the POC seed | **estimated — not from the retailer's published tariff** |
+| ~ = vazio estimado no seed | estimated in the seed | **estimated — not from the retailer's published tariff** |
 | Favoritos | favourites | **saved** (o utilizador "guarda", não "favorita") |
 
 `OPC` aparece como `OPC / CPO`: o site da Mobi.E em inglês usa *Charging Point

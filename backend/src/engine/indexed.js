@@ -1,4 +1,4 @@
-// Helpers de indexados para o POC (e futura API).
+// Helpers dos tarifários indexados ao OMIE.
 // Fórmulas suportadas:
 //   standard: PE = (OMIE + K + CGS) * (1 + perdas) + TAR
 //   ynerluz:  PE = (1 + perdas) * (OMIE + K) + CGS + TAR

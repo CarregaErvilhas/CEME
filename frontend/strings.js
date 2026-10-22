@@ -110,12 +110,13 @@
         cheapest: 'MAIS BARATO', rightNowIn: 'neste momento em', inclVat: 'com IVA',
         saveFav: 'guardar nos favoritos',
         breakdown: 'Composição do preço', period: 'Período', noVat: '€/kWh s/ IVA*',
+        periodUsed: 'aplicado', rowEnergy: 'energia', rowTar: 'TAR',
         kwhVat: '{k} kWh s/ IVA', activation: 'Taxa de ativação', formula: 'Fórmula',
         formulaVal: '(OMIE {o} + K {k} + CGS {c}) × (1 + perdas {l}) + TAR',
         vatIncl: '{v}% incluído no total',
         verified: 'Preços verificados em',
         verifiedTip: 'Data em que estes dados foram capturados a partir do simulador da ERSE. Não é a data de início do contrato: a folha de origem não tem essa informação, e cada comercializador publica-a onde lhe apetece. Nos tarifários indexados o preço mostrado é recalculado agora com o OMIE do momento — esta data refere-se aos componentes (K, CGS, TAR).',
-        breakdownNote: '* fixos: preço final já com TAR incluída · indexados: calculado agora.',
+        breakdownNote: '* o período assinalado é o que se aplica a esta conta · fixos: preço final publicado pelo CEME (inclui a TAR, quando não a separamos) · indexados: calculado agora.',
         confirmSrc: 'Confirmar na página do CEME ↗',
         // períodos
         pVazio: 'vazio', pFora: 'fora de vazio', pUnico: 'preço único',
@@ -157,7 +158,7 @@
         warnOmieCont: 'ref. OMIE continental — ilustrativo',
         // rodapé
         footScope: '<b>Âmbito:</b> o simulador calcula só a parcela de energia (tarifário do CEME + TAR + IEC + IVA + EGME). <b>Não inclui a tarifa de utilização do posto (OPC)</b>, que cada operador define e publica no próprio posto — por isso o valor final na fatura será maior.',
-        footRest: 'Valores com IVA da região de carregamento. <code>~</code> marca um preço estimado. Séries OMIE via dados.tiagofelicia.pt (CC BY 4.0); produção usa omie.es. Favoritos ficam neste browser — sem conta, sem tracking.',
+        footRest: 'Valores com IVA da região de carregamento. <code>~</code> marca um preço estimado. Séries OMIE do omie.es (fonte oficial); classificação do período horário via dados.tiagofelicia.pt (CC BY 4.0). Favoritos ficam neste browser — sem conta, sem tracking.',
         cache: ' (cache)',
       },
       en: {
@@ -206,12 +207,13 @@
         cheapest: 'CHEAPEST', rightNowIn: 'right now in', inclVat: 'incl. VAT',
         saveFav: 'save this tariff',
         breakdown: 'Breakdown of the price', period: 'Period', noVat: '€/kWh excl. VAT*',
+        periodUsed: 'applied', rowEnergy: 'energy', rowTar: 'TAR',
         kwhVat: '{k} kWh incl. VAT', activation: 'Activation fee', formula: 'Formula',
         formulaVal: '(OMIE {o} + K {k} + CGS {c}) × (1 + losses {l}) + TAR',
         vatIncl: '{v}% — already included above',
         verified: 'Prices checked on',
         verifiedTip: 'When this data was captured from the ERSE simulator. It is not the date the contract started: the source spreadsheet carries no such information, and each retailer publishes it where it sees fit. For indexed tariffs the price shown is recalculated now with the current OMIE — this date refers to the components (K, CGS, TAR).',
-        breakdownNote: '* fixed tariffs already include TAR · indexed tariffs are priced live.',
+        breakdownNote: '* the marked period is the one applied to this calculation · fixed tariffs: the final price published by the retailer (it includes TAR when we do not split it) · indexed tariffs are priced live.',
         confirmSrc: 'Check on the retailer’s own page ↗',
         // períodos
         pVazio: 'off-peak', pFora: 'peak', pUnico: 'single rate',
@@ -252,7 +254,7 @@
         warnOmieCont: 'uses the mainland OMIE price — indicative only',
         // rodapé
         footScope: '<b>What this covers:</b> only the energy component — the CEME tariff plus TAR, IEC, VAT and the activation fee. <b>It does not include the CPO tariff for the charging point</b>, which every operator sets and publishes at the point itself, so your final bill will be higher.',
-        footRest: 'Prices include the VAT of the region where you charge. <code>~</code> marks an estimated price. OMIE price data from dados.tiagofelicia.pt (CC BY 4.0). Your saved tariffs stay in this browser — no account, no tracking.',
+        footRest: 'Prices include the VAT of the region where you charge. <code>~</code> marks an estimated price. OMIE price data from omie.es (the official source); period classification from dados.tiagofelicia.pt (CC BY 4.0). Your saved tariffs stay in this browser — no account, no tracking.',
         cache: ' (cached)',
       },
     },
