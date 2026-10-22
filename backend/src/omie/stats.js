@@ -163,7 +163,7 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
   const recent = rows
     .filter(r => r.dn <= lastDn + 1)
     .slice(-TAIL_ROWS)
-    .map(r => ({ dn: r.dn, lisbonDn: r.lisbonDn, lisbonMin: r.lisbonMin, price: r.price }));
+    .map(r => ({ dn: r.dn, lisbonDn: r.lisbonDn, lisbonMin: r.lisbonMin, price: r.price, utc: r.utc }));
   const cutoffIso = cutoff || isoOf(lastDn);
 
   return {
@@ -171,7 +171,7 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
     cutoff: cutoffIso,
     // Tudo o que se mostra com hora é hora de Lisboa.
     dataThrough: stamp(anchor.lisbonDn, anchor.lisbonMin),
-    dataThroughUtc: stampUtc(anchor.lisbonDn, anchor.lisbonMin),
+    dataThroughUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
     window: { from: isoOf(fromDn), to: isoOf(lastDn) },
     today: lis.day,
     current: currentPrice({ recent, cutoff: cutoffIso }, now),
@@ -191,7 +191,7 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
         from: (() => { const s = dayStart(anchor.dn - 30); return stamp(s.dn, s.min); })(),
         fromUtc: (() => { const s = dayStart(anchor.dn - 30); return stampUtc(s.dn, s.min); })(),
         to: stamp(anchor.lisbonDn, anchor.lisbonMin),
-        toUtc: stampUtc(anchor.lisbonDn, anchor.lisbonMin),
+        toUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(last30.all)),
       },
       forecast: { month: monthKeyNow, value: round2(avg(monthFull.all)) },
@@ -206,7 +206,7 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
           return stampUtc(s.dn, s.min);
         })(),
         to: stamp(anchor.lisbonDn, anchor.lisbonMin),
-        toUtc: stampUtc(anchor.lisbonDn, anchor.lisbonMin),
+        toUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(monthB.all)),
       },
     },
@@ -236,7 +236,7 @@ export function currentPrice(payload, now = new Date()) {
   }
   if (!best) return { at: null, price: null, live: false, estimated: false };
   const cut = payload.cutoff ? dayNum(Number(payload.cutoff.slice(0, 4)), Number(payload.cutoff.slice(5, 7)), Number(payload.cutoff.slice(8, 10))) : Infinity;
-  const iso = new Date(numToDay(best.lisbonDn).getTime() + best.lisbonMin * 60000).toISOString();
+  const iso = best.utc ? best.utc : new Date(numToDay(best.lisbonDn).getTime() + best.lisbonMin * 60000).toISOString();
   return {
     at: `${isoOf(best.lisbonDn)}T${pad2(Math.floor(best.lisbonMin / 60))}:${pad2(best.lisbonMin % 60)}`,
     atUtc: iso,
