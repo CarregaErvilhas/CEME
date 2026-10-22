@@ -222,6 +222,16 @@ describe('servidor: hardening HTTP', () => {
       }
     });
 
+    it('/api serve o guia de integração da API sem autenticação', async () => {
+      const { status, html, cookie, r } = await abrir('/api');
+      assert.equal(status, 200);
+      assert.ok(html.includes('<title>API Guide — CEME</title>'));
+      assert.ok(html.includes('/v1/simulate'));
+      assert.ok(html.includes('AI agents'));
+      assert.match(r.headers.get('content-type') || '', /text\/html/);
+      assert.equal(cookie, '');
+    });
+
     it('a língua negociada é injectada também nestas páginas', async () => {
       for (const caminho of ['/sobre', '/contactos']) {
         const { html, r } = await abrir(caminho, { 'accept-language': 'en-GB,en;q=0.9' });

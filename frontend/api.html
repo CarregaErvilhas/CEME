@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Guide — CEME</title>
+<meta name="description" content="A practical guide for developers and AI agents integrating with the CEME comparison API.">
+<link rel="stylesheet" href="/pages.css">
+<style>
+  main { max-width: 900px; }
+  article { scroll-margin-top: 80px; }
+  pre { overflow-x: auto; background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 14px; margin: 10px 0; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { font: .92em ui-monospace, SFMono-Regular, Menlo, monospace; background: #f1f5f9; border-radius: 4px; padding: 1px 4px; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 10px 0; }
+  th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 8px; }
+  th { white-space: nowrap; }
+  .toc { display: flex; gap: 8px 16px; flex-wrap: wrap; }
+  .toc a { font-size: 14px; }
+  @media (max-width: 620px) { table { font-size: 12.5px; } th, td { padding: 6px 4px; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="logo" href="/"><span class="mark">⚡</span><span class="ttl">CEME Comparator</span></a>
+  <nav><a href="/">Site</a><a href="/api" class="on">API guide</a><a href="/sobre">About</a></nav>
+</div></header>
+<div class="hero"><div class="in">
+  <h1>API integration guide</h1>
+  <p>How to read CEME data and calculate tariff comparisons from an app, script, or AI agent.</p>
+</div></div>
+<main>
+  <article>
+    <h2>Quick start</h2>
+    <p>The API is JSON over HTTPS. Use the site's origin as the base URL (for example, <code>https://ceme-beta.ocarroeletrico.com</code>). All data routes under <code>/v1/</code> require authentication. For an app or backend integration, request an API key from the site operator and send it in the <code>X-API-Key</code> header. Do not put a private API key in browser code, a mobile app bundle, a public repository, or an LLM prompt.</p>
+    <pre><code>curl 'https://ceme-beta.ocarroeletrico.com/v1/cemes' \
+  -H 'X-API-Key: YOUR_API_KEY'</code></pre>
+    <p>Responses are JSON. Successful list endpoints generally wrap results in <code>{"data": [...]}</code>. Errors use <code>{"error":{"code":"...","message":"..."}}</code>. Prices are in EUR; energy prices are EUR/kWh unless a field says otherwise.</p>
+    <div class="note"><b>Read-only:</b> all documented endpoints only read or calculate data. <code>POST /v1/simulate</code> is still a calculation request; it does not change site data. Never call undocumented write routes.</div>
+  </article>
+  <article>
+    <h2>Contents</h2>
+    <div class="toc"><a href="#auth">Authentication</a><a href="#endpoints">Endpoints</a><a href="#simulate">Simulate</a><a href="#quarters">Indexed quarters</a><a href="#errors">Errors and limits</a><a href="#agent">Guidance for AI agents</a></div>
+  </article>
+  <article id="auth">
+    <h2>Authentication</h2>
+    <p><b>Recommended for integrations:</b> an operator-provisioned API key. Send it as <code>X-API-Key</code> on every <code>/v1/*</code> request except session creation. Keys can be expired or revoked; a rejected key returns HTTP 401.</p>
+    <p><code>POST /v1/session</code> issues an anonymous web-session JWT valid for 24 hours. It is intended for the website's browser, not as a substitute for an app API key. If used, send <code>Authorization: Bearer TOKEN</code>. Session creation is rate-limited and production requires the server's JWT secret to be configured.</p>
+    <pre><code>curl -X POST 'https://ceme-beta.ocarroeletrico.com/v1/session'
+
+# Then use the returned token:
+curl 'https://ceme-beta.ocarroeletrico.com/v1/health' \
+  -H 'Authorization: Bearer TOKEN_FROM_RESPONSE'</code></pre>
+    <p>Use one authentication method per request. Never log or commit credentials. HTTPS is required outside local development.</p>
+  </article>
+  <article id="endpoints">
+    <h2>Read endpoints</h2>
+    <table><thead><tr><th>Method and path</th><th>Purpose / parameters</th></tr></thead><tbody>
+      <tr><td><code>GET /v1/health</code></td><td>Confirms authentication; reports credential kind and server time.</td></tr>
+      <tr><td><code>GET /v1/cemes</code></td><td>Commercial energy suppliers (CEMEs).</td></tr>
+      <tr><td><code>GET /v1/tariffs</code></td><td>Tariffs and the current tariff version where one is available.</td></tr>
+      <tr><td><code>GET /v1/tar</code></td><td>Currently valid regulated network access tariffs (TAR).</td></tr>
+      <tr><td><code>GET /v1/tabela</code></td><td>Current tariff prices and published activation/IEC values, in a compact table-oriented response.</td></tr>
+      <tr><td><code>GET /v1/omie/daily?days=60</code></td><td>Daily OMIE series. <code>days</code> is clamped to 7–120; default 60.</td></tr>
+      <tr><td><code>GET /v1/omie/futures</code></td><td>OMIP futures data.</td></tr>
+      <tr><td><code>GET /v1/omie/stats</code></td><td>Monthly OMIE statistics and reference values.</td></tr>
+      <tr><td><code>GET /v1/indexed/quarters</code></td><td>Quarter-hour data and calculated prices for an indexed tariff. See below.</td></tr>
+      <tr><td><code>POST /v1/simulate</code></td><td>Calculates and ranks tariffs for supplied usage inputs. See below.</td></tr>
+    </tbody></table>
+    <p>Exact field sets can evolve with the tariff data. Treat unknown JSON fields as valid, and do not assume every tariff has every optional value (for example, tariff version or split energy/network prices).</p>
+  </article>
+  <article id="simulate">
+    <h2>Calculate a comparison</h2>
+    <p><code>POST /v1/simulate</code> accepts a JSON object. All fields are optional; defaults are shown.</p>
+    <pre><code>curl -X POST 'https://ceme-beta.ocarroeletrico.com/v1/simulate' \
+  -H 'X-API-Key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  --data '{
+    "kwh": 40,
+    "region": "CONT",
+    "at": "2026-10-18T01:00:00Z",
+    "omie": 0.20
+  }'</code></pre>
+    <table><thead><tr><th>Field</th><th>Meaning and accepted values</th></tr></thead><tbody>
+      <tr><td><code>kwh</code></td><td>Energy to charge, number greater than 0 and at most 1000. Default 40.</td></tr>
+      <tr><td><code>region</code></td><td><code>CONT</code> (mainland), <code>MAD</code> (Madeira), or <code>AZO</code> (Azores). Default <code>CONT</code>.</td></tr>
+      <tr><td><code>at</code></td><td>Optional valid date/time; ISO 8601 with timezone/UTC offset recommended. Defaults to now.</td></tr>
+      <tr><td><code>omie</code></td><td>Reference OMIE price in EUR/kWh, positive number. Default 0.20.</td></tr>
+      <tr><td><code>omieVazio</code>, <code>omieFora</code></td><td>Optional positive EUR/kWh reference prices for off-peak and other periods. Used by tariffs configured for split periods.</td></tr>
+    </tbody></table>
+    <p>The response includes the requested inputs, an average and <code>data</code>, an array of tariff quote objects sorted by total cost. A tariff's fields include descriptive metadata, prices and calculated totals; fields vary by tariff type. Some invalid/inconsistent tariffs can be omitted from the ranking rather than failing the whole request. This is an estimate for the energy component, not a final charging bill: the Mobi.E charging-point operator (OPC) fee is not included.</p>
+  </article>
+  <article id="quarters">
+    <h2>Indexed tariff quarter-hours</h2>
+    <p>Use <code>GET /v1/indexed/quarters</code> with query parameters:</p>
+    <ul>
+      <li><code>tariff</code>: optional tariff ID. If omitted or not an indexed tariff, the server selects the first indexed tariff.</li>
+      <li><code>region</code>: <code>CONT</code>, <code>MAD</code>, or <code>AZO</code>; defaults to <code>CONT</code>.</li>
+      <li><code>date</code>: optional day in <code>YYYY-MM-DD</code>; defaults to today.</li>
+      <li><code>fixed</code>: optional fixed tariff ID to compare against.</li>
+      <li><code>tz</code>: optional IANA timezone for displayed start/end times, for example <code>Europe/Lisbon</code>; defaults to UTC.</li>
+    </ul>
+    <pre><code>curl 'https://ceme-beta.ocarroeletrico.com/v1/indexed/quarters?tariff=INDEXED_ID&amp;region=CONT&amp;date=2026-10-18&amp;fixed=FIXED_ID&amp;tz=Europe%2FLisbon' \
+  -H 'X-API-Key: YOUR_API_KEY'</code></pre>
+    <p>The response includes quarter records, source/estimate metadata, and winner counts. With no valid <code>fixed</code> comparison, winner values are null. The response's UTC timestamp fields remain UTC; displayed clock labels use the requested timezone.</p>
+  </article>
+  <article id="errors">
+    <h2>Errors, rate limits, and safe retries</h2>
+    <table><thead><tr><th>HTTP status</th><th>Meaning</th></tr></thead><tbody>
+      <tr><td>400</td><td>Invalid request input; inspect <code>error.code</code> and <code>error.message</code>.</td></tr>
+      <tr><td>401</td><td>Missing, invalid, expired, or revoked credentials.</td></tr>
+      <tr><td>405</td><td>Wrong HTTP method; use the method listed above.</td></tr>
+      <tr><td>413</td><td>Request body exceeds the 64 KiB limit.</td></tr>
+      <tr><td>429</td><td>Rate limit reached. Wait at least the <code>Retry-After</code> seconds in the response.</td></tr>
+      <tr><td>502</td><td>Upstream OMIE series are temporarily unavailable; retry later with backoff.</td></tr>
+    </tbody></table>
+    <p>Responses include rate-limit headers such as <code>X-RateLimit-Remaining</code> and <code>X-RateLimit-Reset</code>. The default API allowance is 60 requests per minute per key (the configured per-client limit may differ). For retryable failures, use bounded exponential backoff and respect <code>Retry-After</code>; do not retry a 400 or 401 unchanged.</p>
+  </article>
+  <article id="agent">
+    <h2>Guidance for AI agents and code generators</h2>
+    <ul>
+      <li>Use only the documented read/calculation endpoints above. Do not infer that a route is safe just because its name looks familiar.</li>
+      <li>Do not invent credentials or ask users to paste secrets into chat. Ask the integration owner to provision a key and provide it through the app's secret manager.</li>
+      <li>Validate inputs and check the HTTP status before parsing a response as a successful result.</li>
+      <li>Handle missing, null, and additional fields; tariff data is not a fixed catalogue schema.</li>
+      <li>Keep units attached to values. In particular, OMIE inputs are EUR/kWh; do not pass EUR/MWh without converting.</li>
+      <li>Describe the result as the energy portion of a charging estimate. Do not claim it includes the charging-point operator's fee or guarantees a final invoice.</li>
+      <li>Do not expose an API key in client-side code or return it to an end user.</li>
+    </ul>
+    <p>For implementation details and the canonical route/auth design, see <a href="https://github.com/CarregaErvilhas/CEME/blob/main/docs/04-api-auth.md">the API and auth design notes</a>.</p>
+  </article>
+  <footer><a href="/">CEME Comparator</a> · <a href="/contactos">Contact</a> · <a href="https://github.com/CarregaErvilhas/CEME">Source code</a></footer>
+</main>
+</body>
+</html>
