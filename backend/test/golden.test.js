@@ -28,16 +28,18 @@ function seeded() {
   return db;
 }
 
-// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15.
-// TODAS as âncoras são externas: vêm da folha de captura, não de qualquer
-// re-derivação no código. O cenário «E se o CEME aplicar a EGME legal
-// 2026?» fica no teste do cenário regulatório, mais abaixo.
+// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15 e re-congelados
+// a 2026-10-22 onde o CEME mudou o preço publicado (ver cabeçalho do seed.js:
+// galp/atlante/acp/bluecharge/charge2go). O Atlante (AC) e o Charge2Go
+// divergem da folha POR DECISÃO — a folha ficou desactualada face às páginas.
+// TODAS as âncoras implicam os valores publicados; o cenário «E se o CEME
+// aplicar a EGME legal 2026?» fica no teste do cenário regulatório, mais abaixo.
 const GOLDEN = [
-  ['atlante-mt-myatlanteac', 9.11, 0.19],
-  ['atlante-bt-myatlanteac', 10.98, 0.23],
+  ['atlante-mt-myatlanteac', 10.09, 0.21],
+  ['atlante-bt-myatlanteac', 11.96, 0.25],
   ['atlante-mt-myatlantebus', 8.12, 0.17],
   ['atlante-bt-myatlantebus', 9.99, 0.21],
-  ['charge2go-mt-ecogreen', 9.38, 0.19],
+  ['charge2go-mt-ecogreen', 9.32, 0.19],
   ['viaverde-mt-viaverdeelec', 8.31, 0.17],
   ['ezu-mt-abenergia', 5.84, 0.12],
   ['miio-mt-miiobihor-2', 12.64, 0.26],
@@ -66,15 +68,15 @@ describe('golden: fixos a 40 kWh, 2026-10-15 22:09 (CONT)', () => {
 
 describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
   // Não é âncora externa: é o cenário "e se o CEME aplicar o valor legal".
-  // A EGME publicada no sheet (0,1572, valor de 2025) está acima do legal
-  // 2026 (0,1088 = Regul. ERSE 7/2026, em vigor desde 2026-01-01) — e vários
-  // CEMEs, na prática, não actualizam. O seed fica com o PUBLISHED e a API
-  // marca `activation_stale`; aqui congelam-se os totais QUE O CENÁRIO
-  // legal daria, para o delta (9,38 − 9,32 = 0,06 ≈ (0,1572 − 0,1088) ×
-  // 1,23) ser sempre verificável — em qualquer dos sentidos da actualização.
+  // A Via Verde ainda publica o EGME de 2025 (0,1572) enquanto o legal 2026 é
+  // 0,1088 (Regul. ERSE 7/2026). O seed fica com o PUBLISHED e a API marca
+  // `activation_stale`; aqui congela-se o total QUE O CENÁRIO legal daria
+  // (8,31 − 8,25 = 0,06 ≈ (0,1572 − 0,1088) × 1,23) — em qualquer dos
+  // sentidos da actualização. (O Charge2Go chegou a estar neste cenário com
+  // 0,1572, mas a página passou a publicar 0,1088 a 2026-10-22 — saiu daqui
+  // e o golden dele passou para o valor legal.)
   const EGME_2026 = 0.1088;
   for (const [id, scenarioTotal, scenarioKwh] of [
-    ['charge2go-mt-ecogreen', 9.32, 0.19],
     ['viaverde-mt-viaverdeelec', 8.25, 0.17],
   ]) {
     it(`${id} ficaria em ${scenarioTotal.toFixed(2)} € com a EGME legal 2026`, () => {
@@ -93,19 +95,21 @@ describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
 });
 
 describe('golden: o motor continua a bater certo com a folha', () => {
-  // Este é o teste que vale: 9,11 € é o valor que a folha dava para o Atlante
-  // myAtlante (AC) MT/semanal com 40 kWh a 2026-10-15 22:09. Se o motor
-  // divergir do ROUNDUP da folha, o número muda.
-  it('Atlante myAtlante (AC) MT/semanal fecha em 9,11 € como a folha', () => {
+  // Este é o teste que vale: 10,09 € é o que o motor dá para o Atlante
+  // myAtlante (AC) MT/semanal com 40 kWh a 2026-10-15 22:09, com o preço
+  // público actual (energia 0,12 €/kWh desde 2026-10-22 — a folha dava
+  // 9,11 € com o 0,10 antigo). Se o motor divergir do ROUNDUP da folha,
+  // o número muda.
+  it('Atlante myAtlante (AC) MT/semanal fecha em 10,09 €', () => {
     const { q } = quoteFromDb(seeded(), 'atlante-mt-myatlanteac');
-    assert.equal(q.totalEur, 9.11);
+    assert.equal(q.totalEur, 10.09);
   });
   it('o ROUNDUP é por componente (fatura), não no fim', () => {
-    // 40 × 0,1812 = 7,248 -> 7,25 pelo ROUNDUP; sem ROUNDUP daria 7,40 × 1,23.
+    // 40 × 0,2012 = 8,048 -> 8,05 pelo ROUNDUP; sem ROUNDUP daria 8,198 × 1,23.
     const { q } = quoteFromDb(seeded(), 'atlante-mt-myatlanteac');
-    const semArredondar = (40 * 0.1812 + 0.11 + 40 * 0.001) * 1.23;
-    assert.equal(q.totalEur, 9.11);
-    assert.ok(Math.abs(semArredondar - 9.10) < 0.005, `sem arredondar daria ${semArredondar.toFixed(4)}`);
+    const semArredondar = (40 * 0.2012 + 0.11 + 40 * 0.001) * 1.23;
+    assert.equal(q.totalEur, 10.09);
+    assert.ok(Math.abs(semArredondar - 10.08) < 0.005, `sem arredondar daria ${semArredondar.toFixed(4)}`);
   });
 });
 
