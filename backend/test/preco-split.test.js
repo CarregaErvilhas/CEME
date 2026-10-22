@@ -45,7 +45,7 @@ describe('preço: energia + TAR', () => {
     assert.equal(edp.tar, null, 'sem TAR inventada');
   });
 
-  it('a decomposição do Atlante é a que a folha tinha (0,10 + a TAR)', () => {
+  it('a decomposição do Atlante é a publicada (0,12 + a TAR desde 2026-10-22)', () => {
     const db = fresh();
     const row = db.prepare(`
       SELECT pc.energy_only_eur_kwh AS energy, pc.tar_eur_kwh AS tar
@@ -53,7 +53,7 @@ describe('preço: energia + TAR', () => {
         JOIN tariff_version v ON v.id = pc.tariff_version_id
         JOIN tariff t ON t.id = v.tariff_id
        WHERE t.id = 'atlante-bt-myatlanteac' AND pc.period = 'VAZIO'`).get();
-    assert.equal(row.energy, 0.1);
+    assert.equal(row.energy, 0.12);
     assert.equal(row.tar, 0.0266);
   });
 });
