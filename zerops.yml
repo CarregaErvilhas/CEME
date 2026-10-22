@@ -41,7 +41,10 @@ zerops:
       readinessCheck:
         httpGet:
           port: 3001
-          path: /readyz
+          # TEMPORÁRIO (teste do guard de deploy): caminho inexistente, para
+          # o readiness check reprovar à vontade e ver o deploy ser abortado
+          # com a versão anterior a servir. Revertido no PR seguinte.
+          path: /readyz-inexistente
         # A app faz schema + seed no arranque: pode levar uns segundos.
         # 120 s dá folga sem passar o limite de 5 min da plataforma.
         failureTimeout: "120s"
