@@ -13,7 +13,7 @@ import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
-import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from './omie/pipeline.js';
+import { getDaily, getFutures, getQuarters, getStats, rebuildDerived, SOURCE_LABEL } from './omie/pipeline.js';
 import { migrateOmieTables, migrateAddedColumns } from './db/migrate.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed.postgres.js';
@@ -115,6 +115,10 @@ if (!SKIP_SEED) {
 } else {
   console.warn('[ceme-v2] seed saltado (CEME_SKIP_SEED/CEME_READONLY).');
 }
+// Reaplica a lógica actual aos dados já guardados (ex.: mudança de agrupamento
+// por dia de mercado), sem depender de uma ingestion completa ao arranque.
+try { await rebuildDerived(); console.log('[ceme-v2] derivados recalculados no arranque'); }
+catch (e) { console.warn('[ceme-v2] rebuildDerived falhou:', e.message); }
 
 function vmeta(tid) {
   const v = VERSIONS[tid] || {};

@@ -225,13 +225,15 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
 // (e quando o TF vai buscar o ficheiro). O que muda a cada 15 minutos é o
 // quarter em que estamos.
 export function currentPrice(payload, now = new Date()) {
-  const lis = utcNow(now);
-  const floorMin = Math.floor(lis.minutes / 15) * 15;
+  const nowMs = now.getTime();
+  // Quando o instante real está disponível (produção), selecciona-se por ele —
+  // é a única coisa que não se repete e não depende de fusos. Caso contrário
+  // (testes/fallback), usa-se a leitura em hora de Lisboa.
+  const rowMs = (r) => r.utc ? new Date(r.utc).getTime() : (numToDay(r.lisbonDn).getTime() + (r.lisbonMin || 0) * 60000);
+  const sorted = [...(payload.recent || [])].sort((a, b) => rowMs(a) - rowMs(b));
   let best = null;
-  for (const r of payload.recent || []) {
-    if (r.lisbonDn > lis.dayNum) continue;
-    if (r.lisbonDn < lis.dayNum) { best = r; continue; }
-    if (r.lisbonMin > floorMin) break;
+  for (const r of sorted) {
+    if (rowMs(r) > nowMs) break;
     best = r;
   }
   if (!best) return { at: null, price: null, live: false, estimated: false };
@@ -241,7 +243,7 @@ export function currentPrice(payload, now = new Date()) {
     at: `${isoOf(best.lisbonDn)}T${pad2(Math.floor(best.lisbonMin / 60))}:${pad2(best.lisbonMin % 60)}`,
     atUtc: iso,
     price: round2(best.price),
-    live: best.lisbonDn === lis.dayNum && best.lisbonMin === floorMin,
+    live: rowMs(best) === (nowMs - (nowMs % (15 * 60000))),
     // O dia de mercado ainda não foi publicado: o preço é uma estimativa
     // OMIP, não um preço de mercado.
     estimated: best.dn > cut,
