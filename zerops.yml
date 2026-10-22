@@ -27,6 +27,25 @@ zerops:
       deployFiles:
         - backend
         - frontend
+    # Deploy sem downtime (rolling). `temporaryShutdown: false` é o default,
+    # mas fica explícito porque é a diferença entre "o pod novo entra em
+    # serviço antes do velho sair" e "o velho sai primeiro" — o segundo
+    # caso é uma janela de 502 em cada deploy.
+    deploy:
+      temporaryShutdown: false
+      # Readiness check: o pod novo só recebe tráfego depois de responder.
+      # Se não responder a tempo, o deploy é abortado e a versão anterior
+      # continua a servir — um deploy mau não é uma queda do site.
+      # `/readyz` (e não `/`) porque diz se a BD está a responder, não
+      # só se o processo está vivo.
+      readinessCheck:
+        httpGet:
+          port: 3001
+          path: /readyz
+        # A app faz schema + seed no arranque: pode levar uns segundos.
+        # 120 s dá folga sem passar o limite de 5 min da plataforma.
+        failureTimeout: "120s"
+        retryPeriod: "10s"
     run:
       base: nodejs@24
       # `run.start` é executado por `exec`, não por um shell — `cd backend &&`
@@ -39,14 +58,22 @@ zerops:
       ports:
         - port: 3001
           httpSupport: true
-      # Health check: a raiz serve o frontend e é pública. NÃO usar
-      # /v1/health — essa rota está atrás de auth e responde 401 sem token,
-      # o que marcaria o serviço como unhealthy para sempre.
+      # Health check (liveness): corre sempre, no pod vivo. É `/healthz` —
+      # só confirma que o processo responde. NÃO usar `/v1/health` (está
+      # atrás de auth e responde 401 sem token, o que marcaria o serviço
+      # como unhealthy para sempre) nem `/readyz` (que pergunta à BD: com
+      # um só pod, desligá-lo do balancer por causa de uma blip da BD
+      # tirava o site inteiro, em vez de só a API).
       healthCheck:
         httpGet:
           port: 3001
-          path: /
+          path: /healthz
+        # Falhas seguidas até reiniciar o container.
         failureTimeout: "60s"
+        # Tempo de falhas até o container sair do balancer.
+        disconnectTimeout: "30s"
+        # Tempo saudável até o container voltar ao balancer.
+        recoveryTimeout: "30s"
         execPeriod: "10s"
       envVariables:
         PORT: 3001

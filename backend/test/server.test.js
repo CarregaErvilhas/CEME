@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -68,6 +68,43 @@ describe('servidor: hardening HTTP', () => {
 
   it('HTML também leva nosniff', async () => {
     assert.equal((await fetch(`${BASE}/`)).headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  // Rotas do Zerops: sem auth (o balancer tem de as alcançar de dentro do
+  // container) e sem rate limit (o check corre a cada 10 s).
+  it('/healthz: liveness sem auth, 200 com ok=true', async () => {
+    const r = await fetch(`${BASE}/healthz`);
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.ok, true);
+    assert.equal(typeof j.up, 'number');
+    assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  it('/readyz: readiness sem auth, 200 só se a BD responder', async () => {
+    const r = await fetch(`${BASE}/readyz`);
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.ok, true);
+    assert.equal(j.db, 'up');
+  });
+
+  it('/readyz: de fora não se toca na BD (200 com db=unknown)', async () => {
+    // Endereço não-loopback da própria máquina, se houver (CI e dev têm).
+    const net = networkInterfaces();
+    const ip = Object.values(net).flat()
+      .find(i => i && i.family === 'IPv4' && !i.internal)?.address;
+    if (!ip) return; // sem rede a verificar — nada a fazer
+    let r;
+    try {
+      r = await fetch(`http://${ip}:${PORT}/readyz`, { signal: AbortSignal.timeout(5000) });
+    } catch {
+      return; // rede não-loopback inacessível a partir daqui (sandbox)
+    }
+    // Nunca 403: um check que reprova o deploy por estar mal endereçado é
+    // pior que não ter check.
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).db, 'unknown');
   });
 
   describe('duas interfaces: o cookie ceme_ui escolhe a página', () => {

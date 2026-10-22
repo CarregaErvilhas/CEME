@@ -155,6 +155,39 @@ const json = (res, code, obj, extraHeaders = {}) => {
   res.end(JSON.stringify(obj));
 };
 
+// Endereços de loopback, para o readinessCheck. O Zerops chama de dentro do
+// container; `::ffff:127.0.0.1` aparece quando o servidor escuta em :: (dual
+// stack) e o cliente vem de 127.0.0.1.
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const isLoopback = req => LOOPBACK.has(req.socket?.remoteAddress || '');
+
+// SELECT 1 com prazo e com cache. O health check do Zerops dá 5 s ao
+// pedido: o timeout de ligação do pg (5 s) deixaria a resposta em cima da
+// hora, e um check que nunca passa é pior do que nenhum. O cache de 5 s
+// limita o custo a uma query por intervalo, venha o check de onde vier.
+// Resolve (nunca rejeita) para não deixar uma rejeição tardia a crashar o
+// processo.
+const DB_CHECK_TTL = 5000;
+let dbCheck = null;
+const dbAlive = async () => {
+  const now = Date.now();
+  if (dbCheck && now - dbCheck.at < DB_CHECK_TTL) return dbCheck.promise;
+  const promise = (async () => {
+    let timer;
+    const guard = new Promise(resolve => {
+      timer = setTimeout(() => resolve(false), 3000);
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([query('SELECT 1').then(() => true, () => false), guard]);
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  dbCheck = { at: now, promise };
+  return promise;
+};
+
 // Rate limiting: janela fixa, em memória — suficiente para um nó
 // único (em produção, um limitador à frente do server). Sessão web conta
 // por IP; terceiros contam pela chave de API. O mapa é podado
@@ -410,6 +443,34 @@ const server = http.createServer(async (req, res) => {
   // Web sem auth (ficheiros estáticos); a API continua toda com auth.
   // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
   const readStatic = method => method === 'GET' || method === 'HEAD';
+  // Liveness e readiness para o Zerops (`run.healthCheck` e
+  // `deploy.readinessCheck` em zerops.yml). São as únicas rotas sem auth:
+  // o balancer tem de as alcançar de dentro do container.
+  //
+  // `/healthz` (liveness) só diz que o processo está vivo — não toca na BD.
+  // `/readyz` (readiness) acrescenta um SELECT 1: é a que decide se o
+  // container novo pode receber tráfego. A verificação da BD é o que
+  // separa as duas: se a BD cai, o healthCheck não pode desligar o pod do
+  // balancer (com um só pod isso era o site inteiro a dar 502), mas o
+  // readinessCheck tem de reprovar o pod novo.
+  if (readStatic(req.method) && url.pathname === '/healthz') {
+    return json(res, 200, { ok: true, up: Math.round(process.uptime()) });
+  }
+  if (readStatic(req.method) && url.pathname === '/readyz') {
+    // O readinessCheck do Zerops corre de dentro do container (127.0.0.1) —
+    // é aí que a BD é consultada. De fora não se toca na BD: o check é
+    // interno e um `SELECT 1` por pedido seria um caminho grátis para
+    // esgotar o pool. E, fora do loopback, a resposta é 200 com
+    // `db: unknown` em vez de 403 — assim um probe que venha de outro
+    // sítio nunca chumba um deploy (um check que dá `false` por engano é
+    // pior que a falta dele).
+    if (!isLoopback(req)) return json(res, 200, { ok: true, db: 'unknown' });
+    const alive = await dbAlive();
+    if (!alive) {
+      return json(res, 503, { ok: false, db: 'down', error: { code: 'db_unavailable', message: 'a BD não respondeu' } });
+    }
+    return json(res, 200, { ok: true, db: 'up' });
+  }
   if (readStatic(req.method) && url.pathname === '/strings.js') {
     // Dicionário partilhado pelas duas interfaces: um só ficheiro para os dois
     // sites, por isso não pode ficar preso em cache depois de um deploy.
