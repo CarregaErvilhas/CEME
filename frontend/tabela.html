@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="pt-PT">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tabela — Comparador CEME</title>
+  <meta name="description"
+    content="Os tarifários de mobilidade eléctrica em vigor, numa só grelha: preço final por período, energia+TAR, e a tarifa de activação.">
+  <link rel="stylesheet" href="/pages.css">
+  <style>
+    /* uma tabela para ler e comparar, não um painel. */
+    main.cont {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      overflow-x: auto;
+    }
+
+    p.meta {
+      color: #5F6368;
+      font-size: .9rem;
+      margin: 0 0 8px;
+    }
+
+    table {
+      border-collapse: collapse;
+      font-size: .88rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th,
+    td {
+      border: 1px solid #B7B7B7;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+
+    th {
+      text-align: left;
+      font-weight: 600;
+    }
+
+    td.num,
+    th.num {
+      text-align: right;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="logo" href="/"><span class="mark">⚡</span><span class="ttl" id="logoTxt"></span></a>
+      <nav>
+        <a href="/simulador" id="nSim"></a>
+        <a href="/assistente" id="nAssistant"></a>
+        <a href="/sobre" id="nSobre"></a>
+        <a href="/contactos" id="nContactos"></a>
+      </nav>
+    </div>
+  </header>
+  <div class="hero">
+    <div class="in" id="hero"></div>
+  </div>
+  <main class="cont" id="app">
+    <p class="meta" id="status"></p>
+  </main>
+  <footer id="foot"></footer>
+  <script>window.__LANG__ = null;</script>
+  <script src="/strings.js"></script>
+  <script>
+    'use strict';
+    /* Página "Tabela": os tarifários em vigor, directamente da BD, no formato da
+     * folha de origem — uma linha por tarifário, sem filtros nem gráficos. Os
+     * dados vêm de /v1/tabela (os mesmos allTariffs + comps que a API usa, com
+     * a mesma janela de validade: o que expirou não aparece). Sem link no site:
+     * rota subterrânea, para quem sabe que ela existe. */
+    const STR = CEME_STR('tabela');
+    // Mesma precedência do resto do site: bandeira > Accept-Language > PT.
+    let LANG = (function () {
+      try { const s = localStorage.getItem('ceme:lang'); if (s === 'pt' || s === 'en') return s; } catch (e) { }
+      return (typeof window.__LANG__ === 'string' && window.__LANG__ === 'en') ? 'en' : 'pt';
+    })();
+    const t = (k, v = {}) => (STR[LANG][k] ?? STR.pt[k] ?? k).replace(/\{(\w+)\}/g, (_, n) => v[n] ?? '');
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+    const nf = (v) => (v == null ? '—' : new Intl.NumberFormat(LANG === 'en' ? 'en-GB' : 'pt-PT',
+      { minimumFractionDigits: 4, maximumFractionDigits: 5 }).format(v));
+    const dtDay = (s) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+    };
+
+    function chrome() {
+      document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
+      document.title = t('docTitle');
+      set('logoTxt', t('logoA') + ' <b class="lg2">' + t('logoB') + '</b>');
+      set('nSim', t('navSim'));
+      set('nAssistant', t('navAssistant'));
+      set('nSobre', t('navSobre'));
+      set('nContactos', t('navContactos'));
+      set('hero', `<h1>${t('h1')}</h1><p>${t('lede')}</p>`);
+      set('foot', `${t('footNote')} <a href="/sobre">${t('navSobre')}</a><span class="sep">·</span><a href="/simulador">${t('navSim')}</a><span class="sep">·</span><a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">GitHub</a>`);
+    }
+
+    function head() {
+      return `<thead><tr>
+    <th>${t('thCeme')}</th><th>${t('thTariff')}</th><th>${t('thVolt')}</th>
+    <th>${t('thOp')}</th><th>${t('thCycle')}</th>
+    <th class="num">${t('thCheias')}</th><th class="num">${t('thVazio')}</th>
+    <th class="num">${t('thAct')}</th>
+  </tr></thead>`;
+    }
+
+    /* Uma linha por tarifário. Bi-horário: Cheias = FORA_VAZIO, Vazio = VAZIO.
+     * Simples: o preço único atravessa as duas colunas (só há um número, e
+     * separá-lo nas duas seria mostrar duas vezes o mesmo). Indexado: não há
+     * preço fixo — o valor depende do OMIE do dia, e aqui a coluna vive vazia. */
+    function draw(d) {
+      chrome();
+      const rows = d.data.slice().sort((a, b) =>
+        a.ceme.localeCompare(b.ceme, 'pt') ||
+        a.name.localeCompare(b.name, 'pt') ||
+        String(a.voltage).localeCompare(String(b.voltage)));
+      const body = rows.map(r => {
+        const cells = [
+          `<td>${esc(r.ceme)}</td>`,
+          `<td>${esc(r.name)}</td>`,
+          `<td>${esc(r.voltage)}</td>`,
+          `<td>${r.schedule === 'SIMPLES' ? t('simple') : t('biho')}</td>`,
+          `<td>${r.schedule === 'SIMPLES' ? '—' : (r.cycle === 'SEMANAL' ? t('cSem') : t('cDia'))}</td>`,
+        ];
+        if (r.kind === 'INDEXED') cells.push(`<td colspan="2">${t('idx')}</td>`);
+        else if (r.schedule === 'SIMPLES') {
+          const sp = r.split && r.split.UNICO;
+          const val = (sp && sp.energy != null && sp.tar != null)
+            ? `${nf(sp.energy)} + ${nf(sp.tar)}` : nf(r.prices.UNICO);
+          cells.push(`<td colspan="2" class="num">${val}</td>`);
+        } else {
+          const cheias = (r.split && r.split.FORA_VAZIO && r.split.FORA_VAZIO.energy != null && r.split.FORA_VAZIO.tar != null)
+            ? `${nf(r.split.FORA_VAZIO.energy)} + ${nf(r.split.FORA_VAZIO.tar)}` : nf(r.prices.FORA_VAZIO);
+          const vazio = (r.split && r.split.VAZIO && r.split.VAZIO.energy != null && r.split.VAZIO.tar != null)
+            ? `${nf(r.split.VAZIO.energy)} + ${nf(r.split.VAZIO.tar)}` : nf(r.prices.VAZIO);
+          cells.push(`<td class="num">${cheias}</td><td class="num">${vazio}</td>`);
+        }
+        cells.push(`<td class="num">${r.activation ? nf(r.activation) : '—'}</td>`);
+        return `<tr>${cells.join('')}</tr>`;
+      }).join('');
+      document.getElementById('app').innerHTML =
+        `<p class="meta">${t('footData', { n: String(rows.length), d: dtDay(d.at) })}</p>` +
+        `<table>${head()}<tbody>${body}</tbody></table>`;
+    }
+
+    /* --- dados ------------------------------------------------------------ */
+    const API = location.origin;
+    let token = null;
+    async function sess() {
+      if (token) return token;
+      const r = await fetch(API + '/v1/session', { method: 'POST' });
+      if (!r.ok) throw new Error('sessão ' + r.status);
+      token = (await r.json()).token;
+      return token;
+    }
+    async function api(path) {
+      const tk = await sess();
+      let r = await fetch(API + path, { headers: { Authorization: 'Bearer ' + tk } });
+      if (r.status === 401) { token = null; const tk2 = await sess(); r = await fetch(API + path, { headers: { Authorization: 'Bearer ' + tk2 } }); }
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j?.error?.message || ('erro ' + r.status)); }
+      return r.json();
+    }
+
+    (async function () {
+      const status = document.getElementById('status');
+      try {
+        draw(await api('/v1/tabela'));
+      } catch (e) {
+        chrome();
+        status.innerHTML = `<span style="color:#B3261E">${t('err', { m: e.message })}</span>`;
+      }
+    })();
+  </script>
+</body>
+
+</html>

@@ -1,7 +1,10 @@
-// Seed completo para PostgreSQL: 24 CEME / 127 tarifários extraídos do sheet em 2026-10-15.
+// Seed completo para PostgreSQL: 24 CEME / 128 tarifários extraídos do sheet em 2026-10-15.
 // (Okeana removida em 2026-10-18: última info de 2023, sem EGME discriminado.)
 // Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
 // act = EGME, o valor que a CEME publica (só o miio não cobra).
+// Os ajustes de valores (Frota EDP 2026-10-22, promo EZU expirada, etc.)
+// estão documentados por extenso no cabeçalho do seed.js — mantêm os dois
+// ficheiros em paralelo a editar TODAS as alterações lá e aqui.
 import { readFile } from 'node:fs/promises';
 import { query, run } from './pg.js';
 import { SPLITS } from './seed.js';
@@ -62,10 +65,10 @@ const TARIFFS = [
   ["edp-mt-cartoedp-4", "edp", "Cartão EDP Charge (Simples) Clientes energia / UVE (30%)", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.18746}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
   ["edp-bt-cartoedp-5", "edp", "Cartão EDP Charge (Simples) Colaboradores (25%)", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.20085}, 0.1088, 0.0, 0.001, 0, ""],
   ["edp-mt-cartoedp-5", "edp", "Cartão EDP Charge (Simples) Colaboradores (25%)", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.20085}, 0.1088, 0.0, 0.001, 0, ""],
-  ["edp-bt-cartoedp-6", "edp", "Cartão EDP Charge Frota (Simples)", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.2591}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
-  ["edp-mt-cartoedp-6", "edp", "Cartão EDP Charge Frota (Simples)", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.2591}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
-  ["edp-bt-cartoedp-7", "edp", "Cartão EDP Charge Frota (Simples) Clientes Energia", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.20728}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
-  ["edp-mt-cartoedp-7", "edp", "Cartão EDP Charge Frota (Simples) Clientes Energia", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.20728}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-bt-cartoedp-6", "edp", "Cartão EDP Charge Frota (Simples)", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.2678}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-mt-cartoedp-6", "edp", "Cartão EDP Charge Frota (Simples)", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.2678}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-bt-cartoedp-7", "edp", "Cartão EDP Charge Frota (Simples) Clientes Energia", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.21424}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-mt-cartoedp-7", "edp", "Cartão EDP Charge Frota (Simples) Clientes Energia", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 0, 1, "CONT", {"UNICO": 0.21424}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
   ["edp-bt-cartoedp-8", "edp", "Cartão EDP Charge (Bi-Horário)", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1927, "FORA_VAZIO": 0.2826}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
   ["edp-mt-cartoedp-8", "edp", "Cartão EDP Charge (Bi-Horário)", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1927, "FORA_VAZIO": 0.2826}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
   ["edp-bt-cartoedp-9", "edp", "Cartão EDP Charge (Bi-Horário) Associados UVE (10%)", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.17343, "FORA_VAZIO": 0.25434}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
@@ -76,10 +79,10 @@ const TARIFFS = [
   ["edp-mt-cartoedp-11", "edp", "Cartão EDP Charge (Bi-Horário) Clientes energia / UVE (30%)", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.13489, "FORA_VAZIO": 0.19782}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/particulares/servicos/mobilidade-eletrica/carregar-fora-de-casa/"],
   ["edp-bt-cartoedp-12", "edp", "Cartão EDP Charge (Bi-Horário) Colaboradores (25%)", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.144525, "FORA_VAZIO": 0.21195}, 0.1088, 0.0, 0.001, 0, ""],
   ["edp-mt-cartoedp-12", "edp", "Cartão EDP Charge (Bi-Horário) Colaboradores (25%)", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.144525, "FORA_VAZIO": 0.21195}, 0.1088, 0.0, 0.001, 0, ""],
-  ["edp-bt-cartoedp-13", "edp", "Cartão EDP Charge (Bi-Horário) Frota", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.2121, "FORA_VAZIO": 0.2681}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
-  ["edp-mt-cartoedp-13", "edp", "Cartão EDP Charge (Bi-Horário) Frota", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.2121, "FORA_VAZIO": 0.2681}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
-  ["edp-bt-cartoedp-14", "edp", "Cartão EDP Charge (Bi-Horário) Frota Clientes Energia", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.16968, "FORA_VAZIO": 0.21448}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
-  ["edp-mt-cartoedp-14", "edp", "Cartão EDP Charge (Bi-Horário) Frota Clientes Energia", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.16968, "FORA_VAZIO": 0.21448}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-bt-cartoedp-13", "edp", "Cartão EDP Charge (Bi-Horário) Frota", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1927, "FORA_VAZIO": 0.2826}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-mt-cartoedp-13", "edp", "Cartão EDP Charge (Bi-Horário) Frota", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1927, "FORA_VAZIO": 0.2826}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-bt-cartoedp-14", "edp", "Cartão EDP Charge (Bi-Horário) Frota Clientes Energia", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.15416, "FORA_VAZIO": 0.22608}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
+  ["edp-mt-cartoedp-14", "edp", "Cartão EDP Charge (Bi-Horário) Frota Clientes Energia", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.15416, "FORA_VAZIO": 0.22608}, 0.1088, 0.0, 0.001, 0, "https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/"],
   ["evpower-bt-cartoevpower", "evpower", "Cartão EVpower", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1995, "FORA_VAZIO": 0.3144}, 0.1572, 0.0, 0.001, 0, "https://www.evpower.pt/particulares/"],
   ["evpower-mt-cartoevpower", "evpower", "Cartão EVpower", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.1848, "FORA_VAZIO": 0.2696}, 0.1572, 0.0, 0.001, 0, "https://www.evpower.pt/particulares/"],
   ["evaz-bt-planomovebas", "evaz", "Plano Move Base", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 0, "CONT", {"VAZIO": 0.169, "FORA_VAZIO": 0.2635}, 0.1088, 0.0, 0.001, 0, "https://www.evaz.energy/solutions/plans/mobility/"],
@@ -194,6 +197,19 @@ export const VERSIONS = {
   "meo-dinamica-mt": { k: 0.065, cgs: 0.0 },
 };
 
+// Campanhas com fim à data (DIA INCLUÍDO a terminar, tal como no site
+// EZU): valid_to em passado esconde o tarifário do simulador — server.js
+// filtra `valid_to IS NULL OR valid_to > CURRENT_DATE` — e campaign=1
+// documenta porque é que acabou. Fica star no UPDATE e não no INSERT:
+// valid_from é a chave do conflito, logo re-correr o seed nunca reabre
+// uma campanha fechada.
+const CAMPAIGN_END = {
+  // EZU "AB Energia": elétrico a 0,099 €/kWh + TAR — promo terminada a
+  // 30/09/2026 (página ezu.pt/ceme, verificada 2026-10-22).
+  'ezu-bt-abenergia': '2026-09-30',
+  'ezu-mt-abenergia': '2026-09-30',
+};
+
 export async function seed() {
   // Idempotente E convergente: as linhas existentes são atualizadas para o
   // que está no código. Antes era tudo `DO NOTHING`, o que tornava o seed um
@@ -252,6 +268,16 @@ export async function seed() {
          omie_aggregation = EXCLUDED.omie_aggregation,
          notes = EXCLUDED.notes`,
       [id, SHEET_SNAPSHOT, 'SEED_' + id, v.k ?? null, v.cgs ?? null, NOTES[id] ?? null]
+    );
+  }
+
+  // Campanhas expiradas (ver comment em seed.js): valid_to passado =
+  // fora do simulador; campaign=1 = razão documentada; status EXPIRED =
+  // uma versão ACTIVE nunca tem valid_to (invariante do golden.test.js).
+  for (const [id, end] of Object.entries(CAMPAIGN_END)) {
+    await query(
+      `UPDATE tariff_version SET valid_to = $1, campaign = 1, status = 'EXPIRED' WHERE tariff_id = $2`,
+      [end, id]
     );
   }
 
