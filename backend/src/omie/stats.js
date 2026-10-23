@@ -43,6 +43,17 @@ export function utcNow(now = new Date()) {
   const minutes = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
   return { day, minutes, dayNum: dayNum(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))) };
 }
+// "Agora" em hora de Lisboa — é o fuso da página das estatísticas OMIE.
+export function lisbonNow(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
+  }).formatToParts(now);
+  const get = (t) => parts.find(p => p.type === t)?.value;
+  const day = `${get('year')}-${get('month')}-${get('day')}`;
+  const minutes = Number(get('hour')) * 60 + Number(get('minute'));
+  return { day, minutes, dayNum: dayNum(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))) };
+}
 
 const avg = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
 const round2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
@@ -133,7 +144,7 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
     push(dayBuckets.get(r.dn), r);
   }
   const dayOf = (dn) => dayBuckets.get(dn) || bucket();
-  const lis = utcNow(now);
+  const lis = lisbonNow(now);
   const todayB = dayBuckets.has(lis.dayNum) ? dayBuckets.get(lis.dayNum) : dayOf(anchor.dn);
   const tomorrowB = dayOf(lis.dayNum + 1);
   const last30 = bucket();
