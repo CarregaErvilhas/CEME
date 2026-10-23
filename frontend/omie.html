@@ -253,8 +253,8 @@ function aplicarPaleta(modo) {
 }
 
 /* --- desenho --------------------------------------------------------- */
-function card(cls, title, meta, value) {
-  return `<div class="card ${cls}"><div class="t">${title}</div>` +
+function card(cls, title, meta, value, tip) {
+  return `<div class="card ${cls}" title="${tip || ''}"><div class="t">${title}</div>` +
     (meta ? `<div class="m">${meta}</div>` : '') +
     `<div class="v">${value}</div></div>`;
 }
@@ -262,13 +262,33 @@ function card(cls, title, meta, value) {
 function drawCards(d) {
   const c = d.cards;
   const isToday = c.today.date === d.today;
+  const tips = {
+    now: LANG === 'en'
+      ? 'Price of the quarter currently running (Lisbon time): last published quarter <= now. If the current quarter is not published yet, uses the last published one.'
+      : 'Preço do quarter em curso (hora de Lisboa): último quarter publicado <= agora. Se o quarter actual ainda não foi publicado, usa o último publicado.',
+    today: LANG === 'en'
+      ? `Average of the ${c.today.quarters} quarters of today (Lisbon civil day), including OMIP estimates for unpublished hours.`
+      : `Média dos ${c.today.quarters} quarters de hoje (dia civil de Lisboa), incluindo estimativas OMIP para as horas não publicadas.`,
+    tomorrow: LANG === 'en'
+      ? `Average of the ${c.tomorrow.quarters} quarters of tomorrow (OMIP estimate).`
+      : `Média dos ${c.tomorrow.quarters} quarters de amanhã (estimativa OMIP).`,
+    last30: LANG === 'en'
+      ? 'Average of all quarters from (last market day - 30 days) through the last published quarter.'
+      : 'Média de todos os quarters entre (último dia de mercado − 30 dias) e o último quarter publicado.',
+    forecast: LANG === 'en'
+      ? 'Average of the whole current month, with the remaining days estimated from OMIP futures.'
+      : 'Média do mês completo, com os dias restantes estimados a partir dos futuros OMIP.',
+    month: LANG === 'en'
+      ? `Average of the ${c.monthToDate.quarters || ''} published market quarters in the current month to date.`.trim()
+      : `Média dos quarters de mercado já publicados no mês em curso até hoje.`,
+  };
   const html = [
-    card('now', t('cardNow'), dt(d.current.atUtc || d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price)),
-    card('today', isToday ? t('cardToday') : t('cardLast'), dtDay(c.today.date), euro(c.today.value)),
-    card('rest', t('cardTomorrow'), dtDay(c.tomorrow.date), euro(c.tomorrow.value)),
-    card('rest', t('cardLast30'), `${dt(c.last30.fromUtc || c.last30.from)}<br>${dt(c.last30.toUtc || c.last30.to)}`, euro(c.last30.value)),
-    card('rest', t('cardForecast', { m: mesNome(c.forecast.month) }), '', euro(c.forecast.value)),
-    card('rest', t('cardMonth', { m: mesNome(c.monthToDate.month) }), `${dt(c.monthToDate.fromUtc || c.monthToDate.from)}<br>${dt(c.monthToDate.toUtc || c.monthToDate.to)}`, euro(c.monthToDate.value)),
+    card('now', t('cardNow'), dt(d.current.atUtc || d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price), tips.now),
+    card('today', isToday ? t('cardToday') : t('cardLast'), dtDay(c.today.date), euro(c.today.value), tips.today),
+    card('rest', t('cardTomorrow'), dtDay(c.tomorrow.date), euro(c.tomorrow.value), tips.tomorrow),
+    card('rest', t('cardLast30'), `${dt(c.last30.fromUtc || c.last30.from)}<br>${dt(c.last30.toUtc || c.last30.to)}`, euro(c.last30.value), tips.last30),
+    card('rest', t('cardForecast', { m: mesNome(c.forecast.month) }), '', euro(c.forecast.value), tips.forecast),
+    card('rest', t('cardMonth', { m: mesNome(c.monthToDate.month) }), `${dt(c.monthToDate.fromUtc || c.monthToDate.from)}<br>${dt(c.monthToDate.toUtc || c.monthToDate.to)}`, euro(c.monthToDate.value), tips.month),
   ].join('');
   document.getElementById('cards').innerHTML = html;
 }
