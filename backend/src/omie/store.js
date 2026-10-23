@@ -241,13 +241,28 @@ export async function lastMarketDay() {
   return d ? String(d).slice(0, 10) : null;
 }
 
-// Os dias disponíveis a partir de um dia (para o seletor de dias).
+// Os dias disponíveis à volta de um dia (para o seletor de dias): até n dias,
+// com o dia pedido incluído e os anteriores ainda acessíveis. Só olhar para a
+// frente fazia desaparecer os dias anteriores ao escolher uma data futura.
 export async function recentDays(fromUtc, n = 10) {
-  const rows = await query(
-    `SELECT DISTINCT day_utc FROM omie_spot WHERE day_utc >= $1 ORDER BY day_utc LIMIT $2`,
-    [fromUtc, n]
+  const before = Math.floor(n / 2);
+  const back = await query(
+    `SELECT DISTINCT day_utc FROM omie_spot WHERE day_utc < $1 ORDER BY day_utc DESC LIMIT $2`,
+    [fromUtc, before]
   );
-  return rows.map(r => String(r.day_utc).slice(0, 10));
+  const fwd = await query(
+    `SELECT DISTINCT day_utc FROM omie_spot WHERE day_utc >= $1 ORDER BY day_utc LIMIT $2`,
+    [fromUtc, n - back.length]
+  );
+  // Sem dias suficientes à frente (dia perto do fim), compensa com mais para trás.
+  const extra = n - back.length - fwd.length;
+  const more = extra > 0 && back.length === before
+    ? await query(
+      `SELECT DISTINCT day_utc FROM omie_spot WHERE day_utc < $1 ORDER BY day_utc DESC LIMIT $2`,
+      [fromUtc, before + extra]
+    )
+    : back;
+  return [...more.reverse(), ...fwd].map(r => String(r.day_utc).slice(0, 10));
 }
 
 // ----------------------------------------------------------------- util

@@ -42,18 +42,22 @@ quote(input: {
 - Regiões: `region` em `CONT|MAD|AZO` (ver docs/07-ilhas.md) — timezone,
   IVA (1.23/1.22/1.16) e janelas bi-horárias próprias; época das ilhas por
   mês (6–10 vs resto). Feriados = próprio dia (OWN_DAY), sem excepção.
-- **Perdas E-REDES 2026 (BTN): BT 0,1531 / MT 0,0713** — *factor de
-  proveniência incerta (ver nota abaixo)*. Os valores por DSO e por
-  quarto de hora entram quando a ingestão de perfis existir
-  (`loss_profile`, roadmap 06).
-
-**Nota de verificação desta escolha:** o ficheiro
-oficial `Perfis_Perdas_E-REDES_2026` ("Perfis de Perdas Simples") dá médias
-anuais **BT 0,0765** / **MT 0,0364** e máximo BT **0,1268** — nenhum destes
-pontos justifica 0,1531/0,0713, que provavelmente reproduzem as condições
-publicadas pelos CEME indexados (e não a média BTN do operador). Mantêm-se
-por serem o que fecha com as condições publicadas, marcados como
-placeholder a substituir por `loss_profile` por quarto de hora (ver 06).
+- **Perdas por quarto de hora (E-REDES 2026)** — `Perdas(h)` vem do ficheiro
+  oficial `Perfis_Perdas_E-REDES_2026` (<https://www.e-redes.pt/pt-pt/perfis-de-perdas-2026>),
+  convertido por `scripts/etl-perdas.py` em `backend/src/engine/losses-2026.json`
+  e lido por `engine/losses.js`. O ficheiro dá perfis *simples* por nível
+  (BT, MT, AT, AT/RNT); as perdas que o cliente paga são a **cascata**:
+  `BT = (1+BT)(1+MT)(1+AT)(1+AT/RNT) − 1`, `MT = (1+MT)(1+AT)(1+AT/RNT) − 1`.
+  Confere com o valor publicado (2026-10-23, quarto que acaba às 23:30:
+  BT 0,1484981). A hora do ficheiro é o **fim** do intervalo.
+  - `/v1/indexed/quarters`: cada quarto usa o seu valor.
+  - `/v1/simulate`: o preço por período usa a média das perdas dos quartos
+    desse período no dia de `at` (o mesmo conjunto de quartos das médias do
+    OMIE vazio/fora). `lossByPeriod` vem na resposta.
+  - A média anual da cascata é BT 0,1531 / MT 0,0713 — era o antigo
+    placeholder constante (`LOSS_PLACEHOLDER`), que fica só como fallback
+    para anos sem perfil. Anos novos: correr o ETL e juntar o ano a `YEARS`
+    em `losses.js`.
 
 ## Fixos
 
@@ -113,7 +117,7 @@ PE(h) = (OMIE(h) + K + CGS) * (1 + Perdas(h)) + TAR(periodo(h))
 - `OMIE(h)`: €/kWh do quarto-horário (fonte `omie_spot.price_pt / 1000`).
 - `K`, `CGS`: da `tariff_version` vigente (ex. Luzigas Casa+CEME
   K=0,005; só CEME K=0,05; CGS 0,02 em 2025/01/01).
-- `Perdas(h)`: `loss_profile` por tensão.
+- `Perdas(h)`: perfil E-REDES por quarto de hora e tensão (`engine/losses.js`).
 - `TAR`: da tabela `tar` vigente, por período horário de `h`.
 - **Agregação do OMIE** — nem todos os CEME usam a mesma regra. É um dado versionado (`tariff_version.omie_aggregation`), não uma constante do motor:
   | valor | regra | quem usa |
@@ -163,11 +167,6 @@ componente de preço; nenhum indexado sem K/CGS; e a EGME só a faltar no miio.
 à parte com um OMIE fixado (ver `engine.test.js`), não com um total em euros.
 
 ### O que estes testes não apanham
-
-Um tarifário que **desapareça** do seed passa todos eles. Isso apanha-se a
-comparar com o sheet, tarifa a tarifa. (Já apanhou um caso, entretanto
-resolvido: o `myAtlante (AC)` **BT** — hoje `atlante-bt-myatlanteac`,
-10,98 € na tabela acima.)
 
 Tolerância: 0,01 € (diferenças de ROUNDUP). Mudanças de TAR/OMIE criam novas
 versões do tarifário; não se mexa nestes valores.

@@ -1,5 +1,4 @@
 // Seed completo: 24 CEME / 128 tarifários extraídos do sheet em 2026-10-15.
-// (Okeana removida em 2026-10-18: última info de 2023, sem EGME discriminado.)
 // Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
 // act = a taxa de activação PUBLICADA por cada CEME no sheet, à data da
 // captura (2026-10-15) — um único significado, invariante ao longo do tempo:
@@ -12,27 +11,6 @@
 // na captura: EZU, EDP, bluecharge, moeve, etc. o miio não cobra. Ver
 // docs/02-motor-calculo.md.
 //
-// Actualizações de valores vs. sheet (2026-10-22, verificação online):
-//  - galp: nova tabela publicada, em vigor desde 01/10/2026 — energia
-//    (c/ TAR) vazio 0,2149 / fora 0,2895; variantes -3/-4 (18%) e -5/-6
-//    (20%) recalculadas em proporção. EGME continua 0,1088 ✓.
-//  - atlante: energia MyAtlante (AC) única 0,12 €/kWh (era 0,10); Business
-//    mantém 0,08 (confirmado em atlante.energy/pt-pt/myatlante-business/).
-//  - acp: energia sócio 0,1506 €/kWh;
-//    não-sócio mantém 0,169 = EVIO ✓.
-//  - bluecharge: taxa publicada na home é +0,2608 €/carregamento (não é o
-//    EGME legal; é o que eles cobram).
-//  - charge2go: a página publica agora "taxa EGME 0,1088 €/carregamento".
-//  - edp (2026-10-22): os valores "Frota" da folha estavam errados —
-//    0,2591 / 0,2681-0,2121 não existem em nenhuma fonte. Tripla
-//    verificação (ficheiro Frota ERSE EDP COMERCIAL_01/02 + fiches ID+FE
-//    _05/_06 idênticas + tabela €/kWh de edp.pt) dá Frota = tarifário
-//    base: Simples 0,2678; Bi-horário 0,2826/0,1927; c/ desc. clientes
-//    energia 20%: 0,2142 e 0,2261/0,1542. A página Frota só publica a
-//    taxa EGME 0,1088 (nunca €/kWh).
-//  - ezu (2026-10-22): a promoção AB Energia (0,099 €/kWh + TAR)
-//    terminou a 30/09/2026 — ver CAMPAIGN_END (valid_to esconde-a do
-//    simulador; campaign=1 marca a razão).
 import { DatabaseSync } from 'node:sqlite';
 
 const CEMES = [
@@ -62,20 +40,12 @@ const CEMES = [
   ['ynerluz', "Ynerluz", "#888888", "https://www.ynerluz.com/aderir-mobilidade-eletrica/"],
 ];
 
-// A decomposição do preço em energia + TAR — para os tarifários em que a
-// folha/fonte publica a separação ou em que ela se recupera sem ambiguidade.
+// A decomposição do preço em energia + TAR — para os tarifários em que a fonte publica a separação ou em que ela se recupera sem ambiguidade.
 //
 // Os preços finais transcritos abaixo não passam de 4 casas decimais: quando
 // a fonte tem mais precisão, arredondamos sempre para cima para não subestimar
 // o custo usado nas contas. Os factores de perdas e outros parâmetros de
 // fórmulas mantêm a precisão original.
-//
-// Na aba "CEME" do sheet, a coluna "Valores outras fontes" é uma fórmula
-// `=energia + TAR!$B$5` (ou `$C$5`, `$B$4`, `$C$4`) quando o CEME publicava
-// a energia à parte; nos outros é o valor final, tal como o CEME o publica.
-// A decomposição foi recuperada da folha. ACP não-sócio e Hyundai Blue usam
-// a mesma decomposição porque os preços publicados coincidem com EVIO;
-// na miio, energia resulta do preço final menos a TAR correspondente.
 //
 // A referência da célula (o `tar` de cada período) vem da folha e não da
 // tabela `tar`: um tarifário pode ter sido publicado com a TAR de 2025 e o
@@ -136,7 +106,7 @@ export const SPLITS = {
 const TARIFFS = [
   // (AC) = carregamento em corrente alternada. A Atlante tem um preço
   // promocional flat nos postos DC, com CEME + OPC included — por isso o
-  // nome leva (AC). As duas tensões existem; faltava a BT.
+  // nome leva (AC). As duas tensões existem.
   ["atlante-bt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", { "VAZIO": 0.1466, "FORA_VAZIO": 0.2392 }, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ["atlante-mt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", { "VAZIO": 0.1357, "FORA_VAZIO": 0.2012 }, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ["atlante-bt-myatlantebus", "atlante", "myAtlante Business (AC)", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 0, 1, "CONT", { "VAZIO": 0.1066, "FORA_VAZIO": 0.1992 }, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
