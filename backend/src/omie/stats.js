@@ -19,6 +19,8 @@ export const WINDOW_DAYS = 366;
 // poder ser recalculado a cada pedido (ver currentPrice).
 export const TAIL_ROWS = 400;
 
+import { lisbonMidnightUtc } from './convert.js';
+
 const pad2 = (n) => String(n).padStart(2, '0');
 // Dia do calendário como número inteiro (epoch em UTC). Serve para ordenar,
 // para subtrair dias e para agrupar por mês sem tocar em fusos: os dados
@@ -207,9 +209,11 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
   // Lisboa (é o fuso da página; os instantes guardados já estão alinhados).
   const stamp = (dn, min) => `${isoOf(dn)}T${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
   // O mesmo instante, em UTC ISO-8601 — é o que a página converte para o
-  // fuso de quem a vê (o backend não sabe o fuso do utilizador).
-  const stampUtc = (dn, min) => new Date(numToDay(dn).getTime() + min * 60000).toISOString();
-  // O dia civil (UTC) começa à meia-noite.
+  // fuso de quem a vê (o backend não sabe o fuso do utilizador). Atenção:
+  // a meia-noite é a de LISBOA (lisbonMidnightUtc), não a de UTC — usar a
+  // meia-noite UTC aqui fazia a página mostrar 01:00 no Verão.
+  const stampUtc = (dn, min) => new Date(lisbonMidnightUtc(isoOf(dn)) + min * 60000).toISOString();
+  // O dia civil de Lisboa começa à meia-noite local.
   const dayStart = (dn) => ({ dn, min: 0 });
 
   // Os últimos quartos (dia de mercado + o dia seguinte), para o preço "à
@@ -333,7 +337,7 @@ export function currentPrice(payload, now = new Date()) {
     best = r;
   }
   if (!best) return { at: null, price: null, live: false, estimated: false };
-  const iso = best.utc ? best.utc : new Date(numToDay(best.lisbonDn).getTime() + best.lisbonMin * 60000).toISOString();
+  const iso = best.utc ? best.utc : new Date(lisbonMidnightUtc(isoOf(best.lisbonDn)) + best.lisbonMin * 60000).toISOString();
   return {
     at: `${isoOf(best.lisbonDn)}T${pad2(Math.floor(best.lisbonMin / 60))}:${pad2(best.lisbonMin % 60)}`,
     atUtc: iso,

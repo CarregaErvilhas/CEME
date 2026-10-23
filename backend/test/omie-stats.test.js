@@ -175,10 +175,12 @@ describe('estatísticas OMIE — agregação', () => {
     assert.equal(d2.current.live, true, 'o quarter em curso está publicado');
   });
 
-  it('as janelas são mostradas em UTC', () => {
+  it('as janelas são mostradas em hora de Lisboa (não UTC)', () => {
     const d = aggregate(rows, { cutoff: '2026-10-21', now: NOW });
-    // O dia civil (UTC) começa à meia-noite.
+    // A janela começa à meia-noite de Lisboa do dia.
     assert.equal(d.cards.last30.from, '2026-09-21T00:00');
+    // ...e o instante UTC correspondente é 23:00Z do dia anterior (WEST, +1).
+    assert.equal(d.cards.last30.fromUtc, '2026-09-20T23:00:00.000Z');
     // A última linha dos dados de teste é 08:00.
     assert.equal(d.cards.last30.to, '2026-10-21T08:00');
     assert.equal(d.dataThrough, '2026-10-21T08:00');
