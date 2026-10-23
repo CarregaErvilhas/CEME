@@ -26,10 +26,13 @@ if [ "$CEME_READONLY" = "1" ]; then
 elif [ "$USE_SNAPSHOT" = "1" ]; then
   : "${PROD_DB_URL:?PROD_DB_URL é obrigatório com USE_SNAPSHOT=1}"
   echo "==> Snapshot da DB de produção"
-  # dump selectivo: exclui cache OMIE (re-populado no arranque) para poupar net
+  # dump selectivo: sem o OMIE (re-ingerido a pedido; omie_meta tem o ETag da
+  # produção) nem credenciais (docs/preview-envs.md)
   # pg_dump "$PROD_DB_URL" --no-owner --no-acl --format=custom --compress=9 \
   #   --exclude-table=omie_spot --exclude-table=omie_daily \
-  #   --exclude-table=omie_quarters --exclude-table=omie_futures \
+  #   --exclude-table=omie_meta \
+  #   --exclude-table=api_key --exclude-table=api_client \
+  #   --exclude-table=audit_log --exclude-table=suggestion \
   #   -f /tmp/ceme-prod.dump
   # pg_restore --clean --if-exists --no-owner --no-acl -d "$PREVIEW_DB_URL" /tmp/ceme-prod.dump
   echo "==> Definir CEME_SKIP_SEED=1 no serviço api do preview e reiniciar"

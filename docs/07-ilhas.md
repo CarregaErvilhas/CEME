@@ -2,17 +2,12 @@
 
 ## IVA normal (mobilidade paga taxa normal)
 
-| região | taxa normal | multiplier |
-|---|---|---|
-| Portugal Continental | 23% | 1.23 |
-| Madeira | 22% | 1.22 |
-| Açores | 16% | 1.16 |
-
-Fontes: art. 18.º CIVA + Ofício-Circulado 25045/2024 (RAM 4/12/22 desde
+As taxas estão em `REGIONS` (`backend/src/engine/regions.js`). Fontes: art. 18.º CIVA + Ofício-Circulado 25045/2024 (RAM 4/12/22 desde
 01-10-2024; RAA 4/9/16). A taxa reduzida dos primeiros 200 kWh (Lei 38/2024)
 é do fornecimento doméstico regulado, não da mobilidade Mobi.E — o motor
-usa sempre a taxa normal da região do carregamento. Se algum CEME insular
-faturar diferente, regista-se como `vatRate` na versão do tarifário.
+usa sempre a taxa normal da região do carregamento. (`quoteFixed` aceita um
+`vatRate` para o caso de um CEME insular faturar diferente, mas não há coluna
+para isso na `tariff_version` nem caso conhecido — só se liga se aparecer.)
 
 ## Fusos
 
@@ -20,7 +15,10 @@ faturar diferente, regista-se como `vatRate` na versão do tarifário.
   que Lisboa, mas zona própria); Açores: `Atlantic/Azores` (UTC-1, DST nas
   mesmas datas UE com horas locais próprias).
 - Todo o cálculo usa a hora **local da região do carregamento**; DST
-  automático via IANA (dias de 92/96/100 quartos também nas ilhas).
+  automático via IANA (dias de 23/25 horas também nas ilhas — a tabela das
+  mudanças de hora está em docs/02). A hora que o utilizador escreve no
+  simulador e no assistente é também a da região (`frontend/tz.js`), não a do
+  browser.
 
 ## Ciclos bi-horários BTN (fontes: ERSE `periodos-horarios` + precário EDA BTN)
 
@@ -39,10 +37,9 @@ inverno (23:00) vêm de extracção do PDF da ERSE — estrutura confirmada
 pelo precário EDA (`11:30/13:30 18:00/23:00`), mas validar com factura EDA
 antes de publicar. Época = mês 6–10 vs resto (critério ERSE, não DST) para as ilhas; no Portugal Continental a época do sábado segue a **hora legal** (DST: último domingo de março → último domingo de outubro).
 
-Perdas E-REDES 2026 (média anual BTN): BT 0,1531 / MT 0,0713 — mesmo
-placeholder do Continente; ver a nota de verificação dos factores em
-`02-motor-calculo.md` (os valores por quarto de hora do operador, quando
-entrarem em `loss_profile`, aplicam-se às ilhas também).
+Perdas: o mesmo `LOSS_PLACEHOLDER` do Continente (`engine/indexed.js`) —
+não é a média anual BTN do operador; ver a nota de verificação em
+`02-motor-calculo.md`.
 
 ## Feriados
 
@@ -53,17 +50,39 @@ dos CEME em MT seguem a mesma regra; até lá, OWN_DAY com hook de config.
 
 ## OMIE nas ilhas
 
-MIBEL não cobre os sistemas isolados (EDA/EEM); tarifários indexados ao
-OMIE são, por omissão, só `CONT` (`REGIONS[].omieIndexed=false`). Mesmo
-nas ilhas o motor **calcula** — com o OMIE continental de referência — e
-marca: `quoteOne` devolve `warning: 'OMIE_CONT_REF'` (badge no cartão) e
+MIBEL não cobre os sistemas isolados (EDA/EEM): as regiões MAD/AZO têm
+`REGIONS[].omieIndexed=false`. Mesmo nas ilhas o motor **calcula** os
+indexados — com o OMIE continental de referência — e marca: `quoteOne`
+devolve `warning: 'OMIE_CONT_REF'` (badge no cartão) e
 `/v1/indexed/quarters` devolve o mesmo `warning` para MAD/AZO. O valor é
-**ilustrativo, não contractual** (a ilha não compra no MIBEL). TAR
-insular tem valores próprios (mecanismo de convergência ERSE) — tabela
-`tar` já leva `region`.
+**ilustrativo, não contractual** (a ilha não compra no MIBEL).
+
+Disponibilidade: todos os tarifários do seed estão marcados `regions='CONT'`,
+mas isso é **informação, não filtro** — todos se cotam em qualquer região,
+com o IVA e os ciclos dessa região, e o cartão diz onde o tarifário é
+comercializado.
+
+## TAR nas ilhas
+
+A ERSE publica **uma** tabela de TAR da mobilidade eléctrica para o
+Continente, a RAA e a RAM — no livro de tarifas da ERSE, «Tarifas de Acesso
+às Redes da Mobilidade Elétrica em Portugal continental, RAA e RAM»
+(Diretiva n.º 1/2026, art. 23.º; sem alterações na actualização de Outubro,
+Diretiva n.º 4/2026). Os valores são, portanto, os mesmos nas três regiões.
+Cada região tem as suas linhas na tabela `tar` (`TAR_2026` em `server.js`),
+e a TAR procura-se sempre pela região do carregamento: uma região sem TAR é
+um erro (quarentena), não um zero.
+
+O que a ERSE publica **à parte** para as ilhas é a **TE/Com** (tarifa de
+energia e comercialização aplicável à mobilidade, que a EDA/EEM cobram ao
+CEME) — não é TAR, não entra na tabela `tar` e não se soma à TAR.
+
+Âmbito: estas tarifas aplicam-se no regime transitório do DL 93/2025, até
+31-12-2026 (ver roadmap).
 
 ## Reforma 2027 (fora do MVP)
 
 Diretiva 3/2026 muda os períodos do Portugal Continental (BTN bi diário 08:30–22:30,
-sábado semanal bloco único, etc., faseado Abr–Dez 2027). O motor suporta
-tabelas versionadas por data; codificar `CONT_2027` é tarefa do roadmap.
+sábado semanal bloco único, etc., faseado Abr–Dez 2027). Os períodos de
+`regions.js` **não** são versionados por data — versioná-los é tarefa do
+roadmap.

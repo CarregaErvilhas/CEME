@@ -11,20 +11,23 @@
 // decomposição que o site mostra — e que o seed tinha perdido (guardava só o
 // valor final).
 //
-// Uso (precisa do gog autenticado e dos dumps da folha):
-//   gog sheets get "$ID" "'CEME'!A4:S101" --plain                 > ceme-v.tsv
-//   gog sheets get "$ID" "'CEME'!A4:S101" --render=FORMULA --plain > ceme-f.tsv
-//   gog sheets get "$ID" "'TAR'!A1:G13"   --plain                 > tar-plain.tsv
-//   node scripts/etl-ceme.js ceme-v.tsv ceme-f.tsv tar-plain.tsv > splits.json
+// Uso (depois de `sh scripts/etl-sheets.sh`, que deixa os dumps em
+// backend/seed/):
+//   node scripts/etl-ceme.js > splits.json
+//   node scripts/etl-ceme.js <valores.tsv> <formulas.tsv> <tar.tsv>   # outros ficheiros
 //
-// A saída é o objecto `SPLITS` do seed (a chave é o id do tarifário; o
-// casamento é por CEME + nome + tensão + preço, porque há nomes repetidos).
+// A saída é um objecto com chave `ceme|nome|tensão` e, por período, a
+// energia, a TAR, o preço final e a referência da célula da TAR. Passar
+// isto para o `SPLITS` do seed (chave = id do tarifário) é à mão: há nomes
+// repetidos entre tensões e ciclos, e o casamento confere-se a olho.
 const fs = require('node:fs');
 
 const readTsv = (p) => fs.readFileSync(p, 'utf8').replace(/\n$/, '').split('\n').map(l => l.split('\t'));
-const values = readTsv(process.argv[2]);
-const formulas = readTsv(process.argv[3]);
-const tarValues = readTsv(process.argv[4]);
+const SEED = require('node:path').join(__dirname, '..', 'backend', 'seed');
+const arg = (i, file) => process.argv[i] || require('node:path').join(SEED, file);
+const values = readTsv(arg(2, 'ceme-valores.tsv'));
+const formulas = readTsv(arg(3, 'ceme-formulas.tsv'));
+const tarValues = readTsv(arg(4, 'tar.tsv'));
 
 const num = (s) => {
   if (s == null) return null;

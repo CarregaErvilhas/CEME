@@ -19,11 +19,12 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
 - Backend: Node.js 24 — `node:http`, `node:test`, `node:sqlite` (dev) e `pg`
   (única dependência, para PostgreSQL em produção).
-- Frontend: HTML + CSS + JS vanilla (sem build), quatro páginas — o
-  assistente passo-a-passo (`frontend/assistente.html`, a porta de entrada), o
-  simulador completo (`frontend/index.html`) e as duas páginas institucionais
-  (`frontend/about.html`, `frontend/contact.html`) — bilíngues PT/EN, com um
-  dicionário único (`frontend/strings.js`) e `Accept-Language` no servidor.
+- Frontend: HTML + CSS + JS vanilla (sem build) — o assistente passo-a-passo
+  (`frontend/assistente.html`, a porta de entrada), o simulador completo
+  (`frontend/index.html`), as estatísticas OMIE (`frontend/omie.html`), as
+  páginas institucionais e o guia da API — bilíngues PT/EN (o guia da API é
+  só EN), com um dicionário único (`frontend/strings.js`) e `Accept-Language`
+  no servidor. PWA instalável (`manifest.webmanifest`, `sw.js`, `pwa.js`).
 - BD: PostgreSQL 18 em produção (serviço gerido no Zerops) e SQLite local em
   dev/teste. Schema em SQL directo (`backend/src/db/schema.sql` e
   `schema.postgres.sql`), sem ORM — a seed é o bootstrap do ambiente vazio.
@@ -31,8 +32,9 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 - OMIE: o **omie.es** (fonte oficial, o dump acumulado público) é a
   primária e o **TF** (`dados.tiagofelicia.pt`, CC BY 4.0, com atribuição)
   a secundária; os dois são reconciliados por instante e guardados na BD.
-  Sem cron: a actualização é a pedido, com pedido condicional ao omie.es
-  (304 quando o ficheiro não mudou). Ver `docs/03`.
+  Sem cron, por decisão (o tráfego não o justifica): a actualização é a
+  pedido, com pedido condicional ao omie.es (304 quando o ficheiro não
+  mudou). Ver `docs/03`.
 - CI: GitHub Actions (Node 24, o mesmo do deploy). O deploy **não** é feito
   pelo GitHub — ver a secção «Deploy».
 
@@ -41,7 +43,7 @@ e a [FAQ Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 ```sh
 cd backend
 npm ci
-npm test        # 111 testes
+npm test
 npm start       # http://localhost:3001/
 ```
 
@@ -72,10 +74,10 @@ A excepção é `POST /v1/session`, que emite o token da sessão web. Detalhe em
 | POST | `/v1/session` | JWT `WEB_SESSION` (24h) — sem auth, com rate limit por IP |
 | GET | `/v1/health` | estado do serviço e o `kind` da credencial usada |
 | GET | `/v1/cemes` | comercializadores |
-| GET | `/v1/tariffs` | os 128 tarifários + a versão vigente de cada um |
+| GET | `/v1/tariffs` | os tarifários + a versão vigente de cada um |
 | GET | `/v1/tar` | TAR em vigor (região, tensão, período) |
-| POST | `/v1/simulate` | todos os tarifários cotados para o instante/região pedidos |
-| GET | `/v1/omie/daily?days=60` | agregados diários (7..120 dias) |
+| POST | `/v1/simulate` | todos os tarifários cotados para o instante/região pedidos, com a conta linha a linha |
+| GET | `/v1/omie/daily?days=60` | agregados diários por dia civil de Lisboa (7..120 dias), com `complete` |
 | GET | `/v1/omie/futures` | contratos OMIP |
 | GET | `/v1/omie/stats` | estatísticas mensais OMIE (13 meses + total geral) e as células de referência |
 | GET | `/v1/indexed/quarters` | quartos-horários de um indexado + `winner` vs. o fixo escolhido (`?tz=` define o fuso das horas mostradas) |
@@ -88,11 +90,12 @@ seguem (nunca um 400 vindo de um seed mau).
 
 - **Bilíngue PT/EN:** detecção pelo cabeçalho `Accept-Language` (servidor), bandeira PT/EN no header, escolha persistida em `localStorage`.
 - **Aviso de âmbito** visível no hero + card expansível no topo do ranking, com a tabela das parcelas da Mobi.E e links para a fonte oficial.
-- **Regiões:** Portugal Continental (IVA 23%), Madeira (22%), Açores (16%), com timezones, ciclos bi-horários e DST próprios.
+- **Regiões:** Portugal Continental, Madeira e Açores, cada uma com o seu IVA, fuso, ciclos bi-horários e DST (docs/07). A TAR da mobilidade é uma tabela única da ERSE para as três.
 - **Tarifários fixos + indexados**, BT/MT, bi-horário (diário/semanal) + simples.
-- **Agregação do OMIE por tarifário** (`tariff_version.omie_aggregation`): `SPLIT_VAZIO_FORA` (LuziGas, MEO, Ynerluz) usa médias separadas de vazio e fora-vazio; `SPOT`/`UNICA` usam o OMIE único.
-- **OMIE de referência** por omissão = último OMIE real disponível (com médias vazio/fora separadas).
-- **Data/hora do carregamento** configurável (formato ISO aaaa/mm/dd hh:mm); default "agora" com base na hora do browser (fallback servidor se desvio >5 min).
+- **Agregação do OMIE por tarifário** (`tariff_version.omie_aggregation`): `SPLIT_VAZIO_FORA` usa as médias de vazio e fora-vazio **do ciclo do próprio tarifário** (diário ou semanal); `UNICA` usa um OMIE único.
+- **OMIE de referência** por omissão = o último dia **completo** de mercado (médias vazio/fora por ciclo).
+- **Data/hora do carregamento** configurável (formato ISO aaaa/mm/dd hh:mm, 24 h), lida e mostrada no **relógio da região** do carregamento; default "agora" (fallback para a hora do servidor se o relógio do browser estiver desviado mais de 5 min).
+- **A conta linha a linha** no detalhe de cada tarifário: energia + TAR (separadas quando se sabe a separação), IEC, taxa de activação, IVA e total — as mesmas parcelas arredondadas que dão o total.
 - **Bateria %:** capacidade + min/max → kWh calculado.
 - **Favoritos** em localStorage, com modal de gestão agrupado por CEME e filtros (pesquisa, popular, bundle, verde).
 - **Sessão:** energia/%/bateria/região/favoritos/data-hora persistidos em localStorage (`ceme:S`, `ceme:favs`).
@@ -114,9 +117,9 @@ seguem (nunca um 400 vindo de um seed mau).
   cada mês (escala divergente azul↔vermelho por linha). Detalhe em
   `docs/09-omie-estatisticas.md`.
 
-O ranking mostra **128 tarifários versionados** (55 ofertas distintas em ecrã) /
-24 CEME — seed completo da folha da ERSE, incluindo Atlante, EDP, Galp, 6
-indexados LuziGas, MEO Dinâmica, Ynerluz, miio, Via Verde, etc.
+O ranking mostra os tarifários versionados do seed (a folha da ERSE, com as
+correcções verificadas depois — ver `.memories/ceme-tarifas-verificacao.md`),
+fixos e indexados, deduplicados por CEME + nome em ecrã.
 
 Página **Indexado vs fixo** (`#/comparar`): valor actual lado a lado,
 gráfico SVG de 60 dias e tabela de quartos-horários (os 8 mais baratos
@@ -124,9 +127,10 @@ marcados, com as faixas em que o indexado bate o fixo de referência).
 
 ## Deploy
 
-Serviço `api` (Node.js 24, porta 3001) no Zerops, com PostgreSQL 18 e Valkey
-7.2 geridos à parte; Cloudflare à frente (só registo AAAA, proxy activo, TLS
-strict). O `JWT_SECRET` e o `DATABASE_URL` são env secrets do serviço — nunca
+Serviço `api` (Node.js 24, porta 3001) no Zerops, com o PostgreSQL gerido à
+parte (`db`); Cloudflare à frente (só registo AAAA, proxy activo, TLS
+strict). Não há cache gerida: o Valkey que existia foi desligado por não ter
+uso. O `JWT_SECRET` e o `DATABASE_URL` são env secrets do serviço — nunca
 no repositório.
 
 O CI (GitHub Actions) só corre os testes. O deploy é o **webhook do Zerops**:
@@ -146,7 +150,7 @@ em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
   THIRD-PARTY-NOTICES.md      # licenças e atribuições dos dados de terceiros
   infra.md                    # Zerops + Cloudflare + CI/CD
   zerops.yml                  # serviço runtime `api`
-  zerops-import.yaml          # criação dos serviços geridos (db, cache)
+  zerops-import.yaml          # criação dos serviços (db, api)
   backend/
     package.json
     src/
@@ -156,7 +160,8 @@ em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
       engine/                 # quote, indexed, periods, regions, compare
       omie/                   # omiees (oficial), tf (secundário), store (BD),
                               #   pipeline (ingestão a pedido), stats, convert
-    test/                     # 15 ficheiros, 177 testes (node:test)
+    test/                     # node:test (`npm test`)
+    tools/cores.mjs           # a régua das cores da página OMIE (também usada nos testes)
     data/                     # gerado: SQLite + cache dos ficheiros do TF (no .gitignore)
   frontend/
     index.html                # simulador completo (tudo num ficheiro)
@@ -164,13 +169,17 @@ em [`infra.md`](infra.md), que é o ponto único de verdade de infra.
     about.html                # "Sobre": o projecto, o DPC, de onde vêm os dados
     contact.html              # "Contactos": email, Messenger, GitHub issues
     omie.html                 # "Estatísticas OMIE": as tabelas mensais e as células
-    pages.css                 # estilo partilhado por Sobre/Contactos
-    strings.js                # dicionário PT/EN das cinco páginas
+    api.html                  # guia da API para developers (EN)
+    pages.css                 # estilo partilhado pelas páginas institucionais
+    strings.js                # dicionário PT/EN de todas as páginas
+    tz.js                     # horas de relógio por região (simulador + assistente)
+    manifest.webmanifest, sw.js, pwa.js, icon-*.png   # PWA
   docs/                       # 01-modelo, 02-motor, 03-omie, 04-api-auth,
-                              # 05-frontend, 06-roadmap, 07-ilhas, 08-migracao-sqlite-postgres,
-                              # 09-omie-estatisticas
-  scripts/etl-sheets.sh
-  .github/workflows/ci.yml
+                              # 05-frontend, 06-roadmap, 07-ilhas, 08-sqlite-postgres,
+                              # 09-omie-estatisticas, preview-envs
+  scripts/                    # etl-sheets.sh + etl-ceme.js (extracção da folha),
+                              # preview-create.sh / preview-destroy.sh (esqueletos; docs/preview-envs.md)
+  .github/                    # workflows/ci.yml, dependabot.yml, CODEOWNERS
 ```
 
 ## Licença

@@ -13,17 +13,22 @@
 // quando não; a classificação é a do TF (e, se também não houver, as
 // regras do motor).
 //
-// NADA CRON: aactualização é a pedido. O que decide é a idade do que está
-// na BD (`omie_meta.last_refresh`): se está fresco, ninguém vai buscar
-// nada; se está velho, o primeiro pedido dispara a actualização em segundo
-// plano e serve-se o que já há. Só quando ainda não há nada é que o
-// primeiro pedido espera pela ingestion.
+// SEM CRON (decisão: o tráfego não o justifica; revê-se se justificar). A
+// actualização é a pedido: qualquer leitura do OMIE (/daily, /quarters,
+// /stats) olha para a idade do que está na BD (`omie_meta.last_refresh`).
+// Fresco: ninguém vai buscar nada. Velho: o pedido dispara a actualização em
+// segundo plano e serve-se o que já há. Só quando ainda não há nada é que o
+// pedido espera pela ingestion.
 //
 // VÁRIAS RÉPLICAS: o refresh é protegido por um lock na própria BD (uma
-// linha em `omie_meta`), para duas réplicas não puxarem o ficheiro ao
-// mesmo tempo. Os upserts são idempotentes, por isso quem chegue depois
-// não estraga nada.
-import { run, get, query } from '../db.js';
+// linha em `omie_meta` com um token do dono), para duas réplicas não puxarem
+// o ficheiro ao mesmo tempo. Os upserts são idempotentes, por isso uma
+// corrida não estraga dados — só gasta rede.
+//
+// READONLY (`CEME_READONLY=1`, a BD é de outro ambiente): não há ingestion
+// nem escrita de derivados; as estatísticas calculam-se em memória a partir
+// do que a BD já tem.
+import { run, get, query, affected, READONLY } from '../db.js';
 import { fetchOmieDump, parseOmieDump, OMIE_LABEL } from './omiees.js';
 import {
   fetchCachedFile, parseTfQuarters, parseTfFutures, parseTfDailyFutures, parseOmieCutoff,
@@ -35,40 +40,49 @@ import {
   getMeta, setMeta, getMetaJson, setMetaJson, dailyRows, shiftDays,
 } from './store.js';
 import { aggregate, currentPrice } from './stats.js';
+import { civilDay, expectedQuartersForLisbonDay } from './convert.js';
 
 export const SOURCE_LABEL = `${OMIE_LABEL} + ${TF_SOURCE}`;
 
 // De quanto em quanto tempo se re-faz a ingestion (mesmo que a upstream não
 // tenha mudado: o TF publica as estimativas e a OMIE pode corrigir).
 const TTL_MS = 60 * 60 * 1000;
-// O lock: se uma réplica morre a meio, o lock expires e outra retoma.
+// O lock: se uma réplica morre a meio, o lock expira e outra retoma.
 const LOCK_TTL_MS = 10 * 60 * 1000;
+export { TTL_MS as REFRESH_TTL_MS, LOCK_TTL_MS };
 
 const nowIso = () => new Date().toISOString();
 
 // ------------------------------------------------------------------ lock
 
-// Tomar o lock da ingestion. Devolve true se foi tomado.
-async function acquireLock() {
-  const res = await run(
+// O valor do lock é `<epoch ms>:<aleatório>`: a hora diz quando expira, o
+// aleatório diz de quem é. (Locks antigos, só com a hora, continuam a ler-se.)
+const lockTime = (value) => Number(String(value || '').split(':')[0]) || 0;
+
+// Tomar o lock da ingestion. Devolve o token do dono, ou null.
+export async function acquireLock(now = Date.now()) {
+  const token = `${now}:${Math.random().toString(36).slice(2, 10)}`;
+  const ins = await run(
     `INSERT INTO omie_meta (key, value) VALUES ('refresh_lock', $1) ON CONFLICT (key) DO NOTHING`,
-    [String(Date.now())]
+    [token]
   );
-  const changed = res && (res.changes != null ? res.changes : res.rowCount);
-  if (changed) return true;
-  // Já existe: rouba-o se estiver expirado (compare-and-swap).
+  if (affected(ins)) return token;
+  // Já existe: rouba-o só se estiver expirado — e só se o UPDATE acertar no
+  // valor que se leu (compare-and-swap). Se outra réplica o roubou entretanto,
+  // o UPDATE não muda nenhuma linha e esta desiste.
   const row = await get(`SELECT value FROM omie_meta WHERE key = 'refresh_lock'`);
-  const held = Number(row?.value || 0);
-  if (Date.now() - held > LOCK_TTL_MS) {
-    await run(`UPDATE omie_meta SET value = $1, updated_at = CURRENT_TIMESTAMP WHERE key = 'refresh_lock' AND value = $2`,
-      [String(Date.now()), String(held)]);
-    return true;
-  }
-  return false;
+  if (!row || now - lockTime(row.value) <= LOCK_TTL_MS) return null;
+  const upd = await run(
+    `UPDATE omie_meta SET value = $1, updated_at = CURRENT_TIMESTAMP WHERE key = 'refresh_lock' AND value = $2`,
+    [token, row.value]
+  );
+  return affected(upd) ? token : null;
 }
 
-async function releaseLock() {
-  await run(`DELETE FROM omie_meta WHERE key = 'refresh_lock'`);
+// Largar o lock — só se ainda for nosso. Se expirou e outra réplica o tomou,
+// apagá-lo às cegas deixava uma terceira entrar a meio da ingestion dela.
+export async function releaseLock(token) {
+  await run(`DELETE FROM omie_meta WHERE key = 'refresh_lock' AND value = $1`, [token]);
 }
 
 // --------------------------------------------------------------- refresh
@@ -97,6 +111,19 @@ export async function refreshAll({ now = new Date() } = {}) {
     }
   } catch (e) {
     log.push(`omie.es falhou: ${e.message}`);
+  }
+
+  // 1b. Reparação única: o parser antigo do TF punha os quartos do dia de
+  // Março (mudança de hora) uma hora ao lado. Os dias antigos já não caem na
+  // janela de reescrita, por isso apagam-se as linhas TF desses dias e a
+  // ingestion a seguir volta a inseri-las (dia em falta = dia escrito).
+  if (!(await getMeta('fix_tf_spring_dst_v1'))) {
+    const spring = await springDstDaysInStore();
+    if (spring.length) {
+      await run(`DELETE FROM omie_spot WHERE source = 'TF' AND day_lisbon IN (${spring.map((_, i) => `$${i + 1}`).join(',')})`, spring);
+    }
+    await setMeta('fix_tf_spring_dst_v1', JSON.stringify({ at: nowIso(), days: spring }));
+    log.push(`TF: reparados os dias de Março ${spring.join(', ') || '(nenhum)'}`);
   }
 
   // 2. TF — secundária: classificação BD/BS, buracos e estimativas.
@@ -143,13 +170,17 @@ export async function refreshAll({ now = new Date() } = {}) {
 }
 
 // Os ficheiros do TF, com cache em disco (por réplica): o ficheiro do ano
-// corrente muda uma vez por dia, o do ano anterior uma vez por ano.
+// corrente re-baixa-se uma vez por dia (TTL_DAILY), o do ano anterior uma vez
+// por mês (TTL_HISTORY) — quase nunca muda, mas pode ser corrigido.
+// O ano é o civil de Lisboa (não o do relógio do processo, que pode estar
+// noutro fuso).
 async function fetchTfQuarters(now) {
-  const years = [now.getFullYear() - 1, now.getFullYear()];
+  const thisYear = Number(lisbonDayOf(now).slice(0, 4));
+  const years = [thisYear - 1, thisYear];
   const days = new Map();
   const fetchedAt = {};
   for (const year of years) {
-    const isCurrent = year === now.getFullYear();
+    const isCurrent = year === thisYear;
     const url = isCurrent ? TF_CURRENT_URL : TF_HISTORY_URL(year);
     const name = isCurrent ? 'tf-omie-atual.csv' : `tf-omie-${year}.csv`;
     const ttl = isCurrent ? TTL_DAILY : TTL_HISTORY;
@@ -164,17 +195,12 @@ async function fetchTfQuarters(now) {
 
 // O dia civil de Lisboa de um instante: é nele que assentam as janelas de
 // reescrita e os cartões de hoje/amanhã.
-function lisbonDayOf(now) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(now);
-  const get = (t) => parts.find(p => p.type === t)?.value;
-  return `${get('year')}-${get('month')}-${get('day')}`;
-}
+const lisbonDayOf = (now) => civilDay(now);
 
 // Recalcula os agregados diários e o payload das estatísticas a partir do
-// que está na BD.
-export async function rebuildDerived() {
+// que está na BD. `persist: false` (modo readonly) devolve o payload sem
+// escrever nada.
+export async function rebuildDerived({ now = new Date(), persist = !READONLY } = {}) {
   const range = await spotRange();
   if (!range.from || !range.to) return { daily: 0, stats: null };
   // A janela das estatísticas: 366 dias a contar do último dia de MERCADO
@@ -186,7 +212,7 @@ export async function rebuildDerived() {
   const rows = await spotBetween(shiftDays(lastMarket, -365), range.to);
   if (!rows.length) return { daily: 0, stats: null };
 
-  // Os agregados diários (por dia UTC).
+  // Os agregados diários (por dia civil de Lisboa).
   const byDay = new Map();
   for (const r of rows) {
     if (!byDay.has(r.day)) byDay.set(r.day, []);
@@ -210,7 +236,7 @@ export async function rebuildDerived() {
       source: SOURCE_LABEL,
     });
   }
-  await upsertDaily(daily);
+  if (persist) await upsertDaily(daily);
 
   // O payload das estatísticas.
   //
@@ -253,23 +279,37 @@ export async function rebuildDerived() {
         rows: parseTfFutures(got.text),
         daily: parseTfDailyFutures(got.text),
       };
-      await setMetaJson('futures', fut);
+      if (persist) await setMetaJson('futures', fut);
     } catch (e) {
       fut = null;
     }
   }
   const fpbDaily = Object.fromEntries(((fut && fut.daily) || []).map(d => [d.date, d.value]));
-  const payload = aggregate(statsRows, { cutoff, now: new Date(), fpbDaily });
-  await setMetaJson('stats', {
-    ...payload,
+  const payload = {
+    ...aggregate(statsRows, { cutoff, now, fpbDaily }),
     source: SOURCE_LABEL,
     fetchedAt: Date.now(),
     // Proveniência para as tooltips de validação: de onde veio cada número.
     tfFetchedAt: await getMetaJson('tf_fetched_at'),
     omieEmitted: await getMetaJson('omie_emitted'),
-  });
+  };
+  if (persist) await setMetaJson('stats', payload);
   return { daily: daily.length, stats: payload };
 }
+// Os dias de mudança de hora de Março (dias de 92 quartos) que há na BD.
+async function springDstDaysInStore() {
+  const range = await spotRange();
+  if (!range.from || !range.to) return [];
+  const out = [];
+  for (let y = Number(range.from.slice(0, 4)); y <= Number(range.to.slice(0, 4)); y++) {
+    for (let d = 25; d <= 31; d++) {
+      const iso = `${y}-03-${d}`;
+      if (expectedQuartersForLisbonDay(iso) === 92) out.push(iso);
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------- freshness
 
 // Já há alguma coisa na BD?
@@ -292,13 +332,14 @@ async function waitForData(timeoutMs = 90000) {
 // A ingestion está fresco? Se não, dispara-se em segundo plano (ou à espera,
 // se ainda não há nada).
 export async function ensureFresh({ wait = false } = {}) {
+  if (READONLY) return { fresh: true, readonly: true };
   const last = Number(await getMeta('last_refresh') || 0);
   const age = Date.now() - last;
   if (last && age < TTL_MS) return { fresh: true, age };
 
   const empty = !(await hasData());
-  const locked = await acquireLock();
-  if (!locked) {
+  const token = await acquireLock();
+  if (!token) {
     // Outra réplica está a atualizar. Se ainda não há dados, espera-se por
     // ela (arranque a frio); se já há, não se espera por nada.
     if (empty) await waitForData();
@@ -307,7 +348,7 @@ export async function ensureFresh({ wait = false } = {}) {
 
   const run = refreshAll()
     .catch(e => ({ ok: false, error: e.message }))
-    .finally(() => releaseLock());
+    .finally(() => releaseLock(token));
 
   if (wait || empty) {
     // Ainda não há nada para mostrar: o pedido espera pela ingestion.
@@ -332,33 +373,65 @@ export async function getDaily(days = 60) {
       bd_v: r.bd_v, bd_f: r.bd_f,
       bs_v: r.bs_v, bs_f: r.bs_f,
       avg_pt: r.avg_pt,
+      // Dia civil de Lisboa completo (92/96/100 quartos). O dia de amanhã,
+      // depois das ~13:00, só tem 92: as 23:00–24:00 de Lisboa são do dia de
+      // mercado SEGUINTE de Madrid, que ainda não saiu — e uma média sem a
+      // última hora (vazio) não serve de referência.
+      quarters: r.quarters,
+      complete: r.quarters != null && r.quarters >= expectedQuartersForLisbonDay(String(r.date).slice(0, 10)),
     })),
   };
 }
 
-// Os quartos de um dia (UTC), para o comparador.
-export async function getQuarters(dayUtc) {
+// Os quartos de um dia civil de Lisboa, para o comparador.
+export async function getQuarters(lisDay) {
   await ensureFresh();
-  const rows = await spotForDay(dayUtc);
-  if (!rows.length) throw new Error(`sem quartos para ${dayUtc}`);
-  const days = await recentDays(dayUtc, 10);
-  return { date: dayUtc, rows, days };
+  const rows = await spotForDay(lisDay);
+  if (!rows.length) throw new Error(`sem quartos para ${lisDay}`);
+  const days = await recentDays(lisDay, 10);
+  return { date: lisDay, rows, days };
 }
 
-// As estatísticas: do payload guardado na BD.
-export async function getStats() {
-  const cached = await getMetaJson('stats');
-  if (cached) {
-    // O preço "à hora actual" recalcula-se a cada pedido, a partir da cauda
-    // guardada no cache, para acompanhar o relógio.
-    if (cached.recent) cached.current = currentPrice(cached, new Date());
-    return cached;
+// Readonly: o payload calculado em memória (não se pode gravar na BD).
+let memStats = null;
+
+// As estatísticas.
+//
+// Três relógios diferentes mexem nelas:
+//   - os dados (a ingestion): `ensureFresh` dispara o refresh quando passou
+//     o TTL, como nas outras leituras do OMIE — a página das estatísticas é a
+//     única coisa que o omie.cocofree.dev pede, e sem isto nunca actualizava;
+//   - o dia (hoje/amanhã/mês): um payload calculado ontem tem os cartões de
+//     ontem, por isso, se o dia de Lisboa mudou, recalcula-se já (da BD, sem
+//     rede);
+//   - o quarto de hora (o preço "à hora actual"): recalcula-se a cada pedido.
+// `stale: true` diz à página que há um refresh a decorrer em segundo plano.
+export async function getStats({ now = new Date() } = {}) {
+  let payload = READONLY ? memStats : await getMetaJson('stats');
+  const st = await ensureFresh({ wait: !payload });
+  if (!READONLY && !payload) payload = await getMetaJson('stats');
+  const sameDay = payload && payload.generatedAt && civilDay(new Date(payload.generatedAt)) === civilDay(now);
+  // Em readonly não há refresh que o renove: recalcula-se também ao fim do
+  // TTL (senão o "amanhã" de um preview só aparecia à meia-noite).
+  const roStale = READONLY && payload && now - new Date(payload.generatedAt) > TTL_MS;
+  if (!sameDay || roStale) {
+    try {
+      const r = await rebuildDerived({ now });
+      if (r.stats) payload = r.stats;
+      if (READONLY) memStats = payload;
+    } catch (e) {
+      // Falhou o recálculo, mas há payload: serve-se o que há (com aviso no
+      // log) em vez de um 502.
+      if (!payload) throw e;
+      console.warn('[ceme-v2] stats: recálculo falhou, a servir o payload anterior:', e.message);
+    }
   }
-  await ensureFresh({ wait: true });
-  const payload = await getMetaJson('stats');
   if (!payload) throw new Error('séries OMIE indisponíveis');
-  if (payload.recent) payload.current = currentPrice(payload, new Date());
-  return payload;
+  return {
+    ...payload,
+    current: payload.recent ? currentPrice(payload, now) : payload.current,
+    stale: !!(st && (st.started || st.locked)),
+  };
 }
 
 // Os futuros OMIP (só informativo; o preço de mercado é o do omie.es).
@@ -372,7 +445,7 @@ export async function getFutures() {
     rows: parseTfFutures(got.text),
     daily: parseTfDailyFutures(got.text),
   };
-  await setMetaJson('futures', payload);
+  if (!READONLY) await setMetaJson('futures', payload);
   return payload;
 }
 

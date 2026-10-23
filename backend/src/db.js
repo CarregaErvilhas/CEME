@@ -73,4 +73,18 @@ if (process.env.DATABASE_URL) {
   closeImpl = async () => db.close();
 }
 
-export { queryImpl as query, getImpl as get, runImpl as run, closeImpl as close, dbInstance };
+// CEME_READONLY=1: a BD é de outro (produção, num preview) ou é um snapshot.
+// O bootstrap já salta as escritas, mas há uma guarda de fundo AQUI, no
+// caminho de escrita da app: qualquer `run()` que escape (o OMIE escrevia em
+// modo readonly) rebenta em vez de mexer na BD dos outros. (O `query()` não é
+// guardado — as migrações usam-no para DROP, e em readonly não correm.)
+export const READONLY = process.env.CEME_READONLY === '1';
+const guardedRun = READONLY
+  ? async (sql) => { throw new Error(`CEME_READONLY: escrita recusada (${String(sql).trim().split(/\s+/).slice(0, 3).join(' ')} …)`); }
+  : runImpl;
+
+// Linhas afectadas por um `run()`, nos dois dialetos (node:sqlite → changes,
+// pg → rowCount).
+export const affected = (res) => Number(res && (res.changes != null ? res.changes : res.rowCount)) || 0;
+
+export { queryImpl as query, getImpl as get, guardedRun as run, closeImpl as close, dbInstance };

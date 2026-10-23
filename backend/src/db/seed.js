@@ -1,4 +1,7 @@
-// Seed completo: 24 CEME / 128 tarifários extraídos do sheet em 2026-10-15.
+// Seed completo: os CEME e tarifários extraídos do sheet em 2026-10-15 (as
+// contagens estão congeladas no golden.test.js, «cobertura do seed»).
+// As correcções posteriores (valores verificados online) estão no histórico
+// do git deste ficheiro: `git log -p backend/src/db/seed.js`.
 // Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
 // act = a taxa de activação PUBLICADA por cada CEME no sheet, à data da
 // captura (2026-10-15) — um único significado, invariante ao longo do tempo:
@@ -13,7 +16,7 @@
 //
 import { DatabaseSync } from 'node:sqlite';
 
-const CEMES = [
+export const CEMES = [
   ['acp', "ACP", "#ac2925", "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ['atlante', "Atlante", "#45a267", "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ['bluecharge', "Bluecharge", "#5bc0de", "https://www.bluecharge.pt/"],
@@ -103,7 +106,7 @@ export const SPLITS = {
   'miio-mt-miioonebi-2': { FORA_VAZIO: { energy: 0.17, tar: 0.0812 }, VAZIO: { energy: 0.17, tar: 0.0157 } },
 };
 
-const TARIFFS = [
+export const TARIFFS = [
   // (AC) = carregamento em corrente alternada. A Atlante tem um preço
   // promocional flat nos postos DC, com CEME + OPC included — por isso o
   // nome leva (AC). As duas tensões existem.
@@ -240,7 +243,7 @@ const TARIFFS = [
 // Notas que a folha CEME nao traz, porem o nome do tarifario sugere. Sao
 // CODIGOS, nao texto: o cliente traduz (mesmo padrao de OMIE_CONT_REF), para
 // nao meter portugues na interface english.
-const NOTES = {
+export const NOTES = {
   'atlante-bt-myatlanteac': 'AC_DC_FLAT',
   'atlante-mt-myatlanteac': 'AC_DC_FLAT',
   'atlante-bt-myatlantebus': 'AC_DC_FLAT',
@@ -317,6 +320,11 @@ export function seed(db) {
   // onde ha mesmo algo a dizer — ver NOTES.
   // valid_to fica de fora do UPDATE: é NULL no seed mas pode ter sido
   // fechado por um operador, e sobrepô-lo reabriria tarifários expirados.
+  // omie_aggregation = SPLIT_VAZIO_FORA para todos: só importa nos indexados,
+  // e os indexados do seed são todos bi-horários (Ynerluz e MEO no ciclo
+  // diário, LuziGas no semanal) — o OMIE de cada período é a média desse
+  // período no ciclo do próprio tarifário (server.js). UNICA (um só OMIE)
+  // fica para um indexado simples, que hoje não existe.
   const insV = db.prepare(`INSERT INTO tariff_version
     (id,tariff_id,valid_from,valid_to,campaign,status,origin,k_index_eur_mwh,cgs_eur_mwh,omie_aggregation,notes)
     VALUES (NULL,?, ?, NULL, 0,'ACTIVE','SEED_' || ?,?,?, 'SPLIT_VAZIO_FORA',?)

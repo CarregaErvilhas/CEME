@@ -124,8 +124,15 @@ describe('estatísticas OMIE — agregação', () => {
     // a previsão junta o futuro diário publicado: (930 + 300×96)/(6 + 96)
     assert.equal(d.cards.forecast.value, Math.round((930 + 300 * 96) / 102 * 100) / 100);
     assert.equal(d.cards.forecast.month, '2026-10');
-    assert.deepEqual(d.cards.forecast.fpbDays, [{ date: '2026-10-22', value: 300 }]);
+    assert.deepEqual(d.cards.forecast.fpbDays, [{ date: '2026-10-22', value: 300, quarters: 96 }]);
     assert.equal(d.cards.forecast.mtdQuarters, 6);
+  });
+
+  it('a previsão pesa cada dia de futuro pelos SEUS quartos (25/10 tem 100)', () => {
+    const d = aggregate(rows, { cutoff: '2026-10-21', now: NOW, fpbDaily: { '2026-10-22': 300, '2026-10-25': 50 } });
+    assert.deepEqual(d.cards.forecast.fpbDays.map(x => x.quarters), [96, 100]);
+    assert.equal(d.cards.forecast.quarters, 6 + 96 + 100);
+    assert.equal(d.cards.forecast.value, Math.round((930 + 300 * 96 + 50 * 100) / 202 * 100) / 100);
   });
 
   it('sem FPB D para o resto do mês, a previsão fica vazia (não inventa)', () => {
@@ -163,15 +170,17 @@ describe('estatísticas OMIE — agregação', () => {
     assert.equal(d.total.quarters, 6);
   });
 
-  it('o preço à hora actual é o quarter em curso (em UTC)', () => {
+  it('o preço à hora actual é o quarter em curso (no relógio de Lisboa)', () => {
     const d = aggregate(rows, { cutoff: '2026-10-21', now: NOW });
     // 13:00 UTC → o quarter das 13:00; o último publicado que não passa
     // disso é o das 08:00.
     assert.equal(d.current.at, '2026-10-21T08:00');
     assert.equal(d.current.price, 160);
     assert.equal(d.current.live, false);
+    // 00:05Z em Outubro (WEST, +1) são 01:05 em Lisboa: o quarter é o das
+    // 01:00 (ler a hora de Lisboa como se fosse UTC dava o das 00:00).
     const d2 = aggregate(rows, { cutoff: '2026-10-21', now: new Date('2026-10-21T00:05:00Z') });
-    assert.equal(d2.current.at, '2026-10-21T00:00');
+    assert.equal(d2.current.at, '2026-10-21T01:00');
     assert.equal(d2.current.live, true, 'o quarter em curso está publicado');
   });
 
@@ -282,8 +291,10 @@ describe('estatísticas OMIE — o agora', () => {
 });
 
 describe('estatísticas OMIE — o preço à hora actual é vivo', () => {
-  const NOW = new Date('2026-10-21T13:00:00Z');
-  // A cauda de um dia: 96 quartos de 00:00 a 23:45 (UTC). Preço = 10 + índice.
+  // 12:00Z = 13:00 em Lisboa (WEST). Os quartos da cauda estão em hora de
+  // Lisboa, sem `utc` (o caminho de fallback).
+  const NOW = new Date('2026-10-21T12:00:00Z');
+  // A cauda de um dia: 96 quartos de 00:00 a 23:45 (Lisboa). Preço = 10 + índice.
   const tail = (day) => {
     const out = [];
     for (let min = 0; min < 96 * 15; min += 15) {
@@ -309,7 +320,7 @@ describe('estatísticas OMIE — o preço à hora actual é vivo', () => {
   it('quando o quarter em curso ainda não saiu, fica o último e diz que não é "live"', () => {
     // cauda truncada às 11:45: o quarter das 12:00 ainda não foi publicado
     const curto = { ...payload, recent: payload.recent.filter(r => r.lisbonMin <= 11 * 60 + 45) };
-    const c = currentPrice(curto, new Date('2026-10-21T12:05:00Z'));
+    const c = currentPrice(curto, new Date('2026-10-21T11:05:00Z')); // 12:05 em Lisboa
     assert.equal(c.at, '2026-10-21T11:45');
     assert.equal(c.live, false);
   });

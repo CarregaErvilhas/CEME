@@ -1,10 +1,13 @@
 #!/bin/sh
-# ETL do Sheets para seed CSV (idempotente). Requer gog autenticado.
+# Dumps da folha em TSV (idempotente). Requer o `gog` autenticado.
 # Uso: sh scripts/etl-sheets.sh
 #
 # Traz os VALORES e as FÓRMULAS: nas fórmulas está a decomposição
-# energia + TAR dos tarifários em que o CEME publicava a energia à parte
-# (ver scripts/etl-ceme.js).
+# energia + TAR dos tarifários em que o CEME publicava a energia à parte.
+# A seguir: node scripts/etl-ceme.js (lê estes ficheiros por omissão).
+# Os dumps ficam em backend/seed/, que está no .gitignore: são dados de
+# terceiros e não entram no repositório. O seed (backend/src/db/seed.js) é
+# escrito à mão a partir deles.
 ID="1WMaiaShTwp1-QzWXi-SlcB3uTigp5nfYO-v3veCcn84"
 mkdir -p backend/seed
 gog sheets get "$ID" "'CEME'!A1:AJ101" --plain > backend/seed/ceme.tsv

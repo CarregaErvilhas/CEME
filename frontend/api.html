@@ -70,7 +70,7 @@ curl 'https://ceme-beta.ocarroeletrico.com/v1/health' \
       <tr><td><code>GET /v1/tariffs</code></td><td>Tariffs and the current tariff version where one is available.</td></tr>
       <tr><td><code>GET /v1/tar</code></td><td>Currently valid regulated network access tariffs (TAR).</td></tr>
       <tr><td><code>GET /v1/tabela</code></td><td>Current tariff prices and published activation/IEC values, in a compact table-oriented response.</td></tr>
-      <tr><td><code>GET /v1/omie/daily?days=60</code></td><td>Daily OMIE series. <code>days</code> is clamped to 7–120; default 60.</td></tr>
+      <tr><td><code>GET /v1/omie/daily?days=60</code></td><td>Daily OMIE series, one row per Lisbon calendar day. <code>days</code> is clamped to 7–120; default 60. <code>complete</code> is <code>false</code> for a day that does not yet have all its quarter-hours (typically tomorrow, in the afternoon).</td></tr>
       <tr><td><code>GET /v1/omie/futures</code></td><td>OMIP futures data.</td></tr>
       <tr><td><code>GET /v1/omie/stats</code></td><td>Monthly OMIE statistics and reference values.</td></tr>
       <tr><td><code>GET /v1/indexed/quarters</code></td><td>Quarter-hour data and calculated prices for an indexed tariff. See below.</td></tr>
@@ -95,9 +95,10 @@ curl 'https://ceme-beta.ocarroeletrico.com/v1/health' \
       <tr><td><code>region</code></td><td><code>CONT</code> (mainland), <code>MAD</code> (Madeira), or <code>AZO</code> (Azores). Default <code>CONT</code>.</td></tr>
       <tr><td><code>at</code></td><td>Optional valid date/time; ISO 8601 with timezone/UTC offset recommended. Defaults to now.</td></tr>
       <tr><td><code>omie</code></td><td>Reference OMIE price in EUR/kWh, positive number. Default 0.20.</td></tr>
-      <tr><td><code>omieVazio</code>, <code>omieFora</code></td><td>Optional positive EUR/kWh reference prices for off-peak and other periods. Used by tariffs configured for split periods.</td></tr>
+      <tr><td><code>omieCycles</code></td><td>Optional per-cycle reference prices: <code>{"DIARIO": {"vazio": …, "fora": …}, "SEMANAL": {"vazio": …, "fora": …}}</code>, positive EUR/kWh. Each indexed tariff uses the pair for its own time-of-use cycle (daily or weekly). Recommended — take them from the last row of <code>/v1/omie/daily</code> with <code>complete: true</code> (<code>bd_*</code> = daily cycle, <code>bs_*</code> = weekly, divided by 1000).</td></tr>
+      <tr><td><code>omieVazio</code>, <code>omieFora</code></td><td>Optional positive EUR/kWh off-peak / peak reference prices applied to <em>every</em> split-period indexed tariff (an explicit override; ignored where <code>omieCycles</code> covers the tariff's cycle).</td></tr>
     </tbody></table>
-    <p>The response includes the requested inputs, an average and <code>data</code>, an array of tariff quote objects sorted by total cost. A tariff's fields include descriptive metadata, prices and calculated totals; fields vary by tariff type. Some invalid/inconsistent tariffs can be omitted from the ranking rather than failing the whole request. This is an estimate for the energy component, not a final charging bill: the Mobi.E charging-point operator (OPC) fee is not included.</p>
+    <p>The response includes <code>at</code>, <code>kwh</code>, <code>region</code>, <code>omieRef</code>, an average and <code>data</code>, an array of tariff quote objects sorted by total cost. A tariff's fields include descriptive metadata, prices and calculated totals; fields vary by tariff type. <code>parts</code> is the bill line by line, in euros (<code>energyTar</code>, plus <code>energy</code>/<code>tar</code> when the split is known, <code>iec</code>, <code>activation</code>, <code>support</code>, <code>base</code> excl. VAT, <code>vatEur</code>); the lines add up to <code>totalEur</code> to the cent. Some invalid/inconsistent tariffs can be omitted from the ranking rather than failing the whole request. This is an estimate for the energy component, not a final charging bill: the Mobi.E charging-point operator (OPC) fee is not included.</p>
   </article>
   <article id="quarters">
     <h2>Indexed tariff quarter-hours</h2>

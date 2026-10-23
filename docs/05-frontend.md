@@ -5,10 +5,10 @@ até ao tarifário mais barato) e o **simulador completo** (ranking, filtros,
 comparador indexado vs fixo). HTML + CSS + JS vanilla, sem build, servidos
 pelo próprio `server.js`.
 
-A este par juntam-se duas **páginas institucionais** estáticas — **Sobre** e
-**Contactos** — que não usam a API: são a explicação do projecto (porque
-existe, o que faz, para quem é útil) e o sítio onde se escreve para reportar
-um problema ou pedir uma melhoria.
+A este par juntam-se as **páginas institucionais** estáticas — **Sobre** e
+**Contactos** — que não usam a API (a explicação do projecto e o sítio onde
+se reporta um problema), a página das **estatísticas OMIE** (docs/09) e o
+**guia da API** (`/api`, só em inglês, para developers).
 
 ## Duas interfaces e a escolha do utilizador
 
@@ -19,9 +19,17 @@ um problema ou pedir uma melhoria.
 | `GET /simulador` | simulador completo + grava `ceme_ui=completo` |
 | `GET /index.html` | alias de `/` (segue o cookie) |
 | `GET /strings.js` | dicionário partilhado (ver i18n) |
-| `GET /pages.css` | estilo partilhado por Sobre/Contactos |
+| `GET /tz.js` | horas de relógio por região (simulador + assistente) |
+| `GET /pages.css` | estilo partilhado pelas páginas institucionais |
 | `GET /sobre`, `GET /about` | página "Sobre" (aliases PT/EN) |
 | `GET /contactos`, `GET /contact` | página "Contactos" (aliases PT/EN) |
+| `GET /omie`, `GET /omie.html` | estatísticas OMIE (e a raiz do host `omie.cocofree.dev`) |
+| `GET /api` | guia da API (EN) |
+| `GET /manifest.webmanifest` (`/manifest.json`), `/sw.js` (`/service-worker.js`), `/pwa.js`, `/icon-*.png` | PWA |
+
+Os JS/CSS/HTML vão com `cache-control: no-store` (são código partilhado: não
+podem ficar presos numa versão velha depois de um deploy); os ícones vão
+`immutable`.
 
 O assistente é a porta de entrada: é a página que um visitante novo vê em `/`.
 Cada interface tem um link para a outra (`Abrir o simulador completo` /
@@ -53,7 +61,7 @@ O fluxo de cada interface:
 
 - `#/` — ranking "neste momento" (`POST /v1/simulate`), com kWh ou bateria %,
   região, pesquisa, filtros (verde, populares, sem condições, favoritos), data/hora do
-  carregamento configurável (ISO aaaa/mm/dd hh:mm).
+  carregamento configurável (ISO aaaa/mm/dd hh:mm, no relógio da região).
 - `#/comparar` — indexado vs fixo: valor actual, gráfico SVG de 60 dias,
   tabela de quartos-horários com o preço do indexado **e do fixo**, marcando
   todos os quartos em que cada um ganha.
@@ -81,8 +89,9 @@ Duas decisões que valem a pena registar:
 
 - **O texto vive em `strings.js`**, como em todas as outras páginas — os
   namespaces `about` e `contact` entram no teste de sincronia PT/EN
-  (`backend/test/strings.test.js`) como os restantes.
-- **O chrome (logo e navegação) vive em `common`**, porque as quatro páginas
+  (`backend/test/strings.test.js`) como os restantes. (Excepção: o guia
+  `/api`, só em inglês, tem o texto no próprio HTML.)
+- **O chrome (logo e navegação) vive em `common`**, porque as páginas
   mostram as mesmas coisas. As chaves `logoA`/`logoB` e `navSim`/`navAssistant`/
   `navSobre`/`navContactos` saíram do namespace `simulador` para `common` — o
   texto repetido entre páginas é a coisa que o teste apanha.
@@ -151,15 +160,24 @@ kWh, portanto estão internamente coerentes; ao largar, tudo é recalculado.
   No ecrã sai sempre com **uma casa decimal** (`kwhTxt()` → `30,3 kWh` em PT,
   `30.3 kWh` em EN); o valor bruto só vai para os cálculos. O campo de
   edição fica cru, para se poder escrever `40` e não `40,0`.
-- **Data/hora:** input ISO 24h; default "agora" com base na hora do browser
-  (fallback servidor se desvio >5 min).
-- **OMIE de referência:** por omissão = último OMIE real, com médias
-  `omieVazio`/`omieFora` separadas para a agregação `SPLIT_VAZIO_FORA`.
-  Slider manual no comparador desliga o modo automático.
-- **Potência do ramal (BT/MT):** selector no cartão de energia; afecta a TAR
-  aplicada, não a lista. O dedup por `ceme|nome` (`dedupByRamal()`) é partilhado
-  entre o ranking, o modal de favoritos e o comparador — é a mesma lista nos
-  três sítios, o que evita aparecer duas vezes num sítio e não noutro.
+- **Data/hora:** input ISO 24h, escrito e mostrado no **relógio da região**
+  do carregamento (`frontend/tz.js`: `fromWall`/`toWall`), não no do browser
+  — quem simula os Açores a partir de Lisboa fala das horas dos Açores. Nos
+  dias de mudança de hora, uma hora que não existe resolve-se para depois do
+  salto (testes em `tz.test.js`). Default "agora" (fallback para a hora do
+  servidor se o relógio do browser estiver desviado mais de 5 min). O
+  assistente usa as mesmas funções.
+- **OMIE de referência:** por omissão = o último dia **completo** de
+  `/v1/omie/daily`, com as médias vazio/fora **por ciclo** (`omieCycles`:
+  diário e semanal) — cada indexado usa as do seu ciclo. O slider manual do
+  comparador desliga o modo automático e passa a valer para todos.
+- **Potência do ramal (BT/MT):** selector no cartão de energia. O dedup por
+  `ceme|nome` (`dedupByRamal()`) é **o mesmo** no ranking, no modal de
+  favoritos e no comparador: tira os tarifários que não servem o ramal
+  escolhido e, entre variantes, prefere a da tensão do ramal.
+- **A conta linha a linha:** o detalhe de cada tarifário mostra o `parts` do
+  motor — energia + TAR (separadas quando se sabe), IEC, taxa de activação,
+  total sem IVA, IVA e total (docs/02).
 - **Favoritos:** estrela nos cartões, modal "Gerir favoritos" agrupado por
   CEME com pesquisa e filtros (popular, bundle, verde). Persistido em
   `localStorage['ceme:favs']`.
@@ -191,10 +209,10 @@ inclui `Vary: Accept-Language` (e `Vary: Cookie` no HTML, que também depende
 do cookie da interface).
 
 No cliente:
-- **Um dicionário para as quatro páginas**: `frontend/strings.js`, carregado
-  com `<script src="/strings.js">`. Cada página pede o seu namespace com
-  `CEME_STR('simulador')` / `CEME_STR('assistente')` / `CEME_STR('about')` /
-  `CEME_STR('contact')`, que devolve `{pt, en}` já com o vocabulário **comum**
+- **Um dicionário para todas as páginas bilíngues**: `frontend/strings.js`,
+  carregado com `<script src="/strings.js">`. Cada página pede o seu
+  namespace com `CEME_STR('<página>')` (a lista é a do `strings.test.js`),
+  que devolve `{pt, en}` já com o vocabulário **comum**
   (filtros e etiquetas dos tarifários, `Agora`, `Energia a carregar`,
   `Tentar outra vez`, e o logo + a navegação) por cima.
   `CEME_I18N.regions` tem nome, IVA e fuso de cada região — a UI do simulador
@@ -327,12 +345,11 @@ duas formas): quem escreve "indexed tariff" em português encontra o tarifário,
 e mostra-o com o nome original do CEME. Sem isto, o utilizador ficava a
 pesquisar no escuro depois de mudar de língua.
 
-Testado em `backend/test/i18n.test.js` (7 testes): casos fixos, marcas
-intactas, nenhum nome do seed fica por traduzir, e — o mais útil —
-um teste que falha se alguém puser uma regra curta antes da frase longa que
-a contém (já apanhou uma regra morta: `Clientes Energia` antes de
-`Frota Clientes Energia`). Há também um teste que garante que PT e EN têm as
-mesmas chaves e os mesmos placeholders.
+Testado em `backend/test/i18n.test.js`: casos fixos, marcas intactas, nenhum
+nome do seed fica por traduzir, e — o mais útil — um teste que falha se
+alguém puser uma regra curta antes da frase longa que a contém (já apanhou
+uma regra morta: `Clientes Energia` antes de `Frota Clientes Energia`). As
+mesmas chaves e os mesmos placeholders em PT e EN são o `strings.test.js`.
 
 ### A função de tradução chama-se `i18n()`, não `t()`
 
@@ -342,7 +359,7 @@ Quando se renomeou para `i18n()`, ficou um `t(cond ? 'a' : 'b')` por converter
 dentro de um ternário — e a página deixou de renderizar. Agora os nomes não
 colidem: `i18n()` para traduzir, `tf` para um tarifário.
 
-`backend/test/frontend-smoke.test.js` (14 testes) corre o frontend de facto num
+`backend/test/frontend-smoke.test.js` corre o frontend de facto num
 contexto isolado, sem browser, e chama `vHome()`, `vCmp()`, `badges()`,
 `detail()` e `renderFavModal()` — e falha se injectarmos qualquer um dos dois
 bugs. É o que apanha o que os testes de texto não apanham.
@@ -386,8 +403,8 @@ como código** — nunca como prosa num único idioma:
 
 - aviso das ilhas: `OMIE_CONT_REF` (código, traduzido no cliente);
 - nota do tarifário: `tariff_version.notes` (código, traduzido no cliente);
-- `source` do OMIE: `dados.tiagofelicia.pt (CC BY 4.0)` (sem "produção usa
-  omie.es", que era português).
+- `source` do OMIE: o rótulo das fontes (`SOURCE_LABEL` em
+  `omie/pipeline.js`), sem prosa em português.
 
 ### Futuros OMIP: fora da interface, não fora da API
 
@@ -396,8 +413,8 @@ a nada que o simulador calcule. O preço mostrado é sempre o do momento, e
 nenhuma previsão entra nele — mostrar OMIP ao lado dava a impressão de que a
 previsão afectava o preço apresentado.
 
-`/v1/omie/futures` **continua de pé** para consumidores da API, e `getFutures`
-continua em `omie/cache.js`. A interface deixou de o pedir, o que também tira
+`/v1/omie/futures` **continua de pé** para consumidores da API (`getFutures`
+em `omie/pipeline.js`). A interface deixou de o pedir, o que também tira
 uma dependência de rede ao gráfico de 60 dias — passa a depender só de
 `/v1/omie/daily` e `/v1/tar`.
 
@@ -473,9 +490,15 @@ pede sessão nova e repete o pedido uma vez — sem isso a página dizia
 
 `localStorage['ceme:favs'] = [tariffId...]`. Sem conta, sem BD.
 
+## PWA
+
+Instalável: `manifest.webmanifest`, `sw.js` e o gatilho de instalação
+(`pwa.js`). O service worker é **rede primeiro** para tudo o que muda com um
+deploy (`strings.js`, `tz.js`, `pages.css`, manifest) — a cópia em cache só
+serve sem rede — e cache primeiro só para os ícones (imutáveis). Não guarda
+páginas nem `/v1/*`. Mudar a estratégia ou a lista = subir o nome da cache
+(`CACHE` em `sw.js`): o `activate` apaga as caches antigas.
+
 ## Evolução planeada
 
-- Migrar para Vite + React + Tailwind + PWA.
-- Portal CEME (login magic-link), sugestões, moderação admin.
-- Gestão de API keys para terceiros.
-- Decomposição completa (energia / TAR / IEC / IVA / EGME) no detalhe de cada tarifário.
+Ver `docs/06-roadmap.md` (é lá que vive a lista — aqui não se repete).

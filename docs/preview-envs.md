@@ -39,16 +39,26 @@ O Zerops tem backups nativos por serviço (UI + `zcli backup create`), mas:
 - O restore é "download + ferramentas do serviço" (pg_restore), via VPN ou
   durante deploy. Não há restore cross-project automático.
 
-Para pouca net, **não** faças dump da DB inteira: exclui as tabelas de cache
-OMIE (`omie_spot`, `omie_daily`, `omie_quarters`, `omie_futures`), que são
-re-populadas pelo backend no arranque (cache de 6h). Só precisas das tabelas
-de referência (ceme, tariff, tariff_version, price_component, tar). Com
-`--format=custom` + compressão, o dump fica em dezenas de KB.
+**Não** faças dump da DB inteira. Exclui:
+
+- as tabelas do OMIE (`omie_spot`, `omie_daily`, `omie_meta`) — o backend
+  re-ingere-as **a pedido**, no primeiro pedido OMIE (docs/03). O
+  `omie_meta` tem mesmo de ficar de fora: leva o `last_refresh` e o ETag da
+  produção, e o preview achava-se "fresco" com as tabelas vazias (e o omie.es
+  respondia 304 sem dados);
+- as tabelas de credenciais e de utilizadores (`api_key`, `api_client`,
+  `audit_log`, `suggestion`) — um preview não leva hashes de chaves da
+  produção.
+
+Só precisas das tabelas de referência (ceme, tariff, tariff_version,
+price_component, tar). Com `--format=custom` + compressão, o dump é pequeno.
 
 ```sh
 pg_dump "$PROD_DB_URL" --no-owner --no-acl --format=custom --compress=9 \
   --exclude-table=omie_spot --exclude-table=omie_daily \
-  --exclude-table=omie_quarters --exclude-table=omie_futures \
+  --exclude-table=omie_meta \
+  --exclude-table=api_key --exclude-table=api_client \
+  --exclude-table=audit_log --exclude-table=suggestion \
   -f /tmp/ceme-prod.dump
 ```
 
@@ -114,10 +124,12 @@ omissão (a menos que `CEME_SKIP_SEED=1` ou `CEME_READONLY=1`).
 ### 4. Restaurar snapshot (se `USE_SNAPSHOT=1`)
 
 ```sh
-# dump selectivo da produção (readonly) — exclui cache OMIE (re-populado no arranque)
+# dump selectivo da produção (readonly) — sem o OMIE (re-ingerido a pedido) nem credenciais
 pg_dump "$PROD_DB_URL" --no-owner --no-acl --format=custom --compress=9 \
   --exclude-table=omie_spot --exclude-table=omie_daily \
-  --exclude-table=omie_quarters --exclude-table=omie_futures \
+  --exclude-table=omie_meta \
+  --exclude-table=api_key --exclude-table=api_client \
+  --exclude-table=audit_log --exclude-table=suggestion \
   -f /tmp/ceme-prod.dump
 
 # connection string do db do preview (obtida na consola Zerops ou via API)
@@ -141,7 +153,12 @@ Se preferires não copiar dados (só leitura da BD de produção):
 
 - Definir `DATABASE_URL=$PROD_DB_URL` e `CEME_READONLY=1` no serviço `api`
   do preview.
-- O bootstrap é totalmente saltado; o server só lê.
+- Nada é escrito na BD: o bootstrap salta schema/seed/TAR/chave, o OMIE não
+  ingere nem grava derivados (as estatísticas calculam-se em memória), e o
+  `run()` do `db.js` recusa qualquer escrita que escape (docs/03).
+- `zerops.yml` define `DATABASE_URL: ${db_connectionString}`; confirmar que o
+  valor do preview se sobrepõe (precedência das envs do Zerops — não
+  verificado).
 - **Atenção:** o preview passa a ler dados de produção. Só para PRs do
   próprio mantenedor, nunca para contribuidores externos.
 
@@ -203,7 +220,7 @@ Quando o utilizador pedir "criar preview da PR #N":
 1. Ler este documento e `infra.md` §2-3.
 2. Perguntar ao utilizador: snapshot ou seed? readonly prod ou não? domínio custom ou URL default do Zerops?
 3. Recolher variáveis em falta (PR_NUMBER, PROD_DB_URL se snapshot) **sem** as escrever em ficheiros do repo.
-4. Executar `scripts/preview-create.sh` passo a passo, parando em cada comando destrutivo/externo para confirmação.
+4. Executar os passos de `scripts/preview-create.sh` um a um, parando em cada comando destrutivo/externo para confirmação. **Atenção:** os scripts são **esqueletos** — os comandos `zcli`/`pg_dump`/`pg_restore`/`gh` estão comentados (falta validar a versão do `zcli`); correr o script tal como está só imprime os passos.
 5. Nunca executar `zcli project delete` ou alterações de DNS sem confirmação explícita.
 6. Após criação, comentar a PR com o URL (via `gh pr comment` ou instruir o utilizador).
 7. Registar o `ZEROPS_PROJECT_ID` devolvido para posterior destruição (guardar fora do repo, ex: `~/.ceme-previews`).
@@ -211,7 +228,7 @@ Quando o utilizador pedir "criar preview da PR #N":
 Quando o utilizador pedir "destruir preview da PR #N":
 
 1. Confirmar o `ZEROPS_PROJECT_ID`.
-2. Executar `scripts/preview-destroy.sh`.
+2. Executar os passos de `scripts/preview-destroy.sh` (também um esqueleto — ver acima).
 3. Confirmar destruição (listar projectos Zerops).
 
 ## Checklist de segurança

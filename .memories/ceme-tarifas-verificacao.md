@@ -4,7 +4,7 @@ Projecto: `/Users/fernando.pereira/tmp/opencode/ceme-v2/`. Ficheiros-chave:
 - `backend/src/db/seed.js` — CEMES, SPLITS (energia+TAR), TARIFFS (finais c/ TAR, act), @@@ act.
 - `backend/src/db/seed.postgres.js` — duplicado de TARIFFS; **SPLITS é importado do seed.js** (`import { SPLITS } from './seed.js'`) — só editar TARIFFS aqui.
 - `backend/data/ceme.db` — SQLite: `ceme(id, website)`, `tariff(id, ceme_id, kind, voltage, source_url)`, `tariff_version(id, tariff_id→tariff.id, k_index_eur_mwh, cgs_eur_mwh)`, `price_component(tariff_version_id, period, energy_eur_kwh=final c/ TAR, activation_eur, energy_only_eur_kwh, tar_eur_kwh)`.
-- Última verificação completa: **2026-10-22** (ver registo no cabeçalho do seed.js).
+- Última verificação completa: **2026-10-22** (ver o histórico do git do seed.js: `git log -p backend/src/db/seed.js`).
 
 ## Comando
 Existe o comando `/ceme-check` (`.opencode/commands/ceme-check.md`) que carrega esta memória. Argumentos opcionais: `/ceme-check galp` (só um CEME) ou `/ceme-check update` (aplicar updates autorizadas).

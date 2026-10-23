@@ -55,25 +55,54 @@ async function tableExists(table) {
   return rows.length > 0;
 }
 
-// A forma que o omie_spot deve ter: indexada pelo instante UTC.
-const SPOT_COLS = ['ts_utc', 'day_utc', 'min_utc', 'price_pt_eur_mwh', 'source'];
+const hasRows = async (table) => (await query(`SELECT 1 FROM ${table} LIMIT 1`)).length > 0;
+
+// A forma que o omie_spot deve ter: indexada pelo instante UTC, com o dia
+// civil e os minutos de LISBOA ao lado (é por eles que se agrupa e mostra).
+const SPOT_COLS = ['ts_utc', 'day_lisbon', 'min_lisbon', 'price_pt_eur_mwh', 'source'];
 const DAILY_COLS = ['date', 'bd_v', 'bd_f', 'bs_v', 'bs_f'];
+
+// Colunas renomeadas: `day_utc`/`min_utc` sempre guardaram o dia e os minutos
+// de Lisboa — o nome mentia, e um nome que mente sobre o fuso é bug à espera
+// de acontecer. Renomear preserva os dados; tem de correr ANTES do teste de
+// forma abaixo, senão a tabela (cheia) era deitada fora por "forma antiga".
+const SPOT_RENAMES = [['day_utc', 'day_lisbon'], ['min_utc', 'min_lisbon']];
 
 export async function migrateOmieTables() {
   const notes = [];
 
   if (await tableExists('omie_spot')) {
-    const cols = await columns('omie_spot');
+    let cols = await columns('omie_spot');
+    for (const [from, to] of SPOT_RENAMES) {
+      if (cols.includes(from) && !cols.includes(to)) {
+        await run(`ALTER TABLE omie_spot RENAME COLUMN ${from} TO ${to}`);
+        notes.push(`omie_spot.${from} renomeada para ${to}`);
+      }
+    }
+    cols = await columns('omie_spot');
     if (cols.length && !SPOT_COLS.every(c => cols.includes(c))) {
-      await query('DROP TABLE omie_spot');
-      notes.push('omie_spot: forma antiga (hora local) deitada fora');
+      // Só se deita fora uma tabela VAZIA. Com linhas, uma forma inesperada é
+      // mais provavelmente código antigo/novo misturado (ex. um rollback) do
+      // que a forma antiga — e apagar dados por um palpite não é migração.
+      // Não se rebenta o arranque (o site inteiro em 502 por causa do OMIE):
+      // fica no log e a tabela fica como está.
+      if (await hasRows('omie_spot')) {
+        notes.push(`omie_spot: forma inesperada COM dados (colunas: ${cols.join(', ')}) — NÃO apagada; resolver à mão`);
+      } else {
+        await query('DROP TABLE omie_spot');
+        notes.push('omie_spot: forma antiga (hora local) deitada fora');
+      }
     }
   }
   if (await tableExists('omie_daily')) {
     const cols = await columns('omie_daily');
     if (cols.length && !DAILY_COLS.every(c => cols.includes(c))) {
-      await query('DROP TABLE omie_daily');
-      notes.push('omie_daily: forma antiga deitada fora');
+      if (await hasRows('omie_daily')) {
+        notes.push(`omie_daily: forma inesperada COM dados (colunas: ${cols.join(', ')}) — NÃO apagada; resolver à mão`);
+      } else {
+        await query('DROP TABLE omie_daily');
+        notes.push('omie_daily: forma antiga deitada fora');
+      }
     }
   }
   return notes;

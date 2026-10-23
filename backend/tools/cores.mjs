@@ -9,7 +9,7 @@
 // outro"). As matrizes são as publicadas em "A Physiologically-based Model for
 // Simulation of Color Vision Deficiency", IEEE TVCG 15(6).
 //
-//   node backend/test/cores.mjs
+//   node backend/tools/cores.mjs
 //
 
 // --- conversão de cor ---------------------------------------------------
