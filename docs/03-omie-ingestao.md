@@ -32,8 +32,20 @@ relógio repete-se (as 02:00 acontecem duas vezes em Lisboa), e duas linhas
 com a mesma hora de relógio colidiam. O instante é a única coisa que não se
 repete.
 
-Os dias é que são **civis em UTC** (o bucket `day_utc`), e é assim que se
-agrega por dia e por mês.
+Os dias são **civis de Lisboa** (o bucket `day_utc`), e é assim que se
+agrega por dia e por mês — bate certo com os agregados que o TF publica.
+
+## Reescrita (o que cada refresh volta a escrever)
+
+Os upserts são idempotentes, mas nem tudo é reescrito de cada vez:
+
+- **omie.es**: os dias em falta mais os 3 dias antes do último dia do
+  ficheiro (é onde a OMIE pode ter corrigido);
+- **TF**: os dias em falta mais a janela **[(hoje − 10 dias) … (hoje + 45
+  dias)]** em dias civis de Lisboa — é aí que o TF revê os dados (reais que
+  substituem estimativas, estimativas revistas). Sem janela explícita, o
+  "último dia do lote" seria 31 de Dezembro e as revisões dos dias recentes
+  ficavam congeladas na BD depois da primeira ingestão.
 
 ## Reconciliação
 
@@ -113,7 +125,12 @@ transição acontece às 01:00 UTC — sempre depois da meia-noite local.
 
 O ficheiro do TF, ao contrário, está em **hora de Lisboa** e os seus dias
 são dias civis de Lisboa (a média do dia bate com o agregado diário que o
-TF publica). Por isso os dois ficheiros estão desfasados uma hora e se
+TF publica). O instante de cada linha sai da coluna `hora` (o fim do
+quarto), não da posição da linha — se faltar uma linha, as seguintes não se
+deslocam. No dia de Outono a hora repete-se (100 linhas) e a ordem das
+linhas distingue a primeira passagem da segunda (+60 min a partir do
+momento em que o relógio anda para trás).
+Por isso os dois ficheiros estão desfasados uma hora e se
 alinham pelo **instante**, não pelo período.
 
 ## Agregação: o "OMIE de referência" que cada CEME usa

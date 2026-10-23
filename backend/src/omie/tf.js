@@ -96,6 +96,9 @@ export function parseTfQuarters(text) {
   if (ix('dia') < 0 || ix('preco_pt') < 0) throw new Error('schema inesperado no CSV de quartos do TF');
   const days = new Map();
   const quarantined = [];
+  // Estado por dia para a conversão hora→instante (ver abaixo): vai à parte
+  // para não poluir o mapa de dias devolvido.
+  const effState = new Map();
   for (const line of lines) {
     if (!line.trim()) continue;
     if (line.startsWith('TABELA_')) break; // blocos de futuros no fim do ficheiro
@@ -108,10 +111,35 @@ export function parseTfQuarters(text) {
     const day = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
 
     const list = days.get(day) || [];
-    // O instante: a meia-noite local do dia + 15 minutos por quarto. É o
+    // O instante a partir da coluna `hora` (o FIM do quarto, "00:15" =
+    // [00:00-00:15[), e não da posição da linha no ficheiro: se faltar uma
+    // linha a meio do dia, a posição deslocava todos os instantes seguintes
+    // em 15 minutos sem ninguém dar por isso.
+    //
+    // Mas a hora de relógio não chega sozinha: no dia de Outono a hora
+    // 01:00-02:00 acontece duas vezes (o ficheiro traz 100 linhas com as
+    // horas repetidas) e a ordem das linhas é o que distingue a primeira
+    // passagem da segunda. Por isso soma-se +60 min a partir do momento em
+    // que o relógio anda para trás — sem isto as duas passagens colidiam no
+    // mesmo instante e uma delas perdia-se no upsert.
+    const st = effState.get(day) || { prevEff: null, extra: 0 };
+    const prevEff = st.prevEff;
+    let extra = st.extra;
+    let eff;
+    const hm = /^(\d{2}):(\d{2})$/.exec((c[1] || '').trim());
+    if (hm) {
+      const s = Number(hm[1]) * 60 + Number(hm[2]) - 15;
+      if (Number.isInteger(s) && s >= 0 && s < 1440 && s % 15 === 0) {
+        eff = s + extra;
+        if (prevEff !== null && eff < prevEff) { extra += 60; eff = s + extra; }
+      }
+    }
+    if (eff === undefined) eff = prevEff === null ? list.length * 15 : prevEff + 15;
+    effState.set(day, { prevEff: eff, extra });
+    // O instante: a meia-noite local do dia + o início do quarto. É o
     // único jeito de alinhar com o omie.es — na hora repetida de Outubro a
     // hora de relógio é a mesma em dois instantes diferentes.
-    const utcMs = lisbonMidnightUtc(day) + list.length * 15 * 60000;
+    const utcMs = lisbonMidnightUtc(day) + eff * 60000;
     const wall = lisbonWallClock(utcMs);
     list.push({
       utc: new Date(utcMs).toISOString(),
@@ -171,4 +199,18 @@ export function parseTfFutures(text) {
     out.push({ zona: table.replace('TABELA_FUTUROS_', ''), contrato: c[0], descricao: c[1], valor: Number.isFinite(num) ? num : null });
   }
   return out.slice(0, 40);
+}
+// Os futuros DIÁRIOS (FPB D ...) da zona PT: um número publicado por dia
+// (ex. `FPB D Sa24Oct-26,24/10/2026,132.31,...`). É a única fonte de futuro
+// admitida na página — e usa-se o número tal como vem, sem médias nossas.
+// Devolve [{ date: 'YYYY-MM-DD', value }] por ordem de data.
+export function parseTfDailyFutures(text, zona = 'PT') {
+  const rows = parseTfFutures(text).filter(r => r.zona === zona && /^FPB D\b/.test(r.contrato));
+  const out = [];
+  for (const r of rows) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(r.descricao || '').trim());
+    if (!m || r.valor == null) continue;
+    out.push({ date: `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`, value: r.valor });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }

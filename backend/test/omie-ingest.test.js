@@ -87,6 +87,16 @@ describe('ingestão OMIE — instante e mudança de hora', () => {
     assert.equal(out.length, 2, 'os dois ficam');
     assert.deepEqual(out.map(r => r.pt), [100, 110]);
   });
+
+  it('um dia futuro só com TF é estimativa quando se passa a fronteira', () => {
+    const rows = [
+      linha('2026-10-22T00:00:00.000Z', '2026-10-22', 0, 70, 'TF'),
+    ];
+    const semFronteira = reconcile(rows);
+    assert.equal(semFronteira[0].est, undefined, 'sem linhas OMIE_ES no lote, não há como saber');
+    const comFronteira = reconcile(rows, { lastOmie: '2026-10-21T22:45:00.000Z' });
+    assert.equal(comFronteira[0].est, true, 'para além do mercado é estimativa');
+  });
 });
 
 describe('ingestão OMIE — a BD', () => {
@@ -115,6 +125,26 @@ describe('ingestão OMIE — a BD', () => {
     await upsertSpot([{ utc: '2026-10-21T00:00:00.000Z', day: '2026-10-21', min: 0, pt: 50, es: null, bd: 'V', bs: 'V' }], 'TF');
     const rows = await query(`SELECT source FROM omie_spot WHERE day_utc = '2026-10-21'`);
     assert.ok(rows.length >= 1);
+  });
+
+  it('a janela explícita reescreve os dias recentes do TF (não só Dezembro)', async () => {
+    // O ficheiro do TF vai até ao fim do ano: sem janela explícita, o upsert
+    // só reescrevia os últimos dias do LOTE (Dezembro) e as revisões dos dias
+    // recentes (reais que substituem estimativas) ficavam congeladas na BD.
+    const mk = (day, pt) => ({ utc: `${day}T00:00:00.000Z`, day, min: 0, pt, es: null, bd: 'V', bs: 'V' });
+    const oldDays = ['2026-05-10', '2026-05-19', '2026-05-25', '2026-12-29'];
+    await upsertSpot(oldDays.map(d => mk(d, 10)), 'TF');
+    const rev = [...oldDays.map(d => mk(d, 99)), mk('2026-12-30', 99)];
+    await upsertSpot(rev, 'TF', { fromDay: '2026-05-18', toDay: '2026-06-30' });
+    const got = Object.fromEntries(
+      (await query(`SELECT day_utc d, price_pt_eur_mwh p FROM omie_spot WHERE source = 'TF' AND day_utc LIKE '2026-%'`))
+        .map(r => [String(r.d).slice(0, 10), r.p])
+    );
+    assert.equal(got['2026-05-10'], 10, 'fora da janela: congela (não reescreve)');
+    assert.equal(got['2026-05-19'], 99, 'dentro da janela: revisto');
+    assert.equal(got['2026-05-25'], 99, 'dentro da janela: revisto');
+    assert.equal(got['2026-12-29'], 10, 'fora da janela: congela, mesmo sendo Dezembro');
+    assert.equal(got['2026-12-30'], 99, 'dia novo: escreve sempre');
   });
 
   it('os agregados diários guardam as quatro médias', async () => {

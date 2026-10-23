@@ -56,7 +56,15 @@ async function knownDays(source) {
 
 // Escreve as linhas de um dia (ou de vários) — upsert idempotente: correr
 // duas vezes com os mesmos dados não muda nada.
-export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDay = null } = {}) {
+//
+// Por omissão reescrevem-se os dias em falta e os `recentDays` antes do dia
+// mais recente do lote (é onde o OMIE pode ter corrigido). Para o TF passa-se
+// uma janela explícita (`fromDay`/`toDay`, dias civis de Lisboa): o ficheiro
+// do TF vai até ao fim do ano, por isso "os últimos dias do lote" seriam
+// Dezembro — e as revisões dos dias recentes (reais que substituem
+// estimativas, estimativas revistas) nunca mais eram escritas depois da
+// primeira ingestão.
+export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDay = null, fromDay = null, toDay = null } = {}) {
   if (!rows.length) return 0;
   const byDay = new Map();
   for (const r of rows) {
@@ -65,9 +73,11 @@ export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDa
   }
   const known = await knownDays(source);
   const last = maxDay || [...byDay.keys()].sort().pop();
-  // Escreve os dias que faltam e os dias recentes (os que o OMIE pode
-  // ter corrigido). O resto do histórico já está lá e não muda.
-  const days = [...byDay.keys()].filter(d => !known.has(d) || (last && d >= shiftDays(last, -recentDays)));
+  const from = fromDay || (last ? shiftDays(last, -recentDays) : null);
+  const to = toDay || last;
+  // Escreve os dias que faltam e os dias dentro da janela (os que o upstream
+  // ainda pode rever). O resto do histórico já está lá e não muda.
+  const days = [...byDay.keys()].filter(d => !known.has(d) || (from && to && d >= from && d <= to));
   if (!days.length) return 0;
 
   let written = 0;
@@ -107,13 +117,22 @@ export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDa
 // O omie.es manda no preço; o TF traz a classificação BD/BS e cobre os
 // buracos. `est` marca as linhas que são estimativa OMIP (o TF vai mais
 // longe do que o mercado já publicado).
+// O último instante publicado pelo omie.es: a fronteira do mercado.
+// Guarda-se à parte porque nas leituras de um só dia pode não haver linhas
+// do omie.es no lote para a deduzir (ver `reconcile`).
+export async function lastOmieInstant() {
+  const rows = await query(`SELECT MAX(ts_utc) AS m FROM omie_spot WHERE source = 'OMIE_ES'`);
+  const m = rows[0] && rows[0].m;
+  return m ? String(m) : null;
+}
+
 export async function spotForDay(dayUtc) {
   const rows = await query(
     `SELECT ts_utc, day_utc, min_utc, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags
        FROM omie_spot WHERE day_utc = $1 ORDER BY ts_utc`,
     [dayUtc]
   );
-  return reconcile(rows);
+  return reconcile(rows, { lastOmie: await lastOmieInstant() });
 }
 
 // As linhas de um intervalo de dias (inclusive), reconciliadas.
@@ -123,12 +142,12 @@ export async function spotBetween(fromUtc, toUtc) {
        FROM omie_spot WHERE day_utc >= $1 AND day_utc <= $2 ORDER BY ts_utc`,
     [fromUtc, toUtc]
   );
-  return reconcile(rows);
+  return reconcile(rows, { lastOmie: await lastOmieInstant() });
 }
 
 // Reconcilia as linhas das duas fontes (o JS, para ser igual nos dois
 // dialects de BD).
-export function reconcile(rows) {
+export function reconcile(rows, opts = {}) {
   const byUtc = new Map();
   for (const r of rows) {
     const utc = String(r.ts_utc);
@@ -152,8 +171,13 @@ export function reconcile(rows) {
   const out = [...byUtc.values()].sort((a, b) => (a.utc < b.utc ? -1 : 1));
   // A fronteira do mercado: o último instante que o omie.es trouxe. O que
   // estiver para além e só existir no TF é estimativa, não preço.
-  let lastOmie = null;
-  for (const r of rows) if (r.source === 'OMIE_ES' && (!lastOmie || String(r.ts_utc) > lastOmie)) lastOmie = String(r.ts_utc);
+  // Aceita-se a fronteira explícita (`opts.lastOmie`): nas leituras de um só
+  // dia (ex. um dia futuro só com linhas do TF) não há linhas do omie.es no
+  // lote para deduzir a fronteira, e sem ela nada era marcado como estimativa.
+  let lastOmie = (opts && opts.lastOmie) || null;
+  if (!lastOmie) {
+    for (const r of rows) if (r.source === 'OMIE_ES' && (!lastOmie || String(r.ts_utc) > lastOmie)) lastOmie = String(r.ts_utc);
+  }
   for (const item of out) {
     if (item.src !== 'OMIE_ES' && lastOmie && item.utc > lastOmie) item.est = true;
     // A classificação do período horário: a do TF quando há (o TF aplica as
