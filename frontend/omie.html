@@ -310,7 +310,7 @@ function drawCards(d) {
   const fcastTip = fcast.value == null
     ? (LANG === 'en' ? 'no data' : 'sem dados')
     : `${f2(fcast.value)} = (${f2(fcast.mtdSum)} + FPB D×96)/${fcast.quarters}`
-      + ` · ${(fcast.month || '').replace('-', '/')}/01 → ${(fcast.coverageTo || '').replace(/-/g, '/')}`
+      + ` · ${dt(fcast.coverageTo ? fcast.coverageTo + 'T00:00' : fcast.month + '-01T00:00')}`
       + ` · ${(fcast.mtdQuarters || 0)} ${LANG === 'en' ? 'market' : 'mercado'}`
       + ` + ${(fcast.fpbDays || []).length} ${LANG === 'en' ? 'future days' : 'dias futuro'}`;
   const tomorrowTip = c.tomorrow.source === 'fpbd'
