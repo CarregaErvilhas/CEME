@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { avaliarEscala, cruzar, contraste, hex2rgb } from './cores.mjs';
+import { avaliarEscala, cruzar, contraste, hex2rgb } from '../tools/cores.mjs';
 
 const HTML = readFileSync(new URL('../../frontend/omie.html', import.meta.url), 'utf8');
 

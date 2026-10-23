@@ -8,8 +8,8 @@
 // Os valores indexados NÃO entram aqui: dependem do OMIE do dia. Ficam testados
 // com um OMIE fixado no teste da fórmula (ver engine.test.js).
 //
-// O que estes testes NÃO apanham: um tarifário que desapareça do seed. Isso
-// apanha-se a comparar com o sheet — ver o teste "cobertura" no fim.
+// Um tarifário que desapareça do seed é apanhado pelas contagens do teste
+// "cobertura" no fim (e não por estas âncoras).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -29,8 +29,8 @@ function seeded() {
 }
 
 // [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15 e re-congelados
-// a 2026-10-22 onde o CEME mudou o preço publicado (ver cabeçalho do seed.js:
-// galp/atlante/acp/bluecharge/charge2go). O Atlante (AC) e o Charge2Go
+// a 2026-10-22 onde o CEME mudou o preço publicado (ver o histórico do git do
+// seed.js: galp/atlante/acp/bluecharge/charge2go). O Atlante (AC) e o Charge2Go
 // divergem da folha POR DECISÃO — a folha ficou desactualada face às páginas.
 // TODAS as âncoras implicam os valores publicados; o cenário «E se o CEME
 // aplicar a EGME legal 2026?» fica no teste do cenário regulatório, mais abaixo.

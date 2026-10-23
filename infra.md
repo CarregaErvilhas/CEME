@@ -25,11 +25,11 @@ Este documento descreve a infraestrutura alvo do projeto. É o ponto único de v
 Recursos (fixados via autoscaling, ver abaixo):
 - `api`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco, **1 container em repouso / 2 durante o deploy** (ver "Deploy sem downtime" abaixo).
 - `db`: 1–2 vCPU, 0.25–1 GB RAM, 1–5 GB disco (Postgres `:single`).
-(serviço `cache` removido — não usado)
+(houve um Valkey, `cache`: desligado por não ter uso. Volta se aparecer um caso de uso — o código não depende dele.)
 
 ### Autoscaling (fixado por API, `PUT /service-stack/{id}/autoscaling`)
 
-Os serviços managed `db` e `cache` herdaram dos perfis `oltp-staging`/`staging` um teto de **8 vCPU / 48 GB RAM / 250 GB de disco**. São tetos e não consumo (a faturação é pelo uso), mas o **disco nunca encolhe** — por isso ficam fixados:
+O serviço managed `db` (e o `cache`, quando existia) herdou dos perfis `oltp-staging`/`staging` um teto de **8 vCPU / 48 GB RAM / 250 GB de disco**. São tetos e não consumo (a faturação é pelo uso), mas o **disco nunca encolhe** — por isso ficam fixados:
 
 | Serviço | max antes | max agora | min |
 |---|---|---|---|
@@ -189,8 +189,15 @@ falta. Quando se acrescenta uma coluna:
 1. acrescentá-la ao schema — `backend/src/db/schema.sql` **e**
    `backend/src/db/schema.postgres.sql` (os dois dialetos);
 2. acrescentá-la a `ADDED_COLUMNS` em `backend/src/db/migrate.js`;
-3. o teste `backend/test/migrate.test.js` verifica que as duas coisas batem
-   certo — se falhar, é porque falta uma das duas.
+3. acrescentá-la também à verificação do `backend/test/migrate.test.js`
+   («toda a coluna nova do schema está na lista da migração»), que hoje olha
+   para as colunas conhecidas pelo nome — o teste não descobre sozinho uma
+   coluna nova que só esteja no schema. (E só corre em SQLite: o caminho
+   `to_regclass` do Postgres não tem teste — roadmap.)
+
+Antes do schema corre ainda `migrateOmieTables()`: renomeia colunas do OMIE
+cujo nome mudou (sem perder dados) e só depois deita fora tabelas do OMIE
+com uma forma antiga incompatível. Ver docs/08.
 
 Duas notas:
 
@@ -365,47 +372,36 @@ Sem isto, um push direto a `main` (ou um merge com checks vermelhos) chega ao Ze
 
 ### 4.4 Segredos
 
-**Nenhum segredo Zerops no GitHub.** O `JWT_SECRET` (e futuro `CEME_API_KEY`) são env secrets do serviço `api` no Zerops (ver secção 2). O DNS é configuração única manual na Cloudflare (o IPv6 do Zerops é estático).
+**Nenhum segredo Zerops no GitHub.** O `JWT_SECRET` e o `CEME_API_KEY` (opcional; tirá-lo revoga a chave — docs/04) são env secrets do serviço `api` no Zerops (ver secção 2). O DNS é configuração única manual na Cloudflare (o IPv6 do Zerops é estático).
 
 ### Preview por PR
 
-Não implementado (future improvement, ver secção 5). PRs correm apenas os testes.
+**Não automatizado.** Os PRs correm só os testes. Há um runbook manual em
+[`docs/preview-envs.md`](docs/preview-envs.md), com scripts-esqueleto
+(`scripts/preview-create.sh` / `preview-destroy.sh`, comandos comentados).
+
+Automatizar via GitHub Actions exigiria uma credencial do Zerops no GitHub —
+precisamente o que o deploy por webhook (§4.2) evita. Se um dia valer a pena,
+é essa a troca a decidir primeiro.
+
+### Dependências e dono
+
+- `.github/dependabot.yml`: npm e github-actions, semanal, com cooldown.
+- `.github/CODEOWNERS`: dono único do repositório.
+- `ci.yml`: `permissions: contents: read` e `concurrency` com
+  cancel-in-progress (um push novo cancela o run anterior do mesmo ref).
 
 ---
 
-## 5. Dev replica por PR — dá?
+## 5. Backups e recuperação
 
-**Sim, dá**, com a ressalva de que o Zerops não tem necessariamente uma feature nativa chamada “Preview Environments” como o Vercel. O que se faz é:
-
-1. No GitHub Actions, ao abrir um PR, executar um script que:
-   - Cria um projeto (ou ambiente) novo no Zerops com nome baseado no número do PR (`ceme-v2-pr-42`).
-   - Faz `zcli push` desse projeto.
-   - Aponta um subdomínio de preview (ex: `pr-42.ceme-beta.ocarroeletrico.com`) para o IP/IPv6 desse projeto.
-   - Comenta o PR com a URL.
-
-2. Quando o PR é fechado ou mergeado:
-   - O mesmo workflow executa `zcli destroy` desse projeto de preview.
-   - Remove o registo DNS do subdomínio de preview.
-
-3. Quando se faz merge para `main`:
-   - O workflow de produção faz `zcli push` no projeto principal.
-   - Atualiza o DNS do subdomínio de produção se necessário.
-
-Isso dá ambientes efémeros por PR, destruídos automaticamente, e produção atualizada no merge para `main`.
-
-**Custo:** cada preview consome recursos do Zerops enquanto está ativo. Como os previews são destruídos ao fechar o PR, o custo fica controlado.
-
----
-
-## 6. Backups e recuperação
-
-- O serviço `db` (PostgreSQL) no Zerops tem backups automáticos (configurável no `zerops.yml` ou na consola).
+- O serviço `db` (PostgreSQL) no Zerops tem backups automáticos, configurados na consola do Zerops (o `zerops.yml` só define o runtime `api`).
 - Em caso de perda da BD, restaurar do backup do Zerops. **Não recriar via seed** (a seed é só bootstrap de ambiente vazio).
 - Manter um dump ocasional do esquema + dados de referência fora do Zerops (opcional, para pet project).
 
 ---
 
-## 7. O que não existe nesta fase (e não vamos construir)
+## 6. O que não existe nesta fase (e não vamos construir)
 
 - Painel de admin para tarifários.
 - Painel de editor para CEMEs atualizarem os próprios tarifários.
@@ -415,13 +411,13 @@ Substituição futura: MCP server para gestão de tarifários (a discutir depois
 
 ---
 
-## 8. Checklist de implementação
+## 7. Checklist de implementação
 
 - [x] Criar `zerops.yml` (feito).
 - [x] Criar `schema.postgres.sql` e `pg.js`.
 - [x] Adaptar `server.js` para `pg`.
 - [x] `npm install pg` + `npm test` verdes localmente.
-- [x] Criar serviços `api`, `db`, `cache` no projeto Zerops (`zerops-import.yaml`).
+- [x] Criar serviços `api`, `db`, `cache` no projeto Zerops (`zerops-import.yaml`). (O `cache` foi depois desligado — sem uso.)
 - [x] `zcli push api` → deploy verificado: `GET /` 200, `/v1/tariffs` com 128 tarifários e 24 CEMEs do seed.
 - [x] Registar `ceme-beta.ocarroeletrico.com` no L7 balancer do Zerops (`public-http-routing`), certificado Let's Encrypt ACTIVE.
 - [x] Registo `AAAA` no Cloudflare com proxy activo → `https://ceme-beta.ocarroeletrico.com` a 200.

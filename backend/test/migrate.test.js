@@ -148,4 +148,32 @@ describe('migração: as tabelas do OMIE com a forma antiga', () => {
     const tables = (await query(`SELECT name FROM sqlite_master WHERE type='table'`)).map(r => r.name);
     assert.ok(!tables.includes('omie_spot'), 'a tabela antiga tem de ir embora');
   });
+
+  it('uma forma inesperada COM dados não é apagada (ex. um rollback) — fica a nota', async () => {
+    await run('DROP TABLE IF EXISTS omie_spot');
+    await run(`CREATE TABLE omie_spot (ts_lisbon TEXT PRIMARY KEY, price_pt_eur_mwh REAL NOT NULL, source TEXT NOT NULL)`);
+    await run(`INSERT INTO omie_spot VALUES ('2026-07-02T00:00', 80, 'OMIE_ES')`);
+    const notes = await migrateOmieTables();
+    assert.ok(notes.some(n => /NÃO apagada/.test(n)), `notas: ${notes.join(', ')}`);
+    assert.equal((await query('SELECT COUNT(*) AS n FROM omie_spot'))[0].n, 1, 'a linha continua lá');
+  });
+
+  it('day_utc/min_utc (nomes antigos, valores de Lisboa) são renomeadas sem perder linhas', async () => {
+    await run('DROP TABLE IF EXISTS omie_spot');
+    await run(`CREATE TABLE omie_spot (
+      ts_utc TEXT NOT NULL, day_utc TEXT NOT NULL, min_utc INTEGER NOT NULL,
+      price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL, bd TEXT, bs TEXT,
+      source TEXT NOT NULL, flags TEXT, ingested_at TEXT,
+      PRIMARY KEY (ts_utc, source))`);
+    await run(`INSERT INTO omie_spot (ts_utc, day_utc, min_utc, price_pt_eur_mwh, source)
+               VALUES ('2026-07-01T23:00:00.000Z', '2026-07-02', 0, 80, 'OMIE_ES')`);
+    const notes = await migrateOmieTables();
+    assert.ok(notes.some(n => n.includes('day_lisbon')), `notas: ${notes.join(', ')}`);
+    const cols = await colsOf('omie_spot');
+    assert.ok(cols.includes('day_lisbon') && cols.includes('min_lisbon'));
+    assert.ok(!cols.includes('day_utc') && !cols.includes('min_utc'));
+    const rows = await query('SELECT day_lisbon, min_lisbon FROM omie_spot');
+    assert.deepEqual(rows.map(r => [r.day_lisbon, r.min_lisbon]), [['2026-07-02', 0]], 'a linha sobrevive');
+    assert.deepEqual(await migrateOmieTables(), [], 'segunda passagem: nada a fazer');
+  });
 });

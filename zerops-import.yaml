@@ -2,12 +2,10 @@
 #
 #   zcli project service-import zerops-import.yaml -P 9n1HBsuHT72ZgP2XkXXAIA
 #
-# Cria os três serviços que o zerops.yml pressupõe. Os hostnames não são
-# decorativos: o zerops.yml puxa `DATABASE_URL: ${db_connectionString}` do
-# serviço `db`, e o workflow/`zcli push api` endereça o runtime por hostname.
-#
-# Recriar o ambiente do zero: `zcli project delete <id> --confirm` e
-# `zcli project project-import` com o bloco `project:` abaixo.
+# Cria os serviços que o zerops.yml pressupõe: `db` (PostgreSQL) e `api`
+# (o runtime). Os hostnames não são decorativos: o zerops.yml puxa
+# `DATABASE_URL: ${db_connectionString}` do serviço `db`, e o webhook de deploy
+# (e um `zcli push api` à mão) endereça o runtime por hostname.
 #yamlPreprocessor=on
 services:
   # --- Gestão de dados, por ordem de prioridade -------------------------

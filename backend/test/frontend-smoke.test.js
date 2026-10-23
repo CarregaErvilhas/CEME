@@ -61,6 +61,7 @@ ctx.setInterval = noop; ctx.clearInterval = noop; ctx.__LANG__ = 'pt';
 
 // Corta o `init()` (faz fetch), mantendo o resto.
 vm.runInContext(STRINGS, ctx, { filename: 'strings.js' });
+vm.runInContext(readFileSync(new URL('../../frontend/tz.js', import.meta.url), 'utf8'), ctx, { filename: 'tz.js' });
 vm.runInContext(JS.replace(/^init\(\);?$/m, '/* init() removido no teste */'), ctx, { filename: 'frontend.js' });
 
 // Um tarifário de cada tipo, com o formato que `POST /v1/simulate` devolve.
@@ -70,6 +71,8 @@ const FIXED = (over = {}) => ({
   estimated: false, source_url: 'https://x', valid_from: '2026-10-15', brand: '#45a267',
   regions: 'CONT', activation: 0.11, iec: 0.001, vat: 1.23,
   prices: { VAZIO: 0.1157, FORA_VAZIO: 0.1812 }, totalEur: 9.11, eurKwhNoIva: 0.19,
+  // Ilustrativo — a soma ao cêntimo é testada no motor (engine.test.js).
+  parts: { energyTar: 7.25, energy: null, tar: null, iec: 0.04, activation: 0.11, support: 0, base: 7.40, vatEur: 1.71 },
   period: 'FORA_VAZIO', ...over,
 });
 const INDEXED = (over = {}) => ({
@@ -126,9 +129,20 @@ describe('smoke do frontend', () => {
     const semVat = FIXED(); delete semVat.vat;
     const h = run(`detail(q)`, `setLang('pt', false); const q = ${JSON.stringify(semVat)};`);
     semLixo(h, 'detail sem vat');
-    assert.ok(!h.includes('incluído no total'), 'a linha do IVA não devia aparecer sem vat');
+    assert.ok(!h.includes('IVA ('), 'a linha do IVA não devia aparecer sem vat');
     const comVat = run(`detail(q)`, `setLang('pt', false); const q = ${JSON.stringify(FIXED())};`);
-    assert.ok(comVat.includes('23% incluído no total'), 'com vat, a linha tem de aparecer');
+    assert.ok(comVat.includes('IVA (23%)'), 'com vat, a linha tem de aparecer');
+  });
+
+  it('a conta linha a linha: energia+TAR, IEC, ativação, IVA e total — e só separa o que se sabe', () => {
+    const junto = run(`detail(q)`, `setLang('pt', false); const q = ${JSON.stringify(FIXED())};`);
+    for (const k of ['energia + TAR', 'IEC', 'Taxa de ativação', 'total sem IVA', 'IVA (23%)', '9.11€']) {
+      assert.ok(junto.includes(k), `falta "${k}" na conta`);
+    }
+    assert.ok(!/<tr class="sub"><td>&nbsp;&nbsp;energia<\/td><td>\d/.test(junto), 'sem separação conhecida não há linha de energia à parte');
+    const sep = FIXED({ parts: { ...FIXED().parts, energy: 4.00, tar: 3.25 } });
+    const h = run(`detail(q)`, `setLang('pt', false); const q = ${JSON.stringify(sep)};`);
+    assert.ok(h.includes('4.00€') && h.includes('3.25€'), 'com separação, energia e TAR aparecem em €');
   });
 
   it('os badges de cada tipo de tarifário desenham', () => {
@@ -171,21 +185,30 @@ describe('smoke do frontend', () => {
       'o subtítulo ainda promete os futuros');
   });
 
-  it('ranges() colapsa quartos contiguos e nao inventa faixas', () => {
-    const out = run(`[
+  it('ranges() colapsa quartos contiguos (pelo instante) e nao inventa faixas', () => {
+    // Quartos como vêm da API: rótulos de relógio + o instante UTC.
+    const Q = (start, end, utc) => ({ start, end, utc });
+    const out = run(`(() => { const Q = (start, end, utc) => ({ start, end, utc }); return [
       ranges([]),
-      ranges(['12:00']),
-      ranges(['10:30','10:45','11:00']),
-      ranges(['09:00','09:15','11:00']),
-      ranges(['23:45','' + plus15('23:45')]),
-    ]`);
+      ranges([Q('12:00','12:15','2026-07-01T11:00:00.000Z')]),
+      ranges([Q('11:00','11:15','2026-07-01T10:00:00.000Z'), Q('10:30','10:45','2026-07-01T09:30:00.000Z'), Q('10:45','11:00','2026-07-01T09:45:00.000Z')]),
+      ranges([Q('09:00','09:15','2026-07-01T08:00:00.000Z'), Q('09:15','09:30','2026-07-01T08:15:00.000Z'), Q('11:00','11:15','2026-07-01T10:00:00.000Z')]),
+      ranges([Q('23:45','00:00','2026-07-01T22:45:00.000Z')]),
+      // 25/10/2026 em Lisboa: 01:45 (WEST) -> 01:00 (WET), contíguo no instante.
+      ranges([Q('01:00','01:15','2026-10-25T01:00:00.000Z'), Q('01:45','01:00','2026-10-25T00:45:00.000Z')]),
+      // 29/03/2026 em Lisboa: 00:45 -> 02:00 (o relógio salta, o instante não).
+      ranges([Q('00:45','02:00','2026-03-29T00:45:00.000Z'), Q('02:00','02:15','2026-03-29T01:00:00.000Z')]),
+    ]; })()`);
+    void Q;
     // JSON.stringify: os arrays do vm context nao passam deepEqual
     const eq = (n, esperado, msg) => assert.equal(JSON.stringify(out[n]), JSON.stringify(esperado), msg);
     eq(0, [], 'lista vazia nao da nenhuma faixa');
     eq(1, ['12:00–12:15'], 'um quarto so fecha com o seguinte');
-    eq(2, ['10:30–11:15'], 'tres contiguos = uma faixa so');
+    eq(2, ['10:30–11:15'], 'tres contiguos (fora de ordem) = uma faixa so');
     eq(3, ['09:00–09:30', '11:00–11:15'], 'um buraco parte a faixa em duas');
-    assert.ok(out[4][0].startsWith('23:45'), `meia-noite tem de funcionar: ${out[4]}`);
+    eq(4, ['23:45–00:00'], 'meia-noite tem de funcionar');
+    eq(5, ['01:45–01:15'], 'Outubro: a hora repetida continua contígua');
+    eq(6, ['00:45–02:15'], 'Março: o salto do relógio não é buraco');
   });
 
   it('a data mostra-se como captura, nunca como inicio do contrato', () => {
