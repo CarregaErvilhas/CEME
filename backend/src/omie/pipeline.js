@@ -191,27 +191,18 @@ export async function rebuildDerived() {
 
   // O payload das estatísticas.
   //
-  // A chave de agrupamento (`dn`/`mk`) é o DIA DE MERCADO (Madrid): é por
-  // aí que a OMIE publica e é o que a folha original usava. O dia civil de
-  // Lisboa (`r.day`) é a leitura local e serve só de apresentação
-  // (`lisbonDn`/`lisbonMin`). Sem esta distinção o último quarto do dia
-  // aparecia às 23:45 (hora de Lisboa do dia seguinte) em vez de 22:45.
-  const madridDate = (utc) => {
-    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(utc));
-    const get = (t) => parts.find(p => p.type === t)?.value;
-    return `${get('year')}-${get('month')}-${get('day')}`;
-  };
+  // A chave de agrupamento (`dn`/`mk`) é o dia civil de LISBOA (`r.day`):
+  // é por aí que o TF publica os seus agregados diários e mensais, e é o
+  // que o utilizador vê. A hora mostrada é a mesma (Lisboa), por isso não
+  // há conversão separada — `lisbonDn`/`lisbonMin` são a mesma leitura.
   const statsRows = rows.map(r => {
-    const md = madridDate(r.utc);
-    const dn = dayNum(md);
-    const [ly, lm, ld] = String(r.day).split('-').map(Number);
-    const lisbonIso = `${ly}-${String(lm).padStart(2,'0')}-${String(ld).padStart(2,'0')}`;
+    const dn = dayNum(r.day);
     return {
       dn,
-      day: md,
-      mk: md.slice(0, 7),
+      day: r.day,
+      mk: r.day.slice(0, 7),
       min: r.min,
-      lisbonDn: dayNum(lisbonIso),
+      lisbonDn: dn,
       lisbonMin: r.min,
       bd: r.bd || 'V',
       bs: r.bs || 'V',
