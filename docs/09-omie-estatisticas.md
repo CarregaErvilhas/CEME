@@ -36,12 +36,12 @@ coluna uma série de médias:
 A classificação vem das colunas `BD`/`BS` do ficheiro do TF, que aplicam
 as regras de período horário da ERSE. Bate certo com os agregados mensais
 publicados pelo TF (`omie_mensal.csv`): para um mês fechado, a média que
-a página calcula é a que o TF publica (ex.: Setembro de 2026 — 143,91 no
-Simples, 160,55 / 130,76 no semanal, 191,36 / 110,02 no diário).
+a página calcula é a que o TF publica — guarda de regressão em
+`omie-tz.test.js`, contra o ficheiro real.
 
 **"Total geral"** não é a média das médias: é a média de **todos** os
-quarts da janela (366 dias), pelo que um mês com mais dias pesa mais. É a
-diferença entre 78,46 e o que daria a média das 13 linhas.
+quartos da janela (366 dias), pelo que um mês com mais dias (e mais
+quartos) pesa mais do que daria a média das 13 linhas.
 
 ### As duas escalas de cor
 
@@ -60,28 +60,42 @@ decoração. As duas regras são diferentes **de propósito**:
     médio **fixo em 60 €/MWh** (um marco absoluto: acima de 60 é caro);
   - as quatro colunas Vazio/Cheia usam uma escala divergente
     azul→branco→vermelho (`#CFE2F3` → `#FFFFFF` → `#E6B8AF`) calculada
-    **dentro da própria linha**, com o branco no meio da linha. Assim o
+    **dentro da própria linha**, com o branco na **mediana** dos quatro
+    valores da linha (não no ponto médio entre o mínimo e o máximo). Assim o
     que se vê é *dentro* do mês: quanto o vazio custou mais do que a
     cheia, sem a distração do nível absoluto do mês.
+  - a linha **Total geral** usa a mesma escala divergente, calculada sobre
+    as cinco colunas dessa linha (Simples incluído).
 
   (A folha tinha aqui uma regra com `NUMBER 60` na linha do total que não
-  batia com o que se via; o que está implementado é a escala divergente
-  por linha, que é o que a folha mostrava.)
+  batia com o que se via; o que está implementado é a escala divergente,
+  que é o que a folha mostrava.)
+
+  Um mês ainda a decorrer leva um `*` e uma nota por baixo da tabela.
 
 ### As seis células da esquerda
 
+Regra geral: **só mercado** (preços publicados pela OMIE). As estimativas
+OMIP por quarto do TF **não entram em número nenhum** desta página; a única
+fonte de futuro admitida são os futuros **diários** `FPB D` do TF, usados
+tal como vêm publicados (um número por dia), e sempre assinalados.
+
 | Célula | O que é |
 |---|---|
-| Valor OMIE à hora actual | o preço do quarter em curso (o último publicado, se o de agora ainda não saiu) |
-| Média OMIE de Hoje | média do dia de **calendário** de hoje |
-| Média OMIE de Amanhã (até às 23h) | média do dia de **calendário** de amanhã (estimativa OMIP) |
+| Valor OMIE à hora actual | o preço do quarto em curso; se esse ainda não foi publicado, o último publicado (e o cartão diz que não é "ao vivo") |
+| Média OMIE de Hoje | média do dia civil de hoje (Lisboa), só com quartos de mercado. Se hoje ainda não tem nenhum, mostra o **último dia de mercado** e o título muda para dizê-lo |
+| Média OMIE de Amanhã | se amanhã já tem quartos de mercado (depois das ~13:00), a média deles; senão, o futuro diário `FPB D` dessa data, marcado como futuro, **não** mercado; sem nenhum dos dois, vazio |
 | Média OMIE dos últimos 30 dias | média entre `último dia de mercado − 30 dias` e o último quarto de mercado |
-| Previsão Futuro de [mês] | a média do mês **completo**, com o resto estimado a partir dos futuros OMIP |
-| Média OMIE do mês [mês] | a média do mês em curso (só o que já é mercado) |
+| Previsão Futuro de [mês] | o mês em curso até agora (mercado) + `FPB D` × nº de quartos **de cada dia** (92/96/100) para os dias restantes que têm futuro publicado. A cobertura pode ser parcial (`coverageTo`); se faltam dias e nenhum tem futuro, vazio |
+| Média OMIE do mês [mês] | a média do mês em curso (só mercado) |
 
-A distinção entre "calendário" e "último dia de mercado" importa: o dia de
-hoje pode ainda não ter sido publicado (a OMIE publica o dia D na manhã
-de D+1), e nesse caso o valor de "hoje" é a estimativa OMIP.
+O dia de amanhã, à tarde, tem só 92 quartos de mercado: as 23:00–24:00 de
+Lisboa são do dia de mercado **seguinte** de Madrid, que ainda não saiu
+(ver docs/03). A média de amanhã é a desses quartos.
+
+Cada cartão tem uma tooltip com a fórmula (soma / nº de quartos, a mistura
+mercado vs futuro), a idade do ficheiro do TF e a hora de emissão do
+ficheiro da OMIE — para quem quiser conferir o número.
 
 ## De onde vêm os dados
 
@@ -90,7 +104,7 @@ Duas fontes, reconciliadas por **instante** (ver `03-omie-ingestao.md`):
 | fonte | o que traz |
 |---|---|
 | **omie.es** (primária) | o preço de cada quarto-horário (o dump acumulado público) |
-| **dados.tiagofelicia.pt** (TF, CC BY 4.0) | a classificação do período horário (BD/BS, as regras da ERSE) e as estimativas OMIP dos dias que a OMIE ainda não publicou |
+| **dados.tiagofelicia.pt** (TF, CC BY 4.0) | a classificação do período horário (BD/BS, as regras da ERSE), os buracos do omie.es e os futuros diários `FPB D` (amanhã sem mercado e a previsão do mês) |
 
 A atribuição do TF é obrigatória (CC BY 4.0) e é o que a coluna `source` da
 API devolve (`omie.es (OMIE/MIBEL) + dados.tiagofelicia.pt (CC BY 4.0)`).
@@ -100,8 +114,13 @@ que estiver para além são estimativas OMIP e ficam marcadas como tal.
 
 ## As horas: instantes em UTC, dias civis de Lisboa
 
-A página mostra as horas no **fuso de quem a vê** (o browser converte os
-instantes; o backend guarda os instantes em UTC).
+- **Instantes** (o quarto actual, o início/fim das janelas de 30 dias e do
+  mês, o último dado no rodapé) mostram-se no **fuso de quem vê**, no
+  formato `aaaa/mm/dd hh:mm` (24 h). O backend manda-os em UTC (`…Utc`,
+  terminados em `Z`) e o browser converte.
+- **Dias** (hoje, amanhã, a cobertura da previsão) são dias civis de
+  **Lisboa** e mostram-se como dia, rotulados "Lisboa" — não são instantes,
+  e convertê-los para outro fuso inventava-lhes uma hora.
 
 O agrupamento é por **dia civil de Lisboa**: é por aí que o TF publica os
 seus agregados diários e mensais, e é o que o utilizador vê — a média de um
@@ -122,27 +141,35 @@ meia-noite é o **antigo** no dia da mudança de hora, porque a transição
 acontece às 01:00 UTC — sempre depois da meia-noite local. É isso que dá
 ao dia de Lisboa 23 horas em Março e 25 em Outubro.
 
-## Cache
+## Frescura: três relógios
 
 Os dados estão na **base de dados** (`omie_spot`, `omie_daily`,
 `omie_meta`) — não em ficheiros do contentor: a BD persiste entre deploys e
-é partilhada por todas as réplicas.
+é partilhada por todas as réplicas. O payload das estatísticas é
+materializado em `omie_meta`. `GET /v1/omie/stats` (`getStats` em
+`pipeline.js`) trata três relógios:
 
-O payload das estatísticas é materializado em `omie_meta` na ingestion (e
-recalculado a cada refresh, que acontece **a pedido**, sem cron — ver
-`03-omie-ingestao.md`).
+1. **Os dados** — como as outras leituras do OMIE, o pedido chama
+   `ensureFresh`: passado o TTL do refresh, dispara a ingestion em segundo
+   plano e serve o que há, com `stale: true` (o rodapé diz "a actualizar em
+   segundo plano"). É isto que faz o `omie.cocofree.dev` — que só pede
+   `/stats` — actualizar sozinho. Sem cron (docs/03).
+2. **O dia** — um payload calculado noutro dia civil de Lisboa tem os
+   cartões desse dia; nesse caso recalcula-se logo, da BD, sem rede.
+3. **O quarto de hora** — o preço "à hora actual" recalcula-se a cada
+   pedido, a partir de uma cauda dos últimos quartos guardada no payload. A
+   página volta a pedir os dados de minuto a minuto.
 
-### O preço "à hora actual" é calculado a cada pedido
+O arranque do servidor também recalcula os derivados (`rebuildDerived`); se
+a meta dos futuros não existir, vai buscá-los nessa altura.
 
-O payload guarda uma cauda com os últimos quartos (400) e o preço é
-recalculado a cada pedido, contra o relógio do servidor. A página volta a
-pedir os dados de minuto a minuto, para o cartão acompanhar o quarter.
+Em modo readonly (`CEME_READONLY=1`) não há ingestion nem escrita: o
+payload calcula-se em memória a partir do que a BD já tem.
 
-Nota sobre o que é "actual": o mercado à vista de dia publica a curva
-inteira do dia de uma vez (o preço é por quarter, não um tick), por isso o
-**preço** só muda quando a OMIE publica — o que muda a cada 15 minutos é
-**a hora** que se mostra. Quando o dia ainda não foi publicado, o cartão
-acrescenta "estimativa OMIP".
+Nota sobre o que é "actual": o mercado diário publica a curva inteira do
+dia de uma vez (o preço é por quarto, não um tick), por isso o **preço** só
+muda quando a OMIE publica — o que muda a cada 15 minutos é **o quarto**
+que se mostra.
 
 ## Modo daltonismo
 
@@ -159,10 +186,10 @@ medição:
 - cartões: vermelho/amarelo/laranja → vermelho/amarelo/azul claro.
 
 As paletas mantêm a estrutura da folha (mesma rampa de 3 paragens, mesmo
-pivô por linha) e cumprem, sob simulação de protanopia, deuteranopia e
-tritanopia (matrizes de Machado 2009, severidade 1.0): extremos com
-ΔE ≥ 25, pivô com ΔE ≥ 12, e as duas escalas não se confundem entre si
-(ΔE ≥ 15). Em modo daltonismo a tinta das células passa a `#1A1A1A`, o que
+pivô por linha) e foram escolhidas por medição com
+`backend/tools/cores.mjs` (simulação de Machado 2009, severidade 1.0, ΔE76
+em CIE Lab). Os limiares que se exigem — e sob que tipos de daltonismo — são
+os do `omie-cores.test.js`; é aí que estão, não aqui. Em modo daltonismo a tinta das células passa a `#1A1A1A`, o que
 garante contraste ≥ 4,5:1 sobre todos os fundos. A escolha é persistida em
 `localStorage` (`ceme:paleta`) e é reposta ao voltar à página.
 
@@ -178,7 +205,8 @@ manual é o único mecanismo fiável.
 Até agora o servidor só olhava para o *path* do pedido. Com dois domínios
 a servir a mesma app, é o `Host` que decide o que é a raiz:
 
-- `Host: omie.cocofree.dev` + `/` → a página OMIE;
+- `Host: omie.cocofree.dev` + `/` → a página OMIE (com a língua negociada
+  pelo `Accept-Language`, como as outras páginas);
 - `Host: omie.cocofree.dev` + `/simulador`, `/sobre`, … → o resto do site
   (é a mesma app);
 - qualquer outro host + `/` → o simulador/assistente, como antes;

@@ -7,13 +7,14 @@ import http from 'node:http';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { query, get, run, dbInstance } from './db.js';
+import { query, get, run, dbInstance, READONLY } from './db.js';
 import { signJwt, verifyJwt, hashKey } from './auth/tokens.js';
 import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
 import { getDaily, getFutures, getQuarters, getStats, rebuildDerived, SOURCE_LABEL } from './omie/pipeline.js';
+import { civilDay } from './omie/convert.js';
 import { migrateOmieTables, migrateAddedColumns } from './db/migrate.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed.postgres.js';
@@ -39,13 +40,14 @@ const BACKEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const DATA_DIR = path.join(BACKEND_DIR, 'data');
 
 // Flags de bootstrap (opcionais, para previews/snapshots/readonly):
-//   CEME_READONLY=1     -> não escreve nada na BD (schema/seed/tar/api_key).
-//                         Usar com DB de produção readonly ou com snapshot já
-//                         restaurado. O server só lê.
+//   CEME_READONLY=1     -> não escreve nada na BD: o bootstrap salta
+//                         schema/seed/tar/api_key, o OMIE não ingere nem grava
+//                         derivados (calcula-os em memória), e `run()` recusa
+//                         qualquer escrita que escape (db.js). Usar com a BD de
+//                         outro ambiente ou com um snapshot já restaurado.
 //   CEME_SKIP_SEED=1    -> salta o seed (upsert massivo), mas corre schema +
 //                         tar + api_key. Útil com snapshot restaurado, para não
 //                         sobrescrever edições manuais da produção.
-const READONLY = process.env.CEME_READONLY === '1';
 const SKIP_SEED = READONLY || process.env.CEME_SKIP_SEED === '1';
 const SKIP_SCHEMA = READONLY;
 const SKIP_TAR = READONLY;
@@ -81,26 +83,44 @@ if (!SKIP_SCHEMA) {
 }
 
 // API key para terceiros: o valor claro é provido pela env (CEME_API_KEY) e
-// NUNCA fica na BD — só o sha256. Sem chave configurada, X-API-Key devolve
-// 401 (o caminho web usa Bearer JWT). UPSERT: refresca o hash se a env mudar
-// entre restarts; em PG e SQLite a sintaxe upsert coincide.
-if (process.env.CEME_API_KEY && !SKIP_API_KEY) {
-  await run(`INSERT INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')
-    ON CONFLICT (id) DO NOTHING`);
-  await run(`INSERT INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', $1, $2)
-    ON CONFLICT (id) DO UPDATE SET hash = $3, prefix = $4`,
-    [hashKey(process.env.CEME_API_KEY), process.env.CEME_API_KEY.slice(0, 8),
-     hashKey(process.env.CEME_API_KEY), process.env.CEME_API_KEY.slice(0, 8)]);
+// NUNCA fica na BD — só o sha256. A env é a fonte de verdade da linha
+// `env-key`, nos dois sentidos:
+//   - com a env: upsert do hash (trocar a chave invalida a antiga) e
+//     `revoked_at` limpo (voltar a pôr a env reactiva-a);
+//   - sem a env: a linha é revogada. A BD persiste (Postgres), por isso tirar
+//     a env sem isto deixava a chave antiga a funcionar para sempre.
+if (!SKIP_API_KEY) {
+  if (process.env.CEME_API_KEY) {
+    const key = process.env.CEME_API_KEY;
+    await run(`INSERT INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')
+      ON CONFLICT (id) DO NOTHING`);
+    await run(`INSERT INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', $1, $2)
+      ON CONFLICT (id) DO UPDATE SET hash = $1, prefix = $2, revoked_at = NULL`,
+      [hashKey(key), key.slice(0, 8)]);
+  } else {
+    await run(`UPDATE api_key SET revoked_at = CURRENT_TIMESTAMP WHERE id = 'env-key' AND revoked_at IS NULL`);
+  }
 }
 
-// TAR 2026 Continente (ERSE) — ilhas entram na fase de seed completo
+// TAR da mobilidade eléctrica 2026 (ERSE, Diretiva n.º 1/2026, art. 23.º).
+// É UMA tabela para o Continente, a RAA e a RAM ("Tarifas de Acesso às Redes
+// da Mobilidade Elétrica em Portugal continental, RAA e RAM", no livro de
+// tarifas da ERSE) — os valores são os mesmos nas três regiões, mas cada uma
+// tem as suas linhas: a TAR procura-se sempre pela região do carregamento, e
+// uma região sem linha é um erro, não um zero. O que a ERSE publica à parte
+// para as ilhas é a TE/Com (energia + comercialização da EDA/EEM ao CEME),
+// que não é TAR e não entra aqui.
+const TAR_2026 = { BT: { VAZIO: 0.0266, FORA_VAZIO: 0.1192 }, MT: { VAZIO: 0.0157, FORA_VAZIO: 0.0812 } };
 if (!SKIP_TAR) {
-  await run(`
-INSERT INTO tar (valid_from, valid_to, region, voltage, period, price_eur_kwh) VALUES
- ('2026-01-01', NULL, 'CONT','BT','VAZIO',0.0266), ('2026-01-01', NULL,'CONT','BT','FORA_VAZIO',0.1192),
- ('2026-01-01', NULL, 'CONT','MT','VAZIO',0.0157), ('2026-01-01', NULL,'CONT','MT','FORA_VAZIO',0.0812)
-ON CONFLICT (valid_from, region, voltage, period) DO NOTHING
-`);
+  for (const region of Object.keys(REGIONS)) {
+    for (const [voltage, byPeriod] of Object.entries(TAR_2026)) {
+      for (const [period, price] of Object.entries(byPeriod)) {
+        await run(`INSERT INTO tar (valid_from, valid_to, region, voltage, period, price_eur_kwh)
+          VALUES ('2026-01-01', NULL, $1, $2, $3, $4)
+          ON CONFLICT (valid_from, region, voltage, period) DO NOTHING`, [region, voltage, period, price]);
+      }
+    }
+  }
 }
 
 // Seed — depende do backend ativo. Saltado em modo readonly ou com snapshot.
@@ -117,8 +137,12 @@ if (!SKIP_SEED) {
 }
 // Reaplica a lógica actual aos dados já guardados (ex.: mudança de agrupamento
 // por dia de mercado), sem depender de uma ingestion completa ao arranque.
-try { await rebuildDerived(); console.log('[ceme-v2] derivados recalculados no arranque'); }
-catch (e) { console.warn('[ceme-v2] rebuildDerived falhou:', e.message); }
+// (Em readonly não se grava: as estatísticas calculam-se em memória no
+// primeiro pedido.)
+if (!READONLY) {
+  try { await rebuildDerived(); console.log('[ceme-v2] derivados recalculados no arranque'); }
+  catch (e) { console.warn('[ceme-v2] rebuildDerived falhou:', e.message); }
+}
 
 function vmeta(tid) {
   const v = VERSIONS[tid] || {};
@@ -146,11 +170,18 @@ function fmtTime(utcIso, tz) {
   return `${get('hour')}:${get('minute')}`;
 }
 
-// O dia pedido (em UTC) ou hoje.
+// O dia pedido (dia civil de Lisboa, que é o dia dos quartos do OMIE) ou
+// hoje em Lisboa. Não o dia UTC: entre as 00:00 e as 01:00 de Verão o dia
+// UTC ainda é ontem, e o comparador abria no dia errado.
 function quarterDay(date) {
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  return new Date().toISOString().slice(0, 10);
+  return civilDay();
 }
+
+// "Hoje", para as validades (tarifários e TAR): o dia civil em Portugal.
+// Nunca `CURRENT_DATE` da BD — é o dia UTC (o pool do pg corre em UTC), e
+// uma campanha que acaba a 30/09 ficava em vigor até à 01:00 de 01/10.
+const today = () => civilDay();
 
 const json = (res, code, obj, extraHeaders = {}) => {
   // nosniff: sem isto, um JSON reflectido podia ser interpretado como
@@ -247,21 +278,31 @@ async function auth(req) {
   return { ok: false, error: 'missing' };
 }
 
-async function allTariffs() {
+// A versão é a que está em vigor no dia pedido. Para um dia sem versão
+// conhecida (anterior à primeira captura) usa-se a de hoje: o seed não tem
+// histórico de preços antes da folha, e uma lista vazia sem erro é pior do
+// que o preço actual.
+async function allTariffs(day = today()) {
   // Simulam-se TODOS os tarifários para a região escolhida (com o IVA
   // e os ciclos dessa região). A disponibilidade comercial (`regions`) é
   // mostrada como informação, não como filtro.
   return await query(`
     SELECT t.*, c.name AS ceme_name,
-      (SELECT v.id FROM tariff_version v
-       WHERE v.tariff_id = t.id
-         AND v.valid_from <= CURRENT_DATE
-         AND (v.valid_to IS NULL OR v.valid_to > CURRENT_DATE)
-       ORDER BY v.valid_from DESC LIMIT 1) AS vid
+      COALESCE(
+        (SELECT v.id FROM tariff_version v
+         WHERE v.tariff_id = t.id
+           AND v.valid_from <= $1
+           AND (v.valid_to IS NULL OR v.valid_to > $1)
+         ORDER BY v.valid_from DESC LIMIT 1),
+        (SELECT v.id FROM tariff_version v
+         WHERE v.tariff_id = t.id
+           AND v.valid_from > $1 AND v.valid_from <= $2
+           AND (v.valid_to IS NULL OR v.valid_to > $2)
+         ORDER BY v.valid_from DESC LIMIT 1)) AS vid
     FROM tariff t
     JOIN ceme c ON c.id = t.ceme_id
     ORDER BY t.id
-  `);
+  `, [day, today()]);
 }
 
 async function comps(vid) {
@@ -287,26 +328,35 @@ async function comps(vid) {
 // lado do cliente: quando o publicado ainda é o de 2025 (acima do legal),
 // `activation_stale` assinala — actualizar é tarefa de nova captura da folha,
 // não de derivar valores no código a cada mudança de regulamento.
+// `activation_stale` só marca quem ainda publica o valor legal ANTERIOR
+// (EGME_PREVIOUS). Valores próprios acima do legal (packs, taxas do próprio
+// CEME) são legítimos e não são "desactualizados".
 const EGME_LEGAL = 0.1088; // €/carregamento, Regul. ERSE 7/2026 (em vigor 2026-01-01)
-const egmeFlags = (act) => ({ egme_legal: EGME_LEGAL, activation_stale: act > EGME_LEGAL });
+const EGME_PREVIOUS = 0.1572; // o valor legal de 2025
+const egmeFlags = (act) => ({ egme_legal: EGME_LEGAL, activation_stale: Math.abs(act - EGME_PREVIOUS) < 1e-9 });
 
-// A TAR em vigor para (região, tensão, período) — ou null, se não a temos.
-//
-// A TAR é o acesso à rede: o valor regulado pela ERSE, o mesmo para todos
-// os comercializadores. Onde não a temos (as ilhas não estão semeadas), a
-// resposta é null — não se inventa TAR nenhuma.
-async function tarFor(region, voltage, period) {
+// A TAR em vigor num dia para (região, tensão, período) — ou null, se não a
+// temos. A TAR é o acesso à rede: o valor regulado pela ERSE, o mesmo para
+// todos os comercializadores. Não se inventa TAR nenhuma: um dia anterior à
+// primeira TAR conhecida usa a mais antiga que há (como os tarifários).
+async function tarFor(region, voltage, period, day = today()) {
   const row = await get(
     `SELECT price_eur_kwh FROM tar
       WHERE region = $1 AND voltage = $2 AND period = $3
-        AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
+        AND valid_from <= $4 AND (valid_to IS NULL OR valid_to > $4)
       ORDER BY valid_from DESC LIMIT 1`,
-    [region, voltage, period]
+    [region, voltage, period, day]
+  ) || await get(
+    `SELECT price_eur_kwh FROM tar
+      WHERE region = $1 AND voltage = $2 AND period = $3 AND valid_from > $4
+      ORDER BY valid_from ASC LIMIT 1`,
+    [region, voltage, period, day]
   );
   return row?.price_eur_kwh ?? null;
 }
 
-async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
+
+async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles }) {
   const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
   const { price, act, iec, sup, split } = await comps(t.vid);
   const meta = {
@@ -318,7 +368,7 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     brand: (await get('SELECT brand_color FROM ceme WHERE id = $1', [t.ceme_id]))?.brand_color || '#666',
   };
   if (t.kind === 'FIXED') {
-    const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region });
+    const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region, split });
     // A decomposição vem dos componentes (a folha): só a há para os
     // tarifários em que o CEME publicava a energia à parte. Nos outros o
     // preço é o final, tal como o CEME o publica.
@@ -327,19 +377,27 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   // INDEXED: PE por período com o OMIE de referência do pedido.
   // Nas ilhas usa-se a ref. continental com aviso (MIBEL não cobre as ilhas).
   const here = REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF';
-  // A TAR do Continente (o MIBEL não cobre as ilhas, e o aviso está lá).
+  // A TAR é a da região do carregamento (a rede é a da ilha); só o OMIE é
+  // continental. Sem TAR não há preço: rebenta e o tarifário vai para a
+  // quarentena, em vez de sair um preço sem rede.
   const tarOf = async (per) => {
-    const row = await get(
-      "SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage = $1 AND period = $2 AND valid_from <= CURRENT_DATE ORDER BY valid_from DESC LIMIT 1",
-      [t.voltage, per]
-    );
-    return row?.price_eur_kwh ?? null;
+    const tar = await tarFor(region, t.voltage, per, day);
+    if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${day}`);
+    return tar;
   };
   const vm = vmeta(t.id);
+  // SPLIT_VAZIO_FORA: o OMIE de cada período é a média desse período NO
+  // CICLO DO TARIFÁRIO — o vazio do ciclo semanal (LuziGas) não é o do diário
+  // (MEO, Ynerluz): ao sábado e ao domingo as horas são outras. Com
+  // `omieCycles` (o que a web manda) cada um usa o seu; sem ele, o par
+  // omieVazio/omieFora vale para todos (é um override explícito).
+  // UNICA: um só OMIE para os dois períodos.
   const agg = ver.omie_aggregation || 'SPLIT_VAZIO_FORA';
+  const cyc = (omieCycles && omieCycles[t.cycle]) || {};
+  const pair = { vazio: cyc.vazio ?? omieVazio, fora: cyc.fora ?? omieFora };
   const omieForPeriod = (per) => {
-    if (agg === 'SPLIT_VAZIO_FORA') return (per === 'VAZIO' ? (omieVazio ?? omie) : (omieFora ?? omie));
-    return omie; // SPOT / UNICA / UNICO
+    if (agg === 'SPLIT_VAZIO_FORA') return (per === 'VAZIO' ? (pair.vazio ?? omie) : (pair.fora ?? omie));
+    return omie;
   };
   const out = {};
   // Nos indexados a energia e a TAR estão SEPARADAS por construção: o preço
@@ -354,7 +412,7 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     out[per] = price;
     splitIdx[per] = tar == null ? null : { energy: price - tar, tar };
   }
-  const omieRef = (agg === 'SPLIT_VAZIO_FORA') ? (omieVazio ?? omie) : omie;
+  const omieRef = (agg === 'SPLIT_VAZIO_FORA') ? (pair.vazio ?? omie) : omie;
   // Guarda: indexado com ciclo SIMPLES só tem preço UNICO — o motor só sabe
   // preços por período (VAZIO/FORA_VAZIO). Não há tarifário assim no seed,
   // mas um futuro seed sem esta guarda fazia o quoteFixed rebentar com
@@ -364,7 +422,7 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
   if (t.schedule === 'SIMPLES' && out.UNICO == null) {
     out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
   }
-  const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region });
+  const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region, split: splitIdx });
   return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }
 
@@ -372,6 +430,12 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
 // se o browser pedir explicitamente inglês, servimos inglês; qualquer outra
 // coisa (es, fr, de, it, ou header ausente) fica em português, porque o
 // público-alvo é português. O cliente pode sobrepor via localStorage.
+// O marcador que cada página traz para o servidor lhe injectar a língua. Com
+// espaços opcionais: o /tabela escrevia `window.__LANG__ = null` e o replace
+// literal nunca acertava (a página ignorava o Accept-Language sem ninguém dar
+// por isso).
+const LANG_MARK = /window\.__LANG__\s*=\s*null/;
+
 function negotiateLang(header) {
   if (!header) return 'pt';
   const tags = String(header).split(',')
@@ -514,6 +578,15 @@ const server = http.createServer(async (req, res) => {
       return res.end(sw);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/sw.js em falta' } }); }
   }
+  if (readStatic(req.method) && url.pathname === '/tz.js') {
+    // Horas de relógio por região (simulador + assistente). no-store, como o
+    // strings.js: é código partilhado e não pode ficar preso numa versão velha.
+    try {
+      const js = await readFile(new URL('../../frontend/tz.js', import.meta.url), 'utf8');
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      return res.end(js);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/tz.js em falta' } }); }
+  }
   if (readStatic(req.method) && url.pathname === '/pwa.js') {
     try {
       const js = await readFile(new URL('../../frontend/pwa.js', import.meta.url), 'utf8');
@@ -538,10 +611,12 @@ const server = http.createServer(async (req, res) => {
   const onOmieHost = host === OMIE_HOST;
   if (readStatic(req.method) && (onOmieHost && url.pathname === '/' || Object.hasOwn(OMIE_ROUTES, url.pathname))) {
     const file = OMIE_ROUTES[url.pathname] || 'omie.html';
+    const lang = negotiateLang(req.headers['accept-language']);
     try {
       const html = (await readFile(new URL(`../../frontend/${file}`, import.meta.url), 'utf8'))
-        .replace('<html lang="pt-PT">', '<html lang="pt-PT">');
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+        .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
+        .replace(LANG_MARK, `window.__LANG__=${JSON.stringify(lang)}`);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language, Host' });
       return res.end(html);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${file} em falta` } }); }
   }
@@ -553,7 +628,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const html = (await readFile(new URL(`../../frontend/${INFO_ROUTES[url.pathname]}`, import.meta.url), 'utf8'))
         .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
-        .replace('window.__LANG__=null', `window.__LANG__=${JSON.stringify(lang)}`);
+        .replace(LANG_MARK, `window.__LANG__=${JSON.stringify(lang)}`);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language' });
       return res.end(html);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${INFO_ROUTES[url.pathname]} em falta` } }); }
@@ -569,7 +644,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const html = (await readFile(new URL(`../../frontend/${UI[ui].file}`, import.meta.url), 'utf8'))
         .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
-        .replace('window.__LANG__=null', `window.__LANG__=${JSON.stringify(lang)}`);
+        .replace(LANG_MARK, `window.__LANG__=${JSON.stringify(lang)}`);
       const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language, Cookie' };
       if (forced) headers['set-cookie'] = uiCookie(req, forced);
       res.writeHead(200, headers);
@@ -615,7 +690,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { data: enriched }, headers);
   }
   if (url.pathname === '/v1/tar') {
-    return json(res, 200, { data: await query("SELECT * FROM tar WHERE valid_from <= CURRENT_DATE AND (valid_to IS NULL OR valid_to > CURRENT_DATE)") }, headers);
+    return json(res, 200, { data: await query('SELECT * FROM tar WHERE valid_from <= $1 AND (valid_to IS NULL OR valid_to > $1)', [today()]) }, headers);
   }
   if (url.pathname === '/v1/tabela') {
     // Página /tabela: o espelho da folha. Os mesmos allTariffs + comps da
@@ -634,7 +709,7 @@ const server = http.createServer(async (req, res) => {
       });
     }
     const ver = await get(
-      'SELECT MAX(valid_from) AS d FROM tariff_version WHERE valid_from <= CURRENT_DATE AND (valid_to IS NULL OR valid_to > CURRENT_DATE)');
+      'SELECT MAX(valid_from) AS d FROM tariff_version WHERE valid_from <= $1 AND (valid_to IS NULL OR valid_to > $1)', [today()]);
     return json(res, 200, { at: ver?.d ?? null, data: out }, headers);
   }
   if (url.pathname === '/v1/omie/daily' && req.method === 'GET') {
@@ -676,9 +751,9 @@ const server = http.createServer(async (req, res) => {
       if (ft) {
         const fv = await get(
           `SELECT id FROM tariff_version v WHERE v.tariff_id = $1
-           AND v.valid_from <= CURRENT_DATE AND (v.valid_to IS NULL OR v.valid_to > CURRENT_DATE)
+           AND v.valid_from <= $2 AND (v.valid_to IS NULL OR v.valid_to > $2)
            ORDER BY valid_from DESC LIMIT 1`,
-          [ft.id]
+          [ft.id, today()]
         );
         // Fixo sem versão em vigor, ou sem preços de energia (ex. só EGME),
         // não dá comparação: fica null — a UI trata como "sem fixo" e esconde
@@ -711,12 +786,11 @@ const server = http.createServer(async (req, res) => {
           };
         });
         Promise.all(withP.map(async (item) => {
-          // TAR vigente (valid_from <= hoje): a coluna pode levar versões futuras
-          const tarRow = await get(
-            "SELECT price_eur_kwh FROM tar WHERE region='CONT' AND voltage = $1 AND period = $2 AND (valid_from IS NULL OR valid_from <= CURRENT_DATE) ORDER BY valid_from DESC LIMIT 1",
-            [t.voltage, item.period]
-          );
-          const tarEurKwh = tarRow?.price_eur_kwh ?? 0;
+          // A TAR em vigor no dia dos quartos, na região pedida (a coluna pode
+          // levar versões futuras). Sem TAR não se cota: o quarto fica sem
+          // preço em vez de sair um preço sem rede.
+          const tarEurKwh = await tarFor(region, t.voltage, item.period, q.date);
+          if (tarEurKwh == null) throw new Error(`sem TAR ${region}/${t.voltage}/${item.period} em ${q.date}`);
           const vm = vmeta(t.id);
           const { price } = indexedPrice({ omieEurKwh: item.omieMwh / 1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: vm.loss, formula: vm.formula });
           item.price = Math.round(price * 10000) / 10000;
@@ -724,7 +798,9 @@ const server = http.createServer(async (req, res) => {
           // quem ganha, quarto a quarto — logica em engine/compare.js
           const comp = compareWithFixed(withP, fixPrice);
           const ranked = [...comp].sort((x, y) => x.price - y.price);
-          const cheap = new Set(ranked.slice(0, 8).map(x => x.start));
+          // Pelo instante, não pela hora de relógio: no dia da mudança de hora
+          // de Outubro há dois quartos "01:00" e o rótulo não os distingue.
+          const cheap = new Set(ranked.slice(0, 8).map(x => x.utc));
           const vm2 = vmeta(t.id);
           json(res, 200, {
             date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh,
@@ -732,7 +808,7 @@ const server = http.createServer(async (req, res) => {
             estimated: q.rows.some(r => r.est), days: q.days, fixed: fixInfo,
             warning: REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF',
             wins: tallyWinners(comp),
-            quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) }))
+            quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.utc) }))
           }, headers);
         }).catch(e => json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers));
       } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }
@@ -762,7 +838,7 @@ const server = http.createServer(async (req, res) => {
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
           return json(res, 400, { error: { code: 'bad_request', message: 'corpo deve ser um objecto JSON' } }, headers);
         }
-        const { kwh = 40, at, region = 'CONT', omie = 0.20, omieVazio, omieFora } = parsed;
+        const { kwh = 40, at, region = 'CONT', omie = 0.20, omieVazio, omieFora, omieCycles } = parsed;
         if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } }, headers);
         if (typeof kwh !== 'number' || !Number.isFinite(kwh) || kwh <= 0 || kwh > 1000) {
           return json(res, 400, { error: { code: 'bad_kwh', message: 'kwh deve ser um número maior que 0 e até 1000' } }, headers);
@@ -772,12 +848,27 @@ const server = http.createServer(async (req, res) => {
           now = new Date(at);
           if (Number.isNaN(now.getTime())) return json(res, 400, { error: { code: 'bad_at', message: 'at deve ser uma data ISO válida' } }, headers);
         } else now = new Date();
-        for (const [nome, v] of [['omie', omie], ['omieVazio', omieVazio], ['omieFora', omieFora]]) {
+        const omieVals = [['omie', omie], ['omieVazio', omieVazio], ['omieFora', omieFora]];
+        if (omieCycles != null) {
+          if (typeof omieCycles !== 'object' || Array.isArray(omieCycles)
+            || Object.keys(omieCycles).some(c => c !== 'DIARIO' && c !== 'SEMANAL')) {
+            return json(res, 400, { error: { code: 'bad_omie', message: 'omieCycles: { DIARIO?, SEMANAL? } com { vazio, fora } em €/kWh' } }, headers);
+          }
+          for (const [c, v] of Object.entries(omieCycles)) {
+            if (typeof v !== 'object' || v === null) return json(res, 400, { error: { code: 'bad_omie', message: `omieCycles.${c} deve ser { vazio, fora }` } }, headers);
+            omieVals.push([`omieCycles.${c}.vazio`, v.vazio], [`omieCycles.${c}.fora`, v.fora]);
+          }
+        }
+        for (const [nome, v] of omieVals) {
           if (v != null && (typeof v !== 'number' || !Number.isFinite(v) || v <= 0)) {
             return json(res, 400, { error: { code: 'bad_omie', message: `${nome} deve ser um número (€/kWh) positivo` } }, headers);
           }
         }
-        const tariffs = await allTariffs();
+        // O dia civil do carregamento, no relógio da região: é por ele que se
+        // escolhe a versão do tarifário e a TAR em vigor (um carregamento
+        // amanhã, depois de uma mudança de preço, usa o preço de amanhã).
+        const day = civilDay(now, REGIONS[region].tz);
+        const tariffs = await allTariffs(day);
         // Isolamento por tarifário: um seed com um único período divergente
         // não pode derrubar os 128 — quarentena em vez de 400 (princípio do
         // docs/03). O tarifário a mais sai fora do ranking; a lista mantém
@@ -798,7 +889,7 @@ const server = http.createServer(async (req, res) => {
             if (i >= tariffs.length) return;
             const t = tariffs[i];
             try {
-              results[i] = await quoteOne(t, { at: now, kwh, region, omie, omieVazio, omieFora });
+              results[i] = await quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles });
             } catch (e) {
               // com identidade, para quem lê os logs/BD saber o que foi posto de lado
               console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);

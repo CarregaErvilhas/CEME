@@ -4,6 +4,9 @@
 # ter sido checkpointed) e o cache OMIE é dados de terceiros, não nosso.
 backend/data/
 data/
+# Dumps da folha (scripts/etl-sheets.sh): dados de terceiros, nunca no
+# repositório (ver THIRD-PARTY-NOTICES.md).
+backend/seed/
 
 *.db
 *.db-wal

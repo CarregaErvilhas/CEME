@@ -16,9 +16,9 @@ function lastSundayOfMonth(y, m) {
 export function isDstLisbon(date) {
   const y = date.getUTCFullYear();
   const start = lastSundayOfMonth(y, 2); // março
-  start.setUTCHours(1, 0, 0, 0); // 01:00 UTC = 02:00 CET? aprox; transição real 01:00 UTC
+  start.setUTCHours(1, 0, 0, 0); // a UE muda sempre às 01:00 UTC (00:59 → 02:00 em Lisboa)
   const end = lastSundayOfMonth(y, 9); // outubro
-  end.setUTCHours(1, 0, 0, 0);
+  end.setUTCHours(1, 0, 0, 0);   // 01:59 WEST → 01:00 WET em Lisboa
   return date >= start && date < end;
 }
 export function isDstLisbonYMD(Y, M, D) {
@@ -53,12 +53,13 @@ export function regionParts(region, date) {
   const tz = (REGIONS[region] || REGIONS.CONT).tz;
   const dtf = new Intl.DateTimeFormat('en-GB', {
     timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
   });
   const p = Object.fromEntries(dtf.formatToParts(date).map(x => [x.type, x.value]));
   return {
     weekday: p.weekday,
-    minutes: parseInt(p.hour, 10) * 60 + parseInt(p.minute, 10),
+    // `% 24`: há motores (Chrome < 80) que davam "24" à meia-noite.
+    minutes: (parseInt(p.hour, 10) % 24) * 60 + parseInt(p.minute, 10),
     month: parseInt(p.month, 10),
   };
 }

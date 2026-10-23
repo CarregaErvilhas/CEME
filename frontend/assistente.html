@@ -225,6 +225,7 @@ h1 { font-size: 24px; line-height: 1.25; font-weight: 500; letter-spacing: -.01e
 </div>
 <script>window.__LANG__=null;</script>
 <script src="/strings.js"></script>
+<script src="/tz.js"></script>
 <script src="/pwa.js"></script>
 <script>
 'use strict';
@@ -252,7 +253,7 @@ const eur = n => new Intl.NumberFormat(loc(), { style: 'currency', currency: 'EU
 const dec = (n, d = 1) => new Intl.NumberFormat(loc(), { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-const TZ = { CONT: 'Europe/Lisbon', MAD: 'Atlantic/Madeira', AZO: 'Atlantic/Azores' };
+const TZ = CEME_TZ.TZ;
 const DEF = { region: 'CONT', cap: 60, capOther: false, from: 20, to: 80, when: 'now', tTonight: '23:00', tTomorrow: '09:00', custom: '', nobundle: false, green: false, popular: false, all: false };
 const P = { ...DEF };
 // As respostas sobrevivem a um reload (os browsers móveis recarregam separadores
@@ -280,27 +281,26 @@ async function api(path, opts = {}) {
 // landing para estar pronto quando se chega aos resultados.
 const OMIE = (async () => {
   try {
-    const r = (await api('/v1/omie/daily?days=2')).rows?.slice(-1)[0];
+    // O último dia COMPLETO (o de amanhã, à tarde, ainda não tem a última hora).
+    const rows = (await api('/v1/omie/daily?days=7')).rows || [];
+    const r = rows.filter(x => x.complete !== false).slice(-1)[0] || rows.slice(-1)[0];
     if (!r) return null;
     const vals = [r.bd_v, r.bd_f, r.bs_v, r.bs_f].filter(Number.isFinite);
     if (!vals.length) return null;
     const omie = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) / 1000;
     const k = v => (Number.isFinite(v) ? v / 1000 : null);
-    return { omie, omieVazio: k(r.bd_v) ?? k(r.bs_v) ?? omie, omieFora: k(r.bd_f) ?? k(r.bs_f) ?? omie };
+    // Por ciclo: cada indexado usa as médias do seu (diário ≠ semanal).
+    const omieCycles = {
+      DIARIO: { vazio: k(r.bd_v) ?? omie, fora: k(r.bd_f) ?? omie },
+      SEMANAL: { vazio: k(r.bs_v) ?? omie, fora: k(r.bs_f) ?? omie },
+    };
+    return { omie, omieVazio: omieCycles.DIARIO.vazio, omieFora: omieCycles.DIARIO.fora, omieCycles };
   } catch { return null; }
 })();
 
 /* ---------- horas na região escolhida ---------- */
-function zparts(date, tz) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    .formatToParts(date).map(x => [x.type, x.value]));
-  return { y: +p.year, m: +p.month, d: +p.day, h: +p.hour, mi: +p.minute, s: +p.second };
-}
-function zoned(y, m, d, h, mi, tz) {
-  const guess = Date.UTC(y, m - 1, d, h, mi);
-  const off = at => { const p = zparts(new Date(at), tz); return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi, p.s) - at; };
-  return new Date(guess - off(guess - off(guess)));
-}
+// zparts/zoned vivem em frontend/tz.js (partilhado com o simulador).
+const { zparts, zoned } = CEME_TZ;
 const hm = s => (/^\d{2}:\d{2}$/.test(s) ? s.split(':').map(Number) : [0, 0]);
 function chargeAt() {
   const tz = TZ[P.region], now = new Date(), p = zparts(now, tz);

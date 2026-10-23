@@ -127,6 +127,20 @@ export function lisbonWallClock(utcMs) {
   };
 }
 
+// O dia civil (YYYY-MM-DD) de um instante num fuso — por omissão Lisboa.
+//
+// É o "hoje" de tudo o que tem datas civis portuguesas (validade dos
+// tarifários e da TAR, o dia do OMIE). Nunca `CURRENT_DATE` da BD nem
+// `toISOString().slice(0, 10)`: ambos dão o dia UTC, que entre as 00:00 e
+// as 01:00 de Verão em Lisboa ainda é ontem.
+export function civilDay(at = new Date(), tz = 'Europe/Lisbon') {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(at);
+  const get = (t) => parts.find(p => p.type === t)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 // A meia-noite local de um dia de Lisboa, em UTC.
 //
 // A mudança de hora acontece às 01:00 UTC — sempre *depois* da meia-noite

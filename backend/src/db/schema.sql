@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS tariff_version (
   omie_aggregation TEXT DEFAULT 'SPLIT_VAZIO_FORA',
   notes TEXT, created_by TEXT, created_at TEXT DEFAULT (datetime('now')),
   -- Uma versão por data de vigência (à paridade do schema postgres): dá
-  -- alvo real ao INSERT OR IGNORE do seed sqlite e evita versões
+  -- alvo ao upsert (ON CONFLICT … DO UPDATE) do seed e evita versões
   -- duplicadas da mesma folha em re-seed.
   UNIQUE (tariff_id, valid_from)
 );
@@ -62,13 +62,13 @@ CREATE TABLE IF NOT EXISTS tar (
 -- As duas fontes podem ter linhas para o mesmo instante — a reconciliação
 -- (a oficial ganha) é feita na leitura.
 CREATE TABLE IF NOT EXISTS omie_spot (
-  ts_utc TEXT NOT NULL, day_utc TEXT NOT NULL, min_utc INTEGER NOT NULL,
+  ts_utc TEXT NOT NULL, day_lisbon TEXT NOT NULL, min_lisbon INTEGER NOT NULL,
   price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL,
   bd TEXT, bs TEXT,
   source TEXT NOT NULL, flags TEXT, ingested_at TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (ts_utc, source)
 );
-CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_utc);
+CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_lisbon);
 
 -- Os agregados diários (as médias por ciclo horário), materializados a
 -- partir das linhas de cima.

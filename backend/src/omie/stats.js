@@ -19,7 +19,7 @@ export const WINDOW_DAYS = 366;
 // poder ser recalculado a cada pedido (ver currentPrice).
 export const TAIL_ROWS = 400;
 
-import { lisbonMidnightUtc } from './convert.js';
+import { lisbonMidnightUtc, expectedQuartersForLisbonDay } from './convert.js';
 
 const pad2 = (n) => String(n).padStart(2, '0');
 // Dia do calendário como número inteiro (epoch em UTC). Serve para ordenar,
@@ -193,8 +193,11 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
     const iso = `${fy}-${String(fm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
     const v = fpb[iso];
     if (dayNum(fy, fm, dd) > cutDn && v != null && Number.isFinite(Number(v))) {
-      fpbUsed.push({ date: iso, value: Number(v) });
-      fpbSum += Number(v) * 96;
+      // O peso de um dia é o nº de quartos DESSE dia: 92/100 nos dias de
+      // mudança de hora (o último domingo de Outubro tem 25 horas).
+      const n = expectedQuartersForLisbonDay(iso);
+      fpbUsed.push({ date: iso, value: Number(v), quarters: n });
+      fpbSum += Number(v) * n;
     }
   }
   const monthEndIso = `${fy}-${String(fm).padStart(2, '0')}-${String(dim).padStart(2, '0')}`;
@@ -202,7 +205,7 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
     for (let dd = 1; dd <= dim; dd++) if (dayNum(fy, fm, dd) > cutDn) return true;
     return false;
   })();
-  const fcastQuarters = monthB.all.length + fpbUsed.length * 96;
+  const fcastQuarters = monthB.all.length + fpbUsed.reduce((a, d) => a + d.quarters, 0);
   const fcastSum = sum(monthB.all) + fpbSum;
 
   // Preço "à hora actual": o quarter que está a correr AGORA, em hora de
@@ -329,7 +332,9 @@ export function currentPrice(payload, now = new Date()) {
   // Quando o instante real está disponível (produção), selecciona-se por ele —
   // é a única coisa que não se repete e não depende de fusos. Caso contrário
   // (testes/fallback), usa-se a leitura em hora de Lisboa.
-  const rowMs = (r) => r.utc ? new Date(r.utc).getTime() : (numToDay(r.lisbonDn).getTime() + (r.lisbonMin || 0) * 60000);
+  // (O fallback parte da meia-noite de LISBOA — não da de UTC, que punha
+  // tudo uma hora ao lado no Verão.)
+  const rowMs = (r) => r.utc ? new Date(r.utc).getTime() : (lisbonMidnightUtc(isoOf(r.lisbonDn)) + (r.lisbonMin || 0) * 60000);
   const sorted = [...pool].sort((a, b) => rowMs(a) - rowMs(b));
   let best = null;
   for (const r of sorted) {

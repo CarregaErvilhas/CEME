@@ -115,6 +115,7 @@
   details tr.aplicado{background:#f0fdf4}
   details tr.aplicado td:first-child{box-shadow:inset 3px 0 0 #16a34a}
   details tr.sub td{font-size:12px;color:var(--mut)}
+  details table.cost td:last-child{text-align:right;white-space:nowrap}
   .tag-aplicado{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#166534;background:#dcfce7;border-radius:999px;padding:2px 7px;white-space:nowrap}
   a.src{font-size:12px;color:#166534;font-weight:600}
   .kpi{display:flex;gap:10px;flex-wrap:wrap}
@@ -234,6 +235,7 @@
 <footer></footer>
 <script>window.__LANG__=null;</script>
 <script src="/strings.js"></script>
+<script src="/tz.js"></script>
 <script src="/pwa.js"></script>
 <script>
 /* ================= i18n ================= */
@@ -321,7 +323,10 @@ function i18n(k, vars) {
 }
 const REG = () => Object.fromEntries(Object.entries(REG_DATA).map(([k, v]) => [k, v[L]]));
 const R = () => REG_DATA[S.region][L];
-const locDate = iso => new Date(iso).toLocaleString(L === 'en' ? 'en-GB' : 'pt-PT');
+// As horas mostradas são as do relógio da região do carregamento (é nele que
+// se lêem os períodos), no formato ISO aaaa/mm/dd hh:mm (24h).
+const regionTz = () => CEME_TZ.TZ[S.region] || CEME_TZ.TZ.CONT;
+const locDate = iso => CEME_TZ.toWall(new Date(iso), regionTz());
 const fmtNum = n => L === 'en' ? String(n) : String(n).replace('.', ',');
 
 function setLang(l, persist = true) {
@@ -456,17 +461,15 @@ const effKwh = () => S.energyMode === 'bat' ? Math.max(0.1, S.batCap * Math.max(
 // A energia só aparece impressa com uma casa (56,8 kWh). O valor bruto vai
 // para os cálculos — nunca para o ecrã.
 const kwhTxt = () => fmtNum(effKwh().toFixed(1));
+// A hora do carregamento escreve-se e lê-se no relógio da REGIÃO, não no do
+// browser (ver frontend/tz.js): `new Date(y, m, d, h, mi)` usava o fuso do
+// browser, e quem simulava os Açores a partir de Lisboa ficava uma hora ao lado.
 function toIsoDisplay(iso) {
-  const d = iso ? new Date(iso) : new Date();
-  const p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return CEME_TZ.toWall(iso ? new Date(iso) : new Date(), regionTz());
 }
 function fromIsoDisplay(v) {
-  if (!v) return null;
-  const m = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/.exec(v.trim());
-  if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
-  return isNaN(d.getTime()) ? null : d.toISOString();
+  const at = CEME_TZ.fromWall(v, regionTz());
+  return at ? at.toISOString() : null;
 }
 
 /* ================= SIMULAR ================= */
@@ -493,6 +496,24 @@ function badges(q) {
   if (q.estimated) b += `<span class="badge est" title="${i18n('estTip')}">~</span>`;
   return b;
 }
+// A conta, linha a linha: as mesmas parcelas arredondadas que dão o total
+// (o motor devolve-as em `parts` e elas somam o total ao cêntimo). A energia
+// e a TAR só aparecem separadas quando se sabe a separação — nos fixos em que
+// o CEME não a publica fica a linha conjunta, sem inventar a parte de cada uma.
+function costTable(q) {
+  const p = q.parts;
+  if (!p) return '';
+  const row = (label, v, cls = '') => `<tr class="${cls}"><td>${label}</td><td>${eur(v)}</td></tr>`;
+  return `<table class="cost"><tr><th colspan="2">${i18n('costTitle', { k: kwhTxt() })}</th></tr>
+    ${row(i18n('costEnergyTar', { p: perName(q.period) }), p.energyTar)}
+    ${p.energy != null ? row('&nbsp;&nbsp;' + i18n('rowEnergy'), p.energy, 'sub') + row('&nbsp;&nbsp;' + i18n('rowTar'), p.tar, 'sub') : ''}
+    ${row(i18n('costIec'), p.iec)}
+    ${row(i18n('activation'), p.activation)}
+    ${p.support ? row(i18n('costSupport'), p.support) : ''}
+    ${row(i18n('costBase'), p.base)}
+    ${Number.isFinite(q.vat) ? row(i18n('costVat', { rate: Math.round((q.vat - 1) * 100) + '%' }), p.vatEur) : ''}
+    ${row('<b>' + i18n('costTotal') + '</b>', q.totalEur)}</table>`;
+}
 function detail(q) {
   // A tabela de preços por período. O período que foi USADO no cálculo
   // (o do total acima) vem assinalado — sem isso, dois preços e nenhuma
@@ -509,10 +530,9 @@ function detail(q) {
   }).join('');
   return `<details><summary>${i18n('breakdown')}</summary>
     <table><tr><th>${i18n('period')}</th><th>${i18n('noVat')}</th><th>${i18n('kwhVat', { k: kwhTxt() })}</th></tr>${rows}</table>
+    ${costTable(q)}
     <table>
-    <tr><td>${i18n('activation')}</td><td colspan="2">${eur(q.activation || 0)}</td></tr>
     ${q.kind === 'INDEXED' ? `<tr><td>${i18n('formula')}</td><td colspan="2">${i18n('formulaVal', { o: Number(q.omieRef).toFixed(3), k: fmtNum(q.k), c: fmtNum(q.cgs), l: fmtNum(Math.round((q.loss || 0) * 10000) / 100) + '%' })}</td></tr>` : ''}
-    ${Number.isFinite(q.vat) ? `<tr><td>${i18n('rowVat', { rate: R().vat + '%' })}</td><td colspan="2">${i18n('vatIncl', { v: Math.round((q.vat - 1) * 100) })}</td></tr>` : ''}
     <tr><td title="${i18n('verifiedTip')}">${i18n('verified')}</td><td colspan="2">${q.valid_from || '—'}</td></tr></table>
     ${q.notes ? `<p class="note-ac">${noteText(q.notes)}</p>` : ''}
     <small>${i18n('breakdownNote')}</small><br>
@@ -682,20 +702,15 @@ function renderFavModal() {
   if (!box) return;
   const fav = favs();
   const q = deaccent(FM.q).toLowerCase();
-  const items = LAST.filter(tf =>
+  // O mesmo dedup do ranking e do comparador (dedupByRamal): uma cópia local
+  // sem o filtro do ramal listava aqui tarifários que o ranking esconde.
+  const items = dedupByRamal(LAST).filter(tf =>
     (!FM.pop || tf.popular) &&
     (!FM.bundle || tf.bundle) &&
     (!FM.green || tf.green) &&
     (!q || searchText(tf).toLowerCase().includes(q)));
-  // de-dup por (CEME, nome), preferindo a variante da tensão seleccionada
-  const dedup = new Map();
-  for (const tf of items) {
-    const key = tariffKey(tf);
-    const cur = dedup.get(key);
-    if (!cur || (tf.voltage === S.ramal && cur.voltage !== S.ramal)) dedup.set(key, tf);
-  }
   const groups = {};
-  for (const tf of dedup.values()) (groups[tf.ceme] = groups[tf.ceme] || []).push(tf);
+  for (const tf of items) (groups[tf.ceme] = groups[tf.ceme] || []).push(tf);
   box.innerHTML = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'pt')).map(ceme => {
     const qs = [...groups[ceme]].sort((a, b) => a.name.localeCompare(b.name, 'pt'));
     const color = qs[0].brand;
@@ -765,23 +780,21 @@ function svgChart(days, a, b) {
     ${wins.map(i => `<circle cx="${X(i).toFixed(1)}" cy="${Y(days[i].fora).toFixed(1)}" r="3" fill="#1d4ed8"/>`).join('')}
   </svg><div class="legend"><span style="color:#1d4ed8">━ ${i18n('legendIdxPeak')}</span> · <span style="color:#93c5fd">━ ${i18n('legendIdxOff')}</span> · <span style="color:#16a34a">┄ ${i18n('legendFixed')}</span> · <span style="color:#1d4ed8">●</span> ${i18n('legendWins')}</div>`;
 }
-// "10:30" -> "10:45". Quarter-hour arithmetic on wall-clock strings.
-function plus15(t) {
-  const [h, m] = t.split(':').map(Number);
-  const n = (h * 60 + m + 15) % 1440;
-  return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0');
-}
-// Colapsa uma lista ordenada de inicios de quarto em faixas contiguas:
-// ["10:30","10:45","11:00"] -> ["10:30-11:15"]
-function ranges(starts) {
+// Colapsa quartos em faixas contíguas: 10:30, 10:45, 11:00 -> "10:30–11:15".
+// A contiguidade e a ordem vêm do INSTANTE (`utc`), não da hora de relógio:
+// no dia da mudança de hora de Outubro há dois quartos "01:00" (ordenar os
+// rótulos misturava-os), e na de Março o relógio salta das 00:45 para as
+// 02:00 sem que haja buraco nenhum.
+function ranges(quarters) {
+  const qs = [...quarters].sort((a, b) => (a.utc < b.utc ? -1 : 1));
   const out = [];
-  let s = null, p = null;
-  for (const tt of starts) {
-    if (s === null) { s = tt; p = tt; }
-    else if (plus15(p) === tt) p = tt;
-    else { out.push(s + '–' + plus15(p)); s = tt; p = tt; }
+  let first = null, last = null;
+  for (const q of qs) {
+    if (first && Date.parse(q.utc) - Date.parse(last.utc) === 15 * 60000) { last = q; continue; }
+    if (first) out.push(first.start + '–' + last.end);
+    first = q; last = q;
   }
-  if (s !== null) out.push(s + '–' + plus15(p));
+  if (first) out.push(first.start + '–' + last.end);
   return out;
 }
 
@@ -789,16 +802,18 @@ async function loadQuarters(a, date) {
   const box = document.getElementById('cmpQ');
   if (!a) return;
   try {
-    const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}&tz=${encodeURIComponent(BROWSER_TZ)}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
+    // As horas na região do carregamento: é nesse relógio que se lêem os
+    // períodos (vazio/fora) — no fuso do browser, um visitante nos Açores via
+    // o vazio do Continente a começar "às 21:00".
+    const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}&tz=${encodeURIComponent(regionTz())}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
     const byPrice = [...q.quarters].sort((x, y) => x.price - y.price);
-    const cheapSorted = byPrice.slice(0, 8).map(x => x.start).sort();
-    const wins = ranges(cheapSorted);
+    const wins = ranges(byPrice.slice(0, 8));
 
     // "onde o indexado ganha ao fixo" e uma coisa diferente de "os 8 mais
     // baratos": a primeira precisa do fixo de referencia, que o cliente
     // escolheu no comparador e nos mandou com &fixed=.
     const temFixo = !!q.fixed;
-    const faixasIdx = temFixo ? ranges(q.quarters.filter(x => x.winner === 'IDX').map(x => x.start).sort()) : [];
+    const faixasIdx = temFixo ? ranges(q.quarters.filter(x => x.winner === 'IDX')) : [];
     const resumo = !temFixo ? i18n('vsFixedNoData')
       : q.wins.idx ? i18n('vsFixed', { w: q.wins.idx, n: q.wins.total }) + (faixasIdx.length ? ' — ' + faixasIdx.join(' · ') : '')
       : i18n('vsFixedNone');
@@ -873,6 +888,9 @@ async function refresh() {
   if (S.chargeAt) at = S.chargeAt;
   else if (!S.forceServerTime) at = new Date().toISOString();
   const body = { kwh, region: S.region, omie: S.omie, omieVazio: S.omieVazio, omieFora: S.omieFora };
+  // OMIE escolhido à mão (o slider do comparador) vale para todos os ciclos;
+  // o automático vai por ciclo.
+  if (S.omieAuto !== false && S.omieCycles) body.omieCycles = S.omieCycles;
   if (at) body.at = at;
   const j = await api('/v1/simulate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   LAST = j.data || []; AVG = j.avg; AT = j.at; OMIE = j.omieRef;
@@ -959,15 +977,24 @@ async function route() {
 // 3 tentativas), e a página não pode ficar em branco à espera disso.
 async function loadOmieRef() {
   try {
-    const d = await api('/v1/omie/daily?days=2');
-    const r = (d.rows || []).slice(-1)[0];
+    // O último dia COMPLETO: o de amanhã, depois das ~13:00, ainda não tem a
+    // última hora (é do dia de mercado seguinte de Madrid) — ver `complete`.
+    const d = await api('/v1/omie/daily?days=7');
+    const rows = d.rows || [];
+    const r = rows.filter(x => x.complete !== false).slice(-1)[0] || rows.slice(-1)[0];
     if (!r) return;
     const vals = [r.bd_v, r.bd_f, r.bs_v, r.bs_f].filter(v => Number.isFinite(v));
     if (vals.length) S.omie = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) / 1000 * 1000) / 1000;
-    // médias vazio/fora (€/kWh) para agregação SPLIT_VAZIO_FORA
+    // Médias vazio/fora (€/kWh) POR CICLO: cada indexado usa as do seu ciclo
+    // (o vazio semanal não é o diário). omieVazio/omieFora ficam para o
+    // comparador e para quem lê o estado.
     const toKwh = v => Number.isFinite(v) ? v / 1000 : null;
-    S.omieVazio = toKwh(r.bd_v) ?? toKwh(r.bs_v) ?? S.omie;
-    S.omieFora = toKwh(r.bd_f) ?? toKwh(r.bs_f) ?? S.omie;
+    S.omieCycles = {
+      DIARIO: { vazio: toKwh(r.bd_v) ?? S.omie, fora: toKwh(r.bd_f) ?? S.omie },
+      SEMANAL: { vazio: toKwh(r.bs_v) ?? S.omie, fora: toKwh(r.bs_f) ?? S.omie },
+    };
+    S.omieVazio = S.omieCycles.DIARIO.vazio;
+    S.omieFora = S.omieCycles.DIARIO.fora;
     if (S.omieAuto) { await refresh(); route(); }
   } catch (e) { /* mantém o valor por omissão */ }
 }
