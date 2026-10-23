@@ -241,8 +241,23 @@ export async function rebuildDerived() {
   const marketDays = rows.filter(r => !r.est).map(r => r.day).sort();
   const cutoff = marketDays.length ? marketDays[marketDays.length - 1] : null;
   // Os futuros diários FPB D (a única fonte de futuro da página): vêm da
-  // meta guardada na ingestion.
-  const fut = await getMetaJson('futures');
+  // meta guardada na ingestion. Se ainda não estiver lá (BD antiga, ou
+  // ingestion falhou), busca-os agora.
+  let fut = await getMetaJson('futures');
+  if (!fut || !Array.isArray(fut.daily)) {
+    try {
+      const got = await fetchCachedFile('tf-futuros.csv', TF_FUTURES_URL, TTL_FUTURES);
+      fut = {
+        fetchedAt: Date.now(),
+        source: `OMIP via ${TF_SOURCE}`,
+        rows: parseTfFutures(got.text),
+        daily: parseTfDailyFutures(got.text),
+      };
+      await setMetaJson('futures', fut);
+    } catch (e) {
+      fut = null;
+    }
+  }
   const fpbDaily = Object.fromEntries(((fut && fut.daily) || []).map(d => [d.date, d.value]));
   const payload = aggregate(statsRows, { cutoff, now: new Date(), fpbDaily });
   await setMetaJson('stats', {
