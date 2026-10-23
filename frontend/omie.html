@@ -310,7 +310,7 @@ function drawCards(d) {
   const fcastTip = fcast.value == null
     ? (LANG === 'en' ? 'no data' : 'sem dados')
     : `${f2(fcast.value)} = (${f2(fcast.mtdSum)} + FPB D×96)/${fcast.quarters}`
-      + ` · ${(fcast.month || '').replace('-', '/')}/01 → ${(fcast.coverageTo || '').replace(/-/g, '/')}`
+      + ` · ${dt(fcast.coverageTo ? fcast.coverageTo + 'T00:00' : fcast.month + '-01T00:00')}`
       + ` · ${(fcast.mtdQuarters || 0)} ${LANG === 'en' ? 'market' : 'mercado'}`
       + ` + ${(fcast.fpbDays || []).length} ${LANG === 'en' ? 'future days' : 'dias futuro'}`;
   const tomorrowTip = c.tomorrow.source === 'fpbd'
@@ -324,9 +324,9 @@ function drawCards(d) {
       + (omieEm ? ` · ${omieEm}` : ''),
     today: `${formula(c.today)} · Lisboa ${c.today.date.replace(/-/g, '/')} · ${mix(c.today)}` + (tfAge ? ` · ${tfAge}` : ''),
     tomorrow: tomorrowTip,
-    last30: `${formula(c.last30)} · ${(c.last30.fromUtc || c.last30.from || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} → ${(c.last30.toUtc || c.last30.to || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} · ${mix(c.last30)}`,
+    last30: `${formula(c.last30)} · ${dt(c.last30.fromUtc || c.last30.from)} → ${dt(c.last30.toUtc || c.last30.to)} · ${mix(c.last30)}`,
     forecast: fcastTip + (tfAge ? ` · ${tfAge}` : ''),
-    month: `${formula(c.monthToDate)} · ${c.monthToDate.month.replace('-', '/')}/01 → ${(c.monthToDate.toUtc || c.monthToDate.to || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} · ${mix(c.monthToDate)}`,
+    month: `${formula(c.monthToDate)} · ${dt(c.monthToDate.fromUtc || c.monthToDate.from)} → ${dt(c.monthToDate.toUtc || c.monthToDate.to)} · ${mix(c.monthToDate)}`,
   };
   const html = [
     card('now', t('cardNow'), dt(d.current.atUtc || d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price), tips.now),
