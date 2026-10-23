@@ -498,6 +498,38 @@ const server = http.createServer(async (req, res) => {
       return res.end(css);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/pages.css em falta' } }); }
   }
+  // PWA: manifest, service worker e gatilho de instalação. Servidos sem auth,
+  // como os outros ficheiros estáticos (strings.js, pages.css).
+  if (readStatic(req.method) && (url.pathname === '/manifest.webmanifest' || url.pathname === '/manifest.json')) {
+    try {
+      const m = await readFile(new URL('../../frontend/manifest.webmanifest', import.meta.url));
+      res.writeHead(200, { 'content-type': 'application/manifest+json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      return res.end(m);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/manifest.webmanifest em falta' } }); }
+  }
+  if (readStatic(req.method) && (url.pathname === '/sw.js' || url.pathname === '/service-worker.js')) {
+    try {
+      const sw = await readFile(new URL('../../frontend/sw.js', import.meta.url), 'utf8');
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'service-worker-allowed': '/' });
+      return res.end(sw);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/sw.js em falta' } }); }
+  }
+  if (readStatic(req.method) && url.pathname === '/pwa.js') {
+    try {
+      const js = await readFile(new URL('../../frontend/pwa.js', import.meta.url), 'utf8');
+      res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      return res.end(js);
+    } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/pwa.js em falta' } }); }
+  }
+  for (const icon of ['icon-192.png', 'icon-512.png', 'icon-180.png']) {
+    if (readStatic(req.method) && url.pathname === '/' + icon) {
+      try {
+        const img = await readFile(new URL(`../../frontend/${icon}`, import.meta.url));
+        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400, immutable', 'x-content-type-options': 'nosniff' });
+        return res.end(img);
+      } catch { return json(res, 404, { error: { code: 'no_frontend', message: `frontend/${icon} em falta` } }); }
+    }
+  }
   // Página OMIE. No domínio próprio (omie.cocofree.dev) é o que aparece na
   // raiz; no site principal vive em /omie. O servidor até agora só olhava
   // para o path — com dois domínios a servir a mesma app é o Host que
