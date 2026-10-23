@@ -11,6 +11,7 @@ import { query, get, run, dbInstance } from './db.js';
 import { signJwt, verifyJwt, hashKey } from './auth/tokens.js';
 import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
+import { lossAt, lossByPeriod } from './engine/losses.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { compareWithFixed, tallyWinners } from './engine/compare.js';
 import { getDaily, getFutures, getQuarters, getStats, rebuildDerived, SOURCE_LABEL } from './omie/pipeline.js';
@@ -336,6 +337,10 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     return row?.price_eur_kwh ?? null;
   };
   const vm = vmeta(t.id);
+  // Perdas(h): média do perfil E-REDES do dia nos quartos de cada período —
+  // o mesmo conjunto de quartos de que vêm as médias do OMIE. Sem perfil
+  // (ano não carregado) cai nas perdas da versão / média anual.
+  const lossPer = lossByPeriod(t.voltage, at, d => periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at: d }), `${region}|${t.schedule}|${t.cycle}`);
   const agg = ver.omie_aggregation || 'SPLIT_VAZIO_FORA';
   const omieForPeriod = (per) => {
     if (agg === 'SPLIT_VAZIO_FORA') return (per === 'VAZIO' ? (omieVazio ?? omie) : (omieFora ?? omie));
@@ -350,7 +355,7 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     const oref = omieForPeriod(per);
     const tar = await tarOf(per);
     const tarEurKwh = tar ?? 0;
-    const price = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: vm.loss, formula: vm.formula }).price;
+    const price = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: lossPer?.[per] ?? vm.loss, formula: vm.formula }).price;
     out[per] = price;
     splitIdx[per] = tar == null ? null : { energy: price - tar, tar };
   }
@@ -365,7 +370,7 @@ async function quoteOne(t, { at, kwh, region, omie, omieVazio, omieFora }) {
     out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
   }
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region });
-  return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: vm.loss ?? LOSS_PLACEHOLDER[t.voltage], formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
+  return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }
 
 // Negociação de idioma a partir do cabeçalho Accept-Language. Só há PT e EN:
@@ -707,7 +712,7 @@ const server = http.createServer(async (req, res) => {
             : null;
           return {
             start: fmtTime(r.utc, tz), end: fmtTime(new Date(at.getTime() + 15 * 60000).toISOString(), tz),
-            period: per, fixPeriod: fixPer, omieMwh: r.pt, utc: r.utc, src: r.src,
+            period: per, fixPeriod: fixPer, omieMwh: r.pt, utc: r.utc, src: r.src, est: !!r.est,
           };
         });
         Promise.all(withP.map(async (item) => {
@@ -718,7 +723,8 @@ const server = http.createServer(async (req, res) => {
           );
           const tarEurKwh = tarRow?.price_eur_kwh ?? 0;
           const vm = vmeta(t.id);
-          const { price } = indexedPrice({ omieEurKwh: item.omieMwh / 1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: vm.loss, formula: vm.formula });
+          item.loss = lossAt(t.voltage, item.utc) ?? vm.loss;
+          const { price } = indexedPrice({ omieEurKwh: item.omieMwh / 1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: item.loss, formula: vm.formula });
           item.price = Math.round(price * 10000) / 10000;
         })).then(() => {
           // quem ganha, quarto a quarto — logica em engine/compare.js
@@ -728,8 +734,13 @@ const server = http.createServer(async (req, res) => {
           const vm2 = vmeta(t.id);
           json(res, 200, {
             date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh,
-            loss: vm2.loss ?? LOSS_PLACEHOLDER[t.voltage], source: SOURCE_LABEL,
-            estimated: q.rows.some(r => r.est), days: q.days, fixed: fixInfo,
+            // média das perdas dos quartos do dia (cada quarto usa a sua)
+            loss: withP.every(x => x.loss != null) && withP.length ? withP.reduce((a, x) => a + x.loss, 0) / withP.length : (vm2.loss ?? LOSS_PLACEHOLDER[t.voltage]), source: SOURCE_LABEL,
+            // estimado = o dia todo; parcial = so a cauda (o dia de mercado da OMIE
+            // acaba as 23:00 de Lisboa, o resto do dia vem do OMIP)
+            estimated: q.rows.length > 0 && q.rows.every(r => r.est),
+            estimatedFrom: q.rows.some(r => r.est) && !q.rows.every(r => r.est) ? withP.find(x => x.est).start : null,
+            days: q.days, fixed: fixInfo,
             warning: REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF',
             wins: tallyWinners(comp),
             quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.start) }))

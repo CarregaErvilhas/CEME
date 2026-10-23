@@ -43,6 +43,7 @@
       // estatísticas OMIE
       simple: 'Simples',
       omipEst: 'estimativa OMIP',
+      omipFrom: 'OMIE; OMIP a partir das {t}',
     },
     en: {
       fPopular: '★ popular', tagPopular: 'popular',
@@ -56,6 +57,7 @@
       footNote: 'A community tool, non-profit.',
       simple: 'Simple rate',
       omipEst: 'OMIP estimate',
+      omipFrom: 'OMIE; OMIP from {t}',
     },
   };
 

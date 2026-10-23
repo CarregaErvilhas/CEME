@@ -805,7 +805,7 @@ async function loadQuarters(a, date) {
 
     const show = (window._qOrder === 'price' ? byPrice : q.quarters);
     box.innerHTML = `<div class=card><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
-      <div><b style="font-size:16px">${q.date}</b> · ${a.ceme} — ${tariffName(a.name)} <small>(K=${fmtNum(q.k)}, CGS=${fmtNum(q.cgs)})</small>${q.estimated ? ` <span class="badge bnd">${i18n('omipEst')}</span>` : ''}</div>
+      <div><b style="font-size:16px">${q.date}</b> · ${a.ceme} — ${tariffName(a.name)} <small>(K=${fmtNum(q.k)}, CGS=${fmtNum(q.cgs)})</small>${q.estimated ? ` <span class="badge bnd">${i18n('omipEst')}</span>` : q.estimatedFrom ? ` <span class="badge bnd">${i18n('omipFrom', { t: q.estimatedFrom })}</span>` : ''}</div>
       <small style="color:var(--mut)">${q.source}</small></div>
       <div class="row" style="margin:8px 0">
         <div style="flex:1;display:flex;gap:4px;flex-wrap:wrap">${(q.days || []).map(d => `<button data-d="${d}" class="${d === q.date ? 'on' : ''}" style="padding:5px 9px;font-size:12px">${d.slice(5)}</button>`).join('')}</div>
