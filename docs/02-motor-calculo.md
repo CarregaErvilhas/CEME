@@ -63,6 +63,22 @@ faixas contíguas do comparador). Testes: `tz.test.js`, `omie-tz.test.js`,
   o mês (Jun–Out vs resto).
 - **Feriados:** o próprio dia (OWN_DAY), sem excepção — igual à folha. Em
   aberto (roadmap): a Diretiva 3/2026 n.º 10 para MT no ciclo semanal.
+- **Perdas por quarto de hora (E-REDES 2026)** — `Perdas(h)` vem do ficheiro
+  oficial `Perfis_Perdas_E-REDES_2026` (<https://www.e-redes.pt/pt-pt/perfis-de-perdas-2026>),
+  convertido por `scripts/etl-perdas.py` em `backend/src/engine/losses-2026.json`
+  e lido por `engine/losses.js`. O ficheiro dá perfis *simples* por nível
+  (BT, MT, AT, AT/RNT); as perdas que o cliente paga são a **cascata**:
+  `BT = (1+BT)(1+MT)(1+AT)(1+AT/RNT) − 1`, `MT = (1+MT)(1+AT)(1+AT/RNT) − 1`.
+  Confere com o valor publicado (2026-10-23, quarto que acaba às 23:30:
+  BT 0,1484981). A hora do ficheiro é o **fim** do intervalo.
+  - `/v1/indexed/quarters`: cada quarto usa o seu valor.
+  - `/v1/simulate`: o preço por período usa a média das perdas dos quartos
+    desse período no dia de `at` (o mesmo conjunto de quartos das médias do
+    OMIE vazio/fora). `lossByPeriod` vem na resposta.
+  - A média anual da cascata é BT 0,1531 / MT 0,0713 — era o antigo
+    placeholder constante (`LOSS_PLACEHOLDER`), que fica só como fallback
+    para anos sem perfil. Anos novos: correr o ETL e juntar o ano a `YEARS`
+    em `losses.js`.
 
 ## Fixos
 
@@ -126,10 +142,9 @@ ynerluz:   PE = (1 + perdas) × (OMIE + K) + CGS + TAR
   de `VERSIONS` no seed. **Atenção à unidade:** apesar do sufixo `_eur_mwh`
   nas colunas, os valores guardados e usados são **€/kWh** (somam-se
   directamente ao OMIE em €/kWh).
-- `perdas`: `VERSIONS[id].loss` quando o tarifário publica o seu; senão
-  `LOSS_PLACEHOLDER[tensão]` (`indexed.js`). A tabela `loss_profile` existe
-  no schema mas **não é usada** — os perfis por quarto de hora/DSO estão no
-  roadmap.
+- `Perdas(h)`: perfil E-REDES por quarto de hora e tensão (`engine/losses.js`);
+  sem perfil (ano não carregado) cai em `VERSIONS[id].loss` ou
+  `LOSS_PLACEHOLDER[tensão]` (`indexed.js`).
 - `TAR`: a da tabela `tar` **da região do carregamento**, em vigor no dia do
   carregamento. Sem TAR para (região, tensão, período) o tarifário vai para
   a quarentena em vez de sair um preço sem rede.
