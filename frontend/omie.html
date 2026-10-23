@@ -278,8 +278,9 @@ function drawCards(d) {
   const c = d.cards;
   const isToday = c.today.date === d.today;
   // Tooltips de validação: a FÓRMULA de cada cartão (soma/n, janela,
-  // quantos quarters são mercado vs estimativa OMIP, idade dos ficheiros),
-  // para dar para conferir contra o TF e a folha.
+  // quantos quarters são mercado, idade dos ficheiros). Nada aqui usa
+  // estimativas OMIP — excepto a previsão (futuros FPB D) e o amanhã antes
+  // das 13h (FPB D do dia, assinalado).
   const f2 = (v) => (v == null ? '—' : Number(v).toFixed(2));
   const tfAge = (() => {
     try {
@@ -297,25 +298,40 @@ function drawCards(d) {
     ? `OMIE ${d.omieEmitted.date.replace(/-/g, '/')} ${d.omieEmitted.time || ''}`.trim() : '';
   const mix = (b) => {
     const e = b.estQuarters || 0, n = b.quarters || 0;
+    if (!n && !e) return '—';
+    if (!e) return LANG === 'en' ? `${n} market` : `${n} mercado`;
+    if (n === e) return LANG === 'en' ? `${e} OMIP est.` : `${e} estimativa OMIP`;
     return LANG === 'en'
       ? `${n - e} market + ${e} OMIP est.`
       : `${n - e} mercado + ${e} estimativa OMIP`;
   };
   const formula = (b) => `${f2(b.value)} = ${f2(b.sum)}/${b.quarters}`;
+  const fcast = c.forecast;
+  const fcastTip = fcast.value == null
+    ? (LANG === 'en' ? 'no data' : 'sem dados')
+    : `${f2(fcast.value)} = (${f2(fcast.mtdSum)} + FPB D×96)/${fcast.quarters}`
+      + ` · ${(fcast.month || '').replace('-', '/')}/01 → ${(fcast.coverageTo || '').replace(/-/g, '/')}`
+      + ` · ${(fcast.mtdQuarters || 0)} ${LANG === 'en' ? 'market' : 'mercado'}`
+      + ` + ${(fcast.fpbDays || []).length} ${LANG === 'en' ? 'future days' : 'dias futuro'}`;
+  const tomorrowTip = c.tomorrow.source === 'fpbd'
+    ? `${f2(c.tomorrow.value)} = FPB D ${c.tomorrow.date.replace(/-/g, '/')} · `
+      + (LANG === 'en' ? 'OMIP future, NOT market' : 'futuro OMIP, NÃO é mercado')
+      + (tfAge ? ` · ${tfAge}` : '')
+    : `${formula(c.tomorrow)} · Lisboa ${c.tomorrow.date.replace(/-/g, '/')} · ${mix(c.tomorrow)}` + (tfAge ? ` · ${tfAge}` : '');
   const tips = {
     now: `${f2(d.current.price)} = quarter [${(d.current.at || '').slice(11, 16)}-${add15((d.current.at || '').slice(11, 16))}) Lisboa ${(d.current.at || '').slice(0, 10).replace(/-/g, '/')}`
-      + (d.current.estimated ? (LANG === 'en' ? ' · OMIP estimate' : ' · estimativa OMIP') : (LANG === 'en' ? ' · market' : ' · mercado'))
+      + (LANG === 'en' ? ' · market' : ' · mercado')
       + (omieEm ? ` · ${omieEm}` : ''),
     today: `${formula(c.today)} · Lisboa ${c.today.date.replace(/-/g, '/')} · ${mix(c.today)}` + (tfAge ? ` · ${tfAge}` : ''),
-    tomorrow: `${formula(c.tomorrow)} · Lisboa ${c.tomorrow.date.replace(/-/g, '/')} · ${mix(c.tomorrow)}` + (tfAge ? ` · ${tfAge}` : ''),
+    tomorrow: tomorrowTip,
     last30: `${formula(c.last30)} · ${(c.last30.fromUtc || c.last30.from || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} → ${(c.last30.toUtc || c.last30.to || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} · ${mix(c.last30)}`,
-    forecast: `${formula(c.forecast)} · ${c.forecast.month.replace('-', '/')} · ${mix(c.forecast)}` + (tfAge ? ` · ${tfAge}` : ''),
+    forecast: fcastTip + (tfAge ? ` · ${tfAge}` : ''),
     month: `${formula(c.monthToDate)} · ${c.monthToDate.month.replace('-', '/')}/01 → ${(c.monthToDate.toUtc || c.monthToDate.to || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} · ${mix(c.monthToDate)}`,
   };
   const html = [
     card('now', t('cardNow'), dt(d.current.atUtc || d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price), tips.now),
     card('today', isToday ? t('cardToday') : t('cardLast'), dtDay(c.today.date), euro(c.today.value), tips.today),
-    card('rest', t('cardTomorrow'), dtDay(c.tomorrow.date), euro(c.tomorrow.value), tips.tomorrow),
+    card('rest', t('cardTomorrow'), dtDay(c.tomorrow.date) + (c.tomorrow.source === 'fpbd' ? ' · ' + t('omipEst') : ''), euro(c.tomorrow.value), tips.tomorrow),
     card('rest', t('cardLast30'), `${dt(c.last30.fromUtc || c.last30.from)}<br>${dt(c.last30.toUtc || c.last30.to)}`, euro(c.last30.value), tips.last30),
     card('rest', t('cardForecast', { m: mesNome(c.forecast.month) }), '', euro(c.forecast.value), tips.forecast),
     card('rest', t('cardMonth', { m: mesNome(c.monthToDate.month) }), `${dt(c.monthToDate.fromUtc || c.monthToDate.from)}<br>${dt(c.monthToDate.toUtc || c.monthToDate.to)}`, euro(c.monthToDate.value), tips.month),

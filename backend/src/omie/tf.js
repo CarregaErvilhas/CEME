@@ -200,3 +200,17 @@ export function parseTfFutures(text) {
   }
   return out.slice(0, 40);
 }
+// Os futuros DIÁRIOS (FPB D ...) da zona PT: um número publicado por dia
+// (ex. `FPB D Sa24Oct-26,24/10/2026,132.31,...`). É a única fonte de futuro
+// admitida na página — e usa-se o número tal como vem, sem médias nossas.
+// Devolve [{ date: 'YYYY-MM-DD', value }] por ordem de data.
+export function parseTfDailyFutures(text, zona = 'PT') {
+  const rows = parseTfFutures(text).filter(r => r.zona === zona && /^FPB D\b/.test(r.contrato));
+  const out = [];
+  for (const r of rows) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(r.descricao || '').trim());
+    if (!m || r.valor == null) continue;
+    out.push({ date: `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`, value: r.valor });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1));
+}

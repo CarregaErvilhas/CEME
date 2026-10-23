@@ -26,7 +26,7 @@
 import { run, get, query } from '../db.js';
 import { fetchOmieDump, parseOmieDump, OMIE_LABEL } from './omiees.js';
 import {
-  fetchCachedFile, parseTfQuarters, parseTfFutures, parseOmieCutoff,
+  fetchCachedFile, parseTfQuarters, parseTfFutures, parseTfDailyFutures, parseOmieCutoff,
   TF_CURRENT_URL, TF_HISTORY_URL, TF_FUTURES_URL, TF_SOURCE,
   TTL_DAILY, TTL_HISTORY, TTL_FUTURES,
 } from './tf.js';
@@ -128,6 +128,7 @@ export async function refreshAll({ now = new Date() } = {}) {
       fetchedAt: Date.now(),
       source: `OMIP via ${TF_SOURCE}`,
       rows: parseTfFutures(got.text),
+      daily: parseTfDailyFutures(got.text),
     });
   } catch (e) {
     log.push(`futuros falharam: ${e.message}`);
@@ -239,7 +240,11 @@ export async function rebuildDerived() {
   // chateia-se com a fronteira do dia).
   const marketDays = rows.filter(r => !r.est).map(r => r.day).sort();
   const cutoff = marketDays.length ? marketDays[marketDays.length - 1] : null;
-  const payload = aggregate(statsRows, { cutoff, now: new Date() });
+  // Os futuros diários FPB D (a única fonte de futuro da página): vêm da
+  // meta guardada na ingestion.
+  const fut = await getMetaJson('futures');
+  const fpbDaily = Object.fromEntries(((fut && fut.daily) || []).map(d => [d.date, d.value]));
+  const payload = aggregate(statsRows, { cutoff, now: new Date(), fpbDaily });
   await setMetaJson('stats', {
     ...payload,
     source: SOURCE_LABEL,
@@ -350,6 +355,7 @@ export async function getFutures() {
     fetchedAt: Date.now(),
     source: `OMIP via ${TF_SOURCE}`,
     rows: parseTfFutures(got.text),
+    daily: parseTfDailyFutures(got.text),
   };
   await setMetaJson('futures', payload);
   return payload;
