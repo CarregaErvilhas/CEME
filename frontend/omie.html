@@ -182,17 +182,17 @@ function dt(s) {
         hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
       }).formatToParts(new Date(s));
       const get = t => p.find(x => x.type === t)?.value;
-      return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`;
+      return `${get('year')}/${get('month')}/${get('day')} ${get('hour')}:${get('minute')}`;
     } catch (e) { /* cai para baixo */ }
   }
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
   if (!m) return s;
-  return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+  return `${m[1]}/${m[2]}/${m[3]} ${m[4]}:${m[5]}`;
 }
 const dtDay = (s) => {
   if (!s) return '';
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : s;
 };
 
 /* --- escalas de cor -------------------------------------------------- */
