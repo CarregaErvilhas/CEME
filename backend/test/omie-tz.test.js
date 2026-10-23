@@ -1,15 +1,38 @@
 // Guarda de regressão: o ficheiro do TF está em hora de Lisboa, por isso a
 // agregação tem de ser por dia civil de Lisboa. Se alguém voltar a agrupar por
 // dia de Madrid (CET), a média mensal deixa de bater com o TF.
+//
+// A validação usa o ficheiro em cache quando existe (dev) e, em alternativa,
+// tenta ir buscá-lo à fonte (CI). Se não for possível obter os dados, o teste
+// é ignorado em vez de falhar — a asserção só faz sentido com os dados reais.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { parseTfQuarters } from '../src/omie/tf.js';
 import { aggregate } from '../src/omie/stats.js';
 
+const TF_URL = 'https://dados.tiagofelicia.pt/data/omie/omie_dados_atuais.csv';
+
+async function loadText() {
+  if (existsSync('./data/tf-omie-atual.csv')) {
+    return readFileSync('./data/tf-omie-atual.csv', 'utf8');
+  }
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 30000);
+    const r = await fetch(TF_URL, { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    return await r.text();
+  } catch {
+    return null;
+  }
+}
+
 describe('OMIE — fuso horário (guarda de regressão)', () => {
-  it('a média mensal bate com o TF publicado (Setembro 2026 = 143,91)', () => {
-    const text = readFileSync('./data/tf-omie-atual.csv', 'utf8');
+  it('a média mensal bate com o TF publicado (Setembro 2026 = 143,91)', async (t) => {
+    const text = await loadText();
+    if (!text) { t.skip('dados do TF indisponíveis'); return; }
     const { days } = parseTfQuarters(text);
     const rows = [];
     for (const [day, list] of days) {
