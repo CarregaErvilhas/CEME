@@ -59,16 +59,20 @@ const avg = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
 const round2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
 
 // Um agregado: média simples e as duas séries por ciclo horário.
+// Guarda também a soma e quantos quarters são estimativa OMIP — é o que as
+// tooltips de validação mostram (a fórmula, não só o resultado).
 function bucket() {
-  return { all: [], semV: [], semF: [], diaV: [], diaF: [], dnMin: Infinity, dnMax: -Infinity };
+  return { all: [], semV: [], semF: [], diaV: [], diaF: [], dnMin: Infinity, dnMax: -Infinity, est: 0 };
 }
 function push(b, row) {
   b.all.push(row.price);
   (row.bs === 'F' ? b.semF : b.semV).push(row.price);
   (row.bd === 'F' ? b.diaF : b.diaV).push(row.price);
+  if (row.est) b.est++;
   if (row.dn < b.dnMin) b.dnMin = row.dn;
   if (row.dn > b.dnMax) b.dnMax = row.dn;
 }
+const sum = (v) => v.reduce((a, b) => a + b, 0);
 function shape(b) {
   return {
     media: round2(avg(b.all)),
@@ -77,6 +81,8 @@ function shape(b) {
     diaVazio: round2(avg(b.diaV)),
     diaCheia: round2(avg(b.diaF)),
     quarters: b.all.length,
+    estQuarters: b.est,
+    sum: Math.round(sum(b.all) * 100) / 100,
   };
 }
 // Um mês está truncado se não cobre todos os dias do calendário: ou porque
@@ -158,9 +164,8 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
   const monthFull = bucket();
   for (const r of rows) if (r.mk === monthKeyNow) push(monthFull, r);
 
-  // Preço "à hora actual": o quarter de mercado que está a correr AGORA, em
-  // hora de Lisboa. O ficheiro está em CET, por isso o quarter em curso é o
-  // que tem a hora de Lisboa correspondente — e é o que se mostra.
+  // Preço "à hora actual": o quarter que está a correr AGORA, em hora de
+  // Lisboa (é o fuso da página; os instantes guardados já estão alinhados).
   const stamp = (dn, min) => `${isoOf(dn)}T${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
   // O mesmo instante, em UTC ISO-8601 — é o que a página converte para o
   // fuso de quem a vê (o backend não sabe o fuso do utilizador).
@@ -191,11 +196,15 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
         date: isoOf(dayBuckets.has(lis.dayNum) ? lis.dayNum : anchor.dn),
         value: round2(avg(todayB.all)),
         quarters: todayB.all.length,
+        estQuarters: todayB.est,
+        sum: Math.round(sum(todayB.all) * 100) / 100,
       },
       tomorrow: {
         date: isoOf(lis.dayNum + 1),
         value: round2(avg(tomorrowB.all)),
         quarters: tomorrowB.all.length,
+        estQuarters: tomorrowB.est,
+        sum: Math.round(sum(tomorrowB.all) * 100) / 100,
         estimated: tomorrowB.all.length > 0,
       },
       last30: {
@@ -204,8 +213,17 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
         to: stamp(anchor.lisbonDn, anchor.lisbonMin),
         toUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(last30.all)),
+        quarters: last30.all.length,
+        estQuarters: last30.est,
+        sum: Math.round(sum(last30.all) * 100) / 100,
       },
-      forecast: { month: monthKeyNow, value: round2(avg(monthFull.all)) },
+      forecast: {
+        month: monthKeyNow,
+        value: round2(avg(monthFull.all)),
+        quarters: monthFull.all.length,
+        estQuarters: monthFull.est,
+        sum: Math.round(sum(monthFull.all) * 100) / 100,
+      },
       monthToDate: {
         month: monthKeyNow,
         from: (() => {
@@ -219,6 +237,9 @@ export function aggregate(rows, { cutoff = null, now = new Date() } = {}) {
         to: stamp(anchor.lisbonDn, anchor.lisbonMin),
         toUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
         value: round2(avg(monthB.all)),
+        quarters: monthB.all.length,
+        estQuarters: monthB.est,
+        sum: Math.round(sum(monthB.all) * 100) / 100,
       },
     },
     months,

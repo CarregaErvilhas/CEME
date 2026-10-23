@@ -262,6 +262,12 @@ function aplicarPaleta(modo) {
 }
 
 /* --- desenho --------------------------------------------------------- */
+const add15 = (hm) => {
+  const m = /^(\d{2}):(\d{2})$/.exec(hm || '');
+  if (!m) return '';
+  const t = (Number(m[1]) * 60 + Number(m[2]) + 15) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
 function card(cls, title, meta, value, tip) {
   return `<div class="card ${cls}" title="${tip || ''}"><div class="t">${title}</div>` +
     (meta ? `<div class="m">${meta}</div>` : '') +
@@ -271,25 +277,40 @@ function card(cls, title, meta, value, tip) {
 function drawCards(d) {
   const c = d.cards;
   const isToday = c.today.date === d.today;
+  // Tooltips de validação: a FÓRMULA de cada cartão (soma/n, janela,
+  // quantos quarters são mercado vs estimativa OMIP, idade dos ficheiros),
+  // para dar para conferir contra o TF e a folha.
+  const f2 = (v) => (v == null ? '—' : Number(v).toFixed(2));
+  const tfAge = (() => {
+    try {
+      const f = (d.tfFetchedAt || {})['tf-omie-atual.csv'];
+      if (!f || !f.fetchedAt) return '';
+      const p = new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
+      }).formatToParts(new Date(f.fetchedAt));
+      const get = t => p.find(x => x.type === t)?.value;
+      return `TF ${get('year')}/${get('month')}/${get('day')} ${get('hour')}:${get('minute')}`;
+    } catch (e) { return ''; }
+  })();
+  const omieEm = (d.omieEmitted && d.omieEmitted.date)
+    ? `OMIE ${d.omieEmitted.date.replace(/-/g, '/')} ${d.omieEmitted.time || ''}`.trim() : '';
+  const mix = (b) => {
+    const e = b.estQuarters || 0, n = b.quarters || 0;
+    return LANG === 'en'
+      ? `${n - e} market + ${e} OMIP est.`
+      : `${n - e} mercado + ${e} estimativa OMIP`;
+  };
+  const formula = (b) => `${f2(b.value)} = ${f2(b.sum)}/${b.quarters}`;
   const tips = {
-    now: LANG === 'en'
-      ? 'Price of the quarter currently running (Lisbon time): last published quarter <= now. If the current quarter is not published yet, uses the last published one.'
-      : 'Preço do quarter em curso (hora de Lisboa): último quarter publicado <= agora. Se o quarter actual ainda não foi publicado, usa o último publicado.',
-    today: LANG === 'en'
-      ? `Average of the ${c.today.quarters} quarters of today (Lisbon civil day), including OMIP estimates for unpublished hours.`
-      : `Média dos ${c.today.quarters} quarters de hoje (dia civil de Lisboa), incluindo estimativas OMIP para as horas não publicadas.`,
-    tomorrow: LANG === 'en'
-      ? `Average of the ${c.tomorrow.quarters} quarters of tomorrow (OMIP estimate).`
-      : `Média dos ${c.tomorrow.quarters} quarters de amanhã (estimativa OMIP).`,
-    last30: LANG === 'en'
-      ? 'Average of all quarters from (last market day - 30 days) through the last published quarter.'
-      : 'Média de todos os quarters entre (último dia de mercado − 30 dias) e o último quarter publicado.',
-    forecast: LANG === 'en'
-      ? 'Average of the whole current month, with the remaining days estimated from OMIP futures.'
-      : 'Média do mês completo, com os dias restantes estimados a partir dos futuros OMIP.',
-    month: LANG === 'en'
-      ? `Average of the ${c.monthToDate.quarters || ''} published market quarters in the current month to date.`.trim()
-      : `Média dos quarters de mercado já publicados no mês em curso até hoje.`,
+    now: `${f2(d.current.price)} = quarter [${(d.current.at || '').slice(11, 16)}-${add15((d.current.at || '').slice(11, 16))}) Lisboa ${(d.current.at || '').slice(0, 10).replace(/-/g, '/')}`
+      + (d.current.estimated ? (LANG === 'en' ? ' · OMIP estimate' : ' · estimativa OMIP') : (LANG === 'en' ? ' · market' : ' · mercado'))
+      + (omieEm ? ` · ${omieEm}` : ''),
+    today: `${formula(c.today)} · Lisboa ${c.today.date.replace(/-/g, '/')} · ${mix(c.today)}` + (tfAge ? ` · ${tfAge}` : ''),
+    tomorrow: `${formula(c.tomorrow)} · Lisboa ${c.tomorrow.date.replace(/-/g, '/')} · ${mix(c.tomorrow)}` + (tfAge ? ` · ${tfAge}` : ''),
+    last30: `${formula(c.last30)} · ${(c.last30.fromUtc || c.last30.from || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} → ${(c.last30.toUtc || c.last30.to || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} · ${mix(c.last30)}`,
+    forecast: `${formula(c.forecast)} · ${c.forecast.month.replace('-', '/')} · ${mix(c.forecast)}` + (tfAge ? ` · ${tfAge}` : ''),
+    month: `${formula(c.monthToDate)} · ${c.monthToDate.month.replace('-', '/')}/01 → ${(c.monthToDate.toUtc || c.monthToDate.to || '').slice(0, 16).replace('T', ' ').replace(/-/g, '/')} · ${mix(c.monthToDate)}`,
   };
   const html = [
     card('now', t('cardNow'), dt(d.current.atUtc || d.current.at) + (d.current.estimated ? ' · ' + t('omipEst') : ''), euro(d.current.price), tips.now),

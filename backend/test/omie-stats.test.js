@@ -46,9 +46,41 @@ describe('estatísticas OMIE — parser do TF', () => {
     // alinham por instante.)
     assert.equal(rows[0].min, 0);
     assert.equal(rows[1].min, 15);
-    // O último quarter do dia 02/01 é o das 23:45.
+    // A única linha do dia 02/01 é o quarter das 23:30-23:45: o instante vem
+    // da coluna `hora`, não da posição da linha (que diria 00:00).
     const last = days.get('2026-01-02');
-    assert.equal(last[0].min, 0, 'o dia 02/01 começa à meia-noite');
+    assert.equal(last[0].min, 23 * 60 + 30);
+  });
+
+  it('uma linha em falta não desloca os instantes seguintes', () => {
+    const csv = [
+      'dia,hora,intervalo,Simples,BD,BS,TD,TS,preco_pt,preco_es',
+      '05/01/2026,00:15,[00:00-00:15[,S,V,V,V,V,100,100',
+      // falta o quarter das 00:15-00:30
+      '05/01/2026,00:45,[00:30-00:45[,S,V,V,V,V,102,102',
+    ].join('\n');
+    const { days } = parseTfQuarters(csv);
+    const rows = days.get('2026-01-05');
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].min, 0);
+    assert.equal(rows[1].min, 30, 'o instante vem da hora, não da posição');
+    assert.notEqual(rows[0].utc, rows[1].utc);
+  });
+
+  it('a hora repetida de Outubro dá dois instantes distintos', () => {
+    const mk = (hora, iv) => `26/10/2025,${hora},${iv},S,V,V,V,V,100,100`;
+    const csv = [
+      'dia,hora,intervalo,Simples,BD,BS,TD,TS,preco_pt,preco_es',
+      mk('01:30', '[01:15-01:30['),
+      mk('01:45', '[01:30-01:45['),
+      mk('01:00', '[01:45-01:00['), // o relógio andou para trás: 2ª passagem
+      mk('01:15', '[01:00-01:15['),
+    ].join('\n');
+    const { days } = parseTfQuarters(csv);
+    const rows = days.get('2025-10-26');
+    assert.equal(rows.length, 4);
+    assert.equal(new Set(rows.map(r => r.utc)).size, 4, 'nenhum instante colide');
+    assert.deepEqual(rows.map(r => r.min), [75, 90, 105, 60], 'a hora de relógio repete-se');
   });
 
   it('rebenta com um schema inesperado', () => {
@@ -157,6 +189,18 @@ describe('estatísticas OMIE — agregação', () => {
     assert.equal(d.total.quarters, 6, 'o dia de 2025 ficou de fora');
     assert.equal(d.window.from, '2025-10-21');
     assert.equal(d.window.to, '2026-10-21');
+  });
+
+  it('os cartões e os meses trazem a fórmula (soma, n e estimativas)', () => {
+    const estRows = rows.map(r => (r.day === '2026-10-22' ? { ...r, est: true } : r));
+    const d = aggregate(estRows, { cutoff: '2026-10-21', now: NOW });
+    assert.equal(d.cards.today.sum, 110 + 210 + 160);
+    assert.equal(d.cards.today.quarters, 3);
+    assert.equal(d.cards.today.estQuarters, 0);
+    assert.equal(d.cards.tomorrow.estQuarters, 3, 'o dia 22 é todo estimativa');
+    assert.equal(d.months[0].sum, 100 + 200 + 150 + 110 + 210 + 160);
+    assert.equal(d.months[0].estQuarters, 0);
+    assert.equal(d.total.sum, d.months[0].sum);
   });
 
   it('marca como parciais os meses que a janela ou o calendário truncam', () => {

@@ -98,23 +98,23 @@ API devolve (`omie.es (OMIE/MIBEL) + dados.tiagofelicia.pt (CC BY 4.0)`).
 O "último dia de mercado" é o **último instante publicado pelo omie.es**: o
 que estiver para além são estimativas OMIP e ficam marcadas como tal.
 
-## As horas: tudo em UTC
+## As horas: instantes em UTC, dias civis de Lisboa
 
 A página mostra as horas no **fuso de quem a vê** (o browser converte os
-instantes; o backend guarda tudo em UTC e nunca converte para o fuso de
-Madrid nem para o de Lisboa).
+instantes; o backend guarda os instantes em UTC).
 
-Isto importa porque o dia de mercado do OMIE corre 00:00-24:00 em
-**Madrid** (uma hora à frente de Lisboa) e o ficheiro do TF está em hora de
-**Lisboa**. Os dois alinham pelo instante, e não pelo período — o dia civil
-de Lisboa tem 96 quartos, de 00:00 a 23:45, ao passo que o dia de mercado
-de Madrid tem 96 quartos, de 00:00 a 23:45 *dele*.
+O agrupamento é por **dia civil de Lisboa**: é por aí que o TF publica os
+seus agregados diários e mensais, e é o que o utilizador vê — a média de um
+mês na página é a que o TF publica para esse mês. (Antes agrupava-se pelo
+dia de mercado de Madrid, o que deslocava os quarters das 23:00–00:00 para
+o dia errado e fazia as médias divergir do TF.)
 
-Na alteração do backend cada linha passou a guardar as duas leituras:
+Na alteração do backend cada linha traz:
 
-- `dn`/`mk` — o **dia e o mês civis** (em UTC), por onde se agrupa;
-- `lisbonDn`/`lisbonMin` — a mesma leitura na hora local, que é o que se
-  mostra ao utilizador.
+- `dn`/`mk` — o **dia e o mês civis de Lisboa**, por onde se agrupa;
+- `lisbonDn`/`lisbonMin` — a mesma leitura (hora de Lisboa), que é o que se
+  mostra ao utilizador;
+- `utc` — o instante absoluto, que é o que alinha as duas fontes.
 
 A conversão do período do mercado (Madrid) para o instante é directa:
 meia-noite de Madrid no dia do mercado + (N-1) × 15 minutos. O offset da

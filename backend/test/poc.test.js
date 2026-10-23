@@ -135,10 +135,12 @@ describe('quarters CSV defensivo', () => {
   it('o dia tem 96 quartos, de 00:00 a 23:45 de Lisboa', () => {
     const linhas = [];
     for (let p = 1; p <= 96; p++) {
-      const min = (p - 1) * 15;
-      const hh = String(Math.floor(min / 60)).padStart(2, '0');
-      const mm = String(min % 60).padStart(2, '0');
-      linhas.push(`15/10/2026,${hh}:${mm},[${hh}:${mm}-x[,S,V,V,V,V,70.00,70.00`);
+      // A coluna `hora` do TF é o FIM do quarto ("00:15" = [00:00-00:15[);
+      // a última linha do dia vem como "23:59" ([23:45-00:00[).
+      const end = p < 96 ? p * 15 : 23 * 60 + 59;
+      const hh = String(Math.floor(end / 60)).padStart(2, '0');
+      const mm = String(end % 60).padStart(2, '0');
+      linhas.push(`15/10/2026,${hh}:${mm},[x-x[,S,V,V,V,V,70.00,70.00`);
     }
     const { days } = parseTfQuarters(`${HEAD}\n${linhas.join('\n')}\n`);
     const rows = days.get('2026-10-15');

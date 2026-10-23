@@ -92,13 +92,17 @@ export function assessDays(rows, expectedCountFn) {
   for (const [day, list] of byDay) {
     list.sort((a, b) => a.marketPeriod - b.marketPeriod);
     const periods = new Set(list.map(r => r.marketPeriod));
-    const missing = [];
-    for (let p = 1; p <= 100; p++) if (!periods.has(p)) missing.push(p);
     const expected = expectedCountFn ? expectedCountFn(day) : 96;
+    // O dia de mercado tem 1..96 períodos (1..92 na primavera, 1..100 no
+    // Outono): só conta como em falta o que devia existir. Antes comparava-se
+    // sempre com 1..100, por isso TODOS os dias normais saíam PARTIAL.
+    const top = expected >= 100 ? 100 : expected >= 96 ? 96 : 92;
+    const missing = [];
+    for (let p = 1; p <= top; p++) if (!periods.has(p)) missing.push(p);
     days.push({
       day, count: list.length, expected,
-      missing, complete: missing.length === 0,
-      status: missing.length === 0 ? 'OK' : 'PARTIAL',
+      missing, complete: missing.length === 0 && list.length === expected,
+      status: (missing.length === 0 && list.length === expected) ? 'OK' : 'PARTIAL',
     });
   }
   return days.sort((a, b) => a.day.localeCompare(b.day));
