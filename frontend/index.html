@@ -464,6 +464,11 @@ const kwhTxt = () => fmtNum(effKwh().toFixed(1));
 // A hora do carregamento escreve-se e lê-se no relógio da REGIÃO, não no do
 // browser (ver frontend/tz.js): `new Date(y, m, d, h, mi)` usava o fuso do
 // browser, e quem simulava os Açores a partir de Lisboa ficava uma hora ao lado.
+// "neste momento" só quando se simula agora; com hora fixa diz-se qual (no
+// relógio da região, a partir do instante que o servidor usou).
+function perWhen() {
+  return S.chargeAt && AT ? i18n('atTimeIn', { t: toIsoDisplay(AT) }) : `<span class="livedot"></span>${i18n('rightNowIn')}`;
+}
 function toIsoDisplay(iso) {
   return CEME_TZ.toWall(iso ? new Date(iso) : new Date(), regionTz());
 }
@@ -574,7 +579,7 @@ function card(q, i, max, lo, hi) {
     <div class="row" style="justify-content:space-between;align-items:flex-start">
       <div style="display:flex;gap:12px;align-items:flex-start;flex:1"><span class="rank">${i + 1}</span>
       <div style="flex:1"><div><span class="total">${eur(q.totalEur)}</span>${first ? `<span class="ribbon">${i18n('cheapest')}</span>` : ''}</div>
-        <div class="per"><span class="livedot"></span>${i18n('rightNowIn')} <b>${perName(q.period)}</b> · ${kwhe(q.eurKwhNoIva)} · ${kwhTxt()} kWh ${i18n('inclVat')}</div>
+        <div class="per">${perWhen()} <b>${perName(q.period)}</b> · ${kwhe(q.eurKwhNoIva)} · ${kwhTxt()} kWh ${i18n('inclVat')}</div>
         <div class="tname"${q.notes ? ` title="${noteText(q.notes)}"` : ''}><b>${esc(q.ceme)}</b> — ${tariffName(q.name)}</div>
         <div>${badges(q)}</div></div></div>
       <button class="favbtn ${on ? 'f' : ''}" data-id="${esc(q.id)}" onclick="toggleFav(this.dataset.id)" title="${i18n('saveFav')}">${on ? '★' : '☆'}</button>
@@ -688,7 +693,7 @@ function vHome() {
       <button id="openFavModal">${i18n('fFavMgr', { n: favs().length })}</button>
     </div>
     <div class="row" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
-      <label class="fl grow">${i18n('when')}<input id="when" type="text" value="${S.chargeAt ? toIsoDisplay(S.chargeAt) : toIsoDisplay(S.serverNow || new Date().toISOString())}" placeholder="${i18n('whenPh')}" pattern="\d{4}/\d{2}/\d{2} \d{2}:\d{2}" style="width:100%"></label>
+      <label class="fl grow">${i18n('when')}<input id="when" type="text" value="${S.chargeAt ? toIsoDisplay(S.chargeAt) : toIsoDisplay(S.serverNow || new Date().toISOString())}" placeholder="${i18n('whenPh')}" pattern="\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}" style="width:100%"></label>
       <button id="nowBtn" style="align-self:flex-end">${i18n('now')}</button>
     </div>
     <small style="display:block;margin-top:4px">${S.chargeAt ? i18n('tFixed') : (S.forceServerTime ? i18n('tSkew') : i18n('tBrowser')) + i18n('tMode')}</small>
@@ -956,7 +961,15 @@ async function route() {
     const fmBun = document.getElementById('fmBundle'); if (fmBun) fmBun.onclick = () => { FM.bundle = !FM.bundle; fmBun.classList.toggle('on', FM.bundle); renderFavModal(); };
     const fmGrn = document.getElementById('fmGreen'); if (fmGrn) fmGrn.onclick = () => { FM.green = !FM.green; fmGrn.classList.toggle('on', FM.green); renderFavModal(); };
     const whenEl = document.getElementById('when');
-    if (whenEl) whenEl.onchange = e => { S.chargeAt = fromIsoDisplay(e.target.value); R2(); };
+    // Texto que não se lê como data não pode voltar em silêncio a "agora"
+    // (parecia que a hora escolhida era ignorada): fica marcado e não recalcula.
+    if (whenEl) whenEl.onchange = e => {
+      const at = fromIsoDisplay(e.target.value);
+      if (!at) { e.target.setCustomValidity(i18n('whenBad')); e.target.reportValidity(); return; }
+      e.target.setCustomValidity('');
+      S.chargeAt = at; R2();
+    };
+    if (whenEl) whenEl.oninput = e => e.target.setCustomValidity('');
     const nowBtn = document.getElementById('nowBtn');
     if (nowBtn) nowBtn.onclick = () => { S.chargeAt = null; R2(); };
   } else {
