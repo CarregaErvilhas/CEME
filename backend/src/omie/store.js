@@ -15,7 +15,7 @@
 import { run, query, get } from '../db.js';
 import { periodForRegion } from '../engine/regions.js';
 
-// Quantos dias à frente do último são reescritos em cada refresh: é onde
+// Quantos dias para trás do último são reescritos em cada refresh: é onde
 // o OMIE pode corrigir o dia anterior.
 const RECENT_DAYS = 3;
 
@@ -48,10 +48,10 @@ export async function setMetaJson(key, value) {
 
 // ------------------------------------------------------------------ spot
 
-// Os dias (UTC) que já estão na tabela, para uma fonte.
+// Os dias (civis de Lisboa) que já estão na tabela, para uma fonte.
 async function knownDays(source) {
-  const rows = await query('SELECT DISTINCT day_utc FROM omie_spot WHERE source = $1', [source]);
-  return new Set(rows.map(r => String(r.day_utc).slice(0, 10)));
+  const rows = await query('SELECT DISTINCT day_lisbon FROM omie_spot WHERE source = $1', [source]);
+  return new Set(rows.map(r => String(r.day_lisbon).slice(0, 10)));
 }
 
 // Escreve as linhas de um dia (ou de vários) — upsert idempotente: correr
@@ -93,11 +93,11 @@ export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDa
       });
       await run(
         `INSERT INTO omie_spot
-           (ts_utc, day_utc, min_utc, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags)
+           (ts_utc, day_lisbon, min_lisbon, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags)
          VALUES ${tuples.join(',')}
          ON CONFLICT (ts_utc, source) DO UPDATE SET
-           day_utc = EXCLUDED.day_utc,
-           min_utc = EXCLUDED.min_utc,
+           day_lisbon = EXCLUDED.day_lisbon,
+           min_lisbon = EXCLUDED.min_lisbon,
            price_pt_eur_mwh = EXCLUDED.price_pt_eur_mwh,
            price_es_eur_mwh = EXCLUDED.price_es_eur_mwh,
            bd = EXCLUDED.bd,
@@ -112,7 +112,7 @@ export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDa
   return written;
 }
 
-// As linhas de um dia (UTC), das duas fontes, reconciliadas.
+// As linhas de um dia civil de Lisboa, das duas fontes, reconciliadas.
 //
 // O omie.es manda no preço; o TF traz a classificação BD/BS e cobre os
 // buracos. `est` marca as linhas que são estimativa OMIP (o TF vai mais
@@ -126,21 +126,21 @@ export async function lastOmieInstant() {
   return m ? String(m) : null;
 }
 
-export async function spotForDay(dayUtc) {
+export async function spotForDay(lisDay) {
   const rows = await query(
-    `SELECT ts_utc, day_utc, min_utc, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags
-       FROM omie_spot WHERE day_utc = $1 ORDER BY ts_utc`,
-    [dayUtc]
+    `SELECT ts_utc, day_lisbon, min_lisbon, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags
+       FROM omie_spot WHERE day_lisbon = $1 ORDER BY ts_utc`,
+    [lisDay]
   );
   return reconcile(rows, { lastOmie: await lastOmieInstant() });
 }
 
 // As linhas de um intervalo de dias (inclusive), reconciliadas.
-export async function spotBetween(fromUtc, toUtc) {
+export async function spotBetween(fromDay, toDay) {
   const rows = await query(
-    `SELECT ts_utc, day_utc, min_utc, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags
-       FROM omie_spot WHERE day_utc >= $1 AND day_utc <= $2 ORDER BY ts_utc`,
-    [fromUtc, toUtc]
+    `SELECT ts_utc, day_lisbon, min_lisbon, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags
+       FROM omie_spot WHERE day_lisbon >= $1 AND day_lisbon <= $2 ORDER BY ts_utc`,
+    [fromDay, toDay]
   );
   return reconcile(rows, { lastOmie: await lastOmieInstant() });
 }
@@ -151,8 +151,8 @@ export function reconcile(rows, opts = {}) {
   const byUtc = new Map();
   for (const r of rows) {
     const utc = String(r.ts_utc);
-    const day = String(r.day_utc).slice(0, 10);
-    const item = byUtc.get(utc) || { utc, day, min: r.min_utc, pt: null, es: null, bd: null, bs: null, src: null, flags: null };
+    const day = String(r.day_lisbon).slice(0, 10);
+    const item = byUtc.get(utc) || { utc, day, min: r.min_lisbon, pt: null, es: null, bd: null, bs: null, src: null, flags: null };
     if (r.source === 'OMIE_ES') {
       item.pt = r.price_pt_eur_mwh;
       if (r.price_es_eur_mwh != null) item.es = r.price_es_eur_mwh;
@@ -226,7 +226,7 @@ export async function dailyRows(days) {
 // O intervalo de dias que há na tabela.
 export async function spotRange() {
   // "from"/"to" são palavras reservadas em SQL — o alias vai entre aspas.
-  const rows = await query('SELECT MIN(day_utc) AS "from", MAX(day_utc) AS "to" FROM omie_spot');
+  const rows = await query('SELECT MIN(day_lisbon) AS "from", MAX(day_lisbon) AS "to" FROM omie_spot');
   const r = rows[0] || {};
   return {
     from: r.from ? String(r.from).slice(0, 10) : null,
@@ -236,18 +236,33 @@ export async function spotRange() {
 
 // O último dia com preço publicado (o omie.es).
 export async function lastMarketDay() {
-  const rows = await query(`SELECT MAX(day_utc) AS d FROM omie_spot WHERE source = 'OMIE_ES'`);
+  const rows = await query(`SELECT MAX(day_lisbon) AS d FROM omie_spot WHERE source = 'OMIE_ES'`);
   const d = rows[0] && rows[0].d;
   return d ? String(d).slice(0, 10) : null;
 }
 
-// Os dias disponíveis a partir de um dia (para o seletor de dias).
-export async function recentDays(fromUtc, n = 10) {
-  const rows = await query(
-    `SELECT DISTINCT day_utc FROM omie_spot WHERE day_utc >= $1 ORDER BY day_utc LIMIT $2`,
-    [fromUtc, n]
+// Os dias disponíveis à volta de um dia (para o seletor de dias): até n dias,
+// com o dia pedido incluído e os anteriores ainda acessíveis. Só olhar para a
+// frente fazia desaparecer os dias anteriores ao escolher uma data futura.
+export async function recentDays(fromDay, n = 10) {
+  const before = Math.floor(n / 2);
+  const back = await query(
+    `SELECT DISTINCT day_lisbon FROM omie_spot WHERE day_lisbon < $1 ORDER BY day_lisbon DESC LIMIT $2`,
+    [fromDay, before]
   );
-  return rows.map(r => String(r.day_utc).slice(0, 10));
+  const fwd = await query(
+    `SELECT DISTINCT day_lisbon FROM omie_spot WHERE day_lisbon >= $1 ORDER BY day_lisbon LIMIT $2`,
+    [fromDay, n - back.length]
+  );
+  // Sem dias suficientes à frente (dia perto do fim), compensa com mais para trás.
+  const extra = n - back.length - fwd.length;
+  const more = extra > 0 && back.length === before
+    ? await query(
+      `SELECT DISTINCT day_lisbon FROM omie_spot WHERE day_lisbon < $1 ORDER BY day_lisbon DESC LIMIT $2`,
+      [fromDay, before + extra]
+    )
+    : back;
+  return [...more.reverse(), ...fwd].map(r => String(r.day_lisbon).slice(0, 10));
 }
 
 // ----------------------------------------------------------------- util

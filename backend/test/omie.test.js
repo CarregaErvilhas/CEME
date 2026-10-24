@@ -82,8 +82,8 @@ describe('a reconciliação entre as fontes (na BD)', () => {
     // BD); aqui fica o caso mais simples: duas fontes para o mesmo
     // instante, com o omie.es a ganhar.
     const rows = [
-      { ts_utc: '2026-10-20T00:00:00.000Z', day_utc: '2026-10-20', min_utc: 0, price_pt_eur_mwh: 100, price_es_eur_mwh: 100, bd: null, bs: null, source: 'OMIE_ES', flags: null },
-      { ts_utc: '2026-10-20T00:00:00.000Z', day_utc: '2026-10-20', min_utc: 0, price_pt_eur_mwh: 106, price_es_eur_mwh: 106, bd: 'V', bs: 'F', source: 'TF', flags: null },
+      { ts_utc: '2026-10-20T00:00:00.000Z', day_lisbon: '2026-10-20', min_lisbon: 0, price_pt_eur_mwh: 100, price_es_eur_mwh: 100, bd: null, bs: null, source: 'OMIE_ES', flags: null },
+      { ts_utc: '2026-10-20T00:00:00.000Z', day_lisbon: '2026-10-20', min_lisbon: 0, price_pt_eur_mwh: 106, price_es_eur_mwh: 106, bd: 'V', bs: 'F', source: 'TF', flags: null },
     ];
     const out = reconcile(rows);
     assert.equal(out.length, 1);

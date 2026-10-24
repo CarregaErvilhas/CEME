@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lisbonMidnightUtc, lisbonWallClock } from './convert.js';
+import { lisbonDayQuarters } from './convert.js';
 
 // O cache em disco dos ficheiros grandes. Vive em `backend/data/` (que não
 // é versionado) e é descartável: o que interessa está na BD.
@@ -29,12 +29,12 @@ export const TF_SOURCE = 'dados.tiagofelicia.pt (CC BY 4.0)';
 
 // TTLs: o que muda uma vez por dia não se re-baixam de duas em duas horas.
 export const TTL_DAILY = 24 * 3600 * 1000;   // ficheiros do dia corrente
-export const TTL_HISTORY = 30 * 24 * 3600 * 1000; // histórico: muda uma vez por ano
+export const TTL_HISTORY = 30 * 24 * 3600 * 1000; // histórico: quase não muda; re-baixa-se uma vez por mês
 export const TTL_FUTURES = 6 * 3600 * 1000;  // futuros: mudam com o mercado
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// GET com retry (o que o cache.js já fazia) — o texto vem em UTF-8.
+// GET com retry — o texto vem em UTF-8.
 export async function fetchText(url) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -98,7 +98,7 @@ export function parseTfQuarters(text) {
   const quarantined = [];
   // Estado por dia para a conversão hora→instante (ver abaixo): vai à parte
   // para não poluir o mapa de dias devolvido.
-  const effState = new Map();
+  const dayState = new Map();
   for (const line of lines) {
     if (!line.trim()) continue;
     if (line.startsWith('TABELA_')) break; // blocos de futuros no fim do ficheiro
@@ -111,36 +111,44 @@ export function parseTfQuarters(text) {
     const day = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
 
     const list = days.get(day) || [];
-    // O instante a partir da coluna `hora` (o FIM do quarto, "00:15" =
-    // [00:00-00:15[), e não da posição da linha no ficheiro: se faltar uma
-    // linha a meio do dia, a posição deslocava todos os instantes seguintes
-    // em 15 minutos sem ninguém dar por isso.
+    // O instante a partir da HORA DE RELÓGIO do quarto, e não da posição da
+    // linha (se faltar uma linha a meio do dia, a posição deslocava todos os
+    // instantes seguintes em 15 minutos sem ninguém dar por isso).
     //
-    // Mas a hora de relógio não chega sozinha: no dia de Outono a hora
-    // 01:00-02:00 acontece duas vezes (o ficheiro traz 100 linhas com as
-    // horas repetidas) e a ordem das linhas é o que distingue a primeira
-    // passagem da segunda. Por isso soma-se +60 min a partir do momento em
-    // que o relógio anda para trás — sem isto as duas passagens colidiam no
-    // mesmo instante e uma delas perdia-se no upsert.
-    const st = effState.get(day) || { prevEff: null, extra: 0 };
-    const prevEff = st.prevEff;
-    let extra = st.extra;
-    let eff;
-    const hm = /^(\d{2}):(\d{2})$/.exec((c[1] || '').trim());
-    if (hm) {
-      const s = Number(hm[1]) * 60 + Number(hm[2]) - 15;
-      if (Number.isInteger(s) && s >= 0 && s < 1440 && s % 15 === 0) {
-        eff = s + extra;
-        if (prevEff !== null && eff < prevEff) { extra += 60; eff = s + extra; }
+    // A hora de relógio não é tempo decorrido desde a meia-noite: no dia de
+    // Março o relógio salta das 00:59 para as 02:00 (a linha
+    // `02:00,[00:45-02:00[` começou 45 min depois da meia-noite, não 105), e
+    // no de Outubro a hora 01:00–02:00 passa duas vezes. Por isso não se faz
+    // aritmética: procura-se o quarto na lista REAL de quartos desse dia de
+    // Lisboa (`lisbonDayQuarters`), pela hora de início, a seguir ao quarto da
+    // linha anterior (é o que separa a primeira e a segunda passagem de
+    // Outubro). O início lê-se do `intervalo` ("[00:45-02:00[");
+    // sem ele, da `hora` (o FIM do quarto; "23:59" = 24:00).
+    let st = dayState.get(day);
+    if (!st) { st = { quarters: lisbonDayQuarters(day), next: 0 }; dayState.set(day, st); }
+    const startMin = quarterStart(c[ix('intervalo')], c[ix('hora')]);
+    let slot = null;
+    if (startMin != null) {
+      // O primeiro quarto com esta hora DEPOIS do anterior: na hora repetida
+      // de Outubro, a segunda linha "01:00" cai na segunda passagem.
+      const i = st.quarters.findIndex((q, j) => j >= st.next && q.minutes === startMin);
+      if (i >= 0) slot = st.quarters[i];
+      else if (st.quarters.some(q => q.minutes === startMin)) {
+        // A hora existe nesse dia mas já ficou para trás: linha repetida (ou
+        // fora de ordem). Quarentena — encaixá-la "no quarto a seguir"
+        // deslocava todas as linhas seguintes do dia em 15 minutos.
+        quarantined.push({ reason: 'dup_hour', text: line.slice(0, 140) });
+        continue;
       }
     }
-    if (eff === undefined) eff = prevEff === null ? list.length * 15 : prevEff + 15;
-    effState.set(day, { prevEff: eff, extra });
-    // O instante: a meia-noite local do dia + o início do quarto. É o
-    // único jeito de alinhar com o omie.es — na hora repetida de Outubro a
-    // hora de relógio é a mesma em dois instantes diferentes.
-    const utcMs = lisbonMidnightUtc(day) + eff * 60000;
-    const wall = lisbonWallClock(utcMs);
+    // Sem hora legível, ou uma hora que não existe nesse dia (só com a
+    // `hora` e sem `intervalo`, o quarto que fecha às 02:00 de Março "começa"
+    // às 01:45): o quarto a seguir ao anterior.
+    if (!slot) slot = st.quarters[st.next] || null;
+    if (!slot) { quarantined.push({ reason: 'bad_hour', text: line.slice(0, 140) }); continue; }
+    st.next = st.quarters.indexOf(slot) + 1;
+    const utcMs = Date.parse(slot.utc);
+    const wall = { day: slot.day, minutes: slot.minutes };
     list.push({
       utc: new Date(utcMs).toISOString(),
       day: wall.day,
@@ -153,6 +161,19 @@ export function parseTfQuarters(text) {
     days.set(day, list);
   }
   return { days, quarantined };
+}
+
+// Minutos de relógio do INÍCIO do quarto: do `intervalo` ("[00:45-02:00[")
+// ou, na falta, da `hora` (o fim; "23:59" é o fim do dia). null se ilegível.
+function quarterStart(intervalo, hora) {
+  const iv = /^\[(\d{2}):(\d{2})-/.exec(String(intervalo || '').trim());
+  if (iv) return Number(iv[1]) * 60 + Number(iv[2]);
+  const hm = /^(\d{2}):(\d{2})$/.exec(String(hora || '').trim());
+  if (!hm) return null;
+  let end = Number(hm[1]) * 60 + Number(hm[2]);
+  if (end === 23 * 60 + 59) end = 24 * 60;
+  const start = end - 15;
+  return start >= 0 && start % 15 === 0 ? start : null;
 }
 
 // O "Data_Valores_OMIE" do ficheiro de futuros: o último dia de MERCADO.
@@ -192,13 +213,35 @@ export function parseTfFutures(text) {
     if (!line) continue;
     if (line.startsWith('TABELA_')) { table = line; cols = []; continue; }
     if (!table || !table.startsWith('TABELA_FUTUROS_')) continue;
-    if (!cols.length) { cols = line.split(','); continue; }
-    const c = line.split(',');
+    if (!cols.length) { cols = csvFields(line); continue; }
+    // Campos com aspas: `FPB Wk44-26,"Semana 44, 2026",194.25,...` — com um
+    // split(',') simples o preço caía no campo errado e saía null.
+    const c = csvFields(line);
     if (c.length < 3 || !/^FPB/.test(c[0]) && !/^FBB/.test(c[0])) continue;
     const num = Number(String(c[2]).replace(',', '.'));
     out.push({ zona: table.replace('TABELA_FUTUROS_', ''), contrato: c[0], descricao: c[1], valor: Number.isFinite(num) ? num : null });
   }
-  return out.slice(0, 40);
+  // Sem tecto: o ficheiro é pequeno, e um corte por número de linhas (havia
+  // um de 40, para todas as zonas) podia deixar de fora futuros diários.
+  return out;
+}
+
+// Uma linha CSV em campos, com aspas duplas ("a, b" é um campo; "" é uma aspa).
+function csvFields(line) {
+  const out = [];
+  let cur = '', q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
 }
 // Os futuros DIÁRIOS (FPB D ...) da zona PT: um número publicado por dia
 // (ex. `FPB D Sa24Oct-26,24/10/2026,132.31,...`). É a única fonte de futuro

@@ -1,14 +1,15 @@
 # CEME v2 no Zerops — configuração do serviço runtime da API.
 #
-# É um `zerops.yml` (runtime apenas): os serviços managed — PostgreSQL 18 e
-# Valkey 7.2 — criam-se à parte (ver `zerops-import.yaml`), com os hostnames
-# `db` e `cache`, e é deles que este serviço puxa as variáveis por referência
-# `${hostname_variavel}`.
+# É um `zerops.yml` (runtime apenas): o serviço managed — PostgreSQL, hostname
+# `db` — cria-se à parte (ver `zerops-import.yaml`), e é dele que este serviço
+# puxa as variáveis por referência `${hostname_variavel}`. (Houve um Valkey,
+# `cache`; foi desligado por não ter uso. Volta se aparecer um caso de uso.)
 #
 # JWT_SECRET: env secret do serviço `api` (gerado no import; editável na GUI).
 # Nunca no repositório.
 #
-# Deploy: `zcli push api --setup api` na raiz do repo.
+# Deploy: o webhook do Zerops puxa o `main` a cada push (ver infra.md). À mão,
+# em último recurso: `zcli push api --setup api` na raiz do repo.
 zerops:
   - setup: api
     build:

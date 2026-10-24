@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS tariff_version (
   omie_aggregation TEXT DEFAULT 'SPLIT_VAZIO_FORA',
   notes TEXT, created_by TEXT, created_at TEXT DEFAULT (datetime('now')),
   -- Uma versão por data de vigência (à paridade do schema postgres): dá
-  -- alvo real ao INSERT OR IGNORE do seed sqlite e evita versões
+  -- alvo ao upsert (ON CONFLICT … DO UPDATE) do seed e evita versões
   -- duplicadas da mesma folha em re-seed.
   UNIQUE (tariff_id, valid_from)
 );
@@ -42,6 +42,22 @@ CREATE TABLE IF NOT EXISTS price_component (
   support_eur REAL DEFAULT 0, iec_eur_kwh REAL DEFAULT 0,
   energy_only_eur_kwh REAL, tar_eur_kwh REAL,
   PRIMARY KEY (tariff_version_id, period)
+);
+
+-- Preços por região: quando o CEME cobra diferente nas ilhas (ex.: a Enable
+-- publica energia 0,15 €/kWh na Madeira/Açores vs 0,12 no Continente), as
+-- linhas da ilha vivem aqui, POR CIMA dos preços por omissão de
+-- `price_component` (que são os do Continente). Só há linhas de região onde
+-- os valores divergem; onde não há, o tarifário cota-se com o preço CONT em
+-- qualquer região — e a TAR (tabela `tar`) segue sempre a região pedida.
+CREATE TABLE IF NOT EXISTS price_component_region (
+  tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
+  region TEXT NOT NULL CHECK (region IN ('MAD','AZO')),
+  period TEXT NOT NULL CHECK (period IN ('VAZIO','FORA_VAZIO','UNICO')),
+  energy_eur_kwh REAL, activation_eur REAL DEFAULT 0,
+  support_eur REAL DEFAULT 0, iec_eur_kwh REAL DEFAULT 0,
+  energy_only_eur_kwh REAL, tar_eur_kwh REAL,
+  PRIMARY KEY (tariff_version_id, region, period)
 );
 
 CREATE TABLE IF NOT EXISTS tar (
@@ -62,13 +78,13 @@ CREATE TABLE IF NOT EXISTS tar (
 -- As duas fontes podem ter linhas para o mesmo instante — a reconciliação
 -- (a oficial ganha) é feita na leitura.
 CREATE TABLE IF NOT EXISTS omie_spot (
-  ts_utc TEXT NOT NULL, day_utc TEXT NOT NULL, min_utc INTEGER NOT NULL,
+  ts_utc TEXT NOT NULL, day_lisbon TEXT NOT NULL, min_lisbon INTEGER NOT NULL,
   price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL,
   bd TEXT, bs TEXT,
   source TEXT NOT NULL, flags TEXT, ingested_at TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (ts_utc, source)
 );
-CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_utc);
+CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_lisbon);
 
 -- Os agregados diários (as médias por ciclo horário), materializados a
 -- partir das linhas de cima.

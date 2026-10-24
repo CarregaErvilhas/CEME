@@ -4,7 +4,7 @@ Projecto: `/Users/fernando.pereira/tmp/opencode/ceme-v2/`. Ficheiros-chave:
 - `backend/src/db/seed.js` — CEMES, SPLITS (energia+TAR), TARIFFS (finais c/ TAR, act), @@@ act.
 - `backend/src/db/seed.postgres.js` — duplicado de TARIFFS; **SPLITS é importado do seed.js** (`import { SPLITS } from './seed.js'`) — só editar TARIFFS aqui.
 - `backend/data/ceme.db` — SQLite: `ceme(id, website)`, `tariff(id, ceme_id, kind, voltage, source_url)`, `tariff_version(id, tariff_id→tariff.id, k_index_eur_mwh, cgs_eur_mwh)`, `price_component(tariff_version_id, period, energy_eur_kwh=final c/ TAR, activation_eur, energy_only_eur_kwh, tar_eur_kwh)`.
-- Última verificação completa: **2026-10-22** (ver registo no cabeçalho do seed.js).
+- Última verificação completa: **2026-10-22** (ver o histórico do git do seed.js: `git log -p backend/src/db/seed.js`).
 
 ## Comando
 Existe o comando `/ceme-check` (`.opencode/commands/ceme-check.md`) que carrega esta memória. Argumentos opcionais: `/ceme-check galp` (só um CEME) ou `/ceme-check update` (aplicar updates autorizadas).
@@ -32,7 +32,7 @@ ORDER BY t.ceme_id, t.id, p.period COLLATE NOCASE;"
 (⚠️ usar caminho absoluto ou cd correcto — já falhou por cwd.)
 
 ## Classificação dos CEMEs (método × CEME, verificado 2026-10-22)
-curl estático (valores no HTML): edp(nov 2026? valores só via JS — usar browser), enable (0,12 energia), evaz (tabela PricesTable no HTML), goldenergy (0,2222/0,2778 em goldenergy.pt/**mobilidade-eletrica/** — não no blog), luzigas (K's: 0.05 ceme / 0.005 casa; CGS), meo (0,2250 M5/M4 + 0,2500 M3/M2; base 0.195=Colaboradores só no sheet/app), repsol (0,2868), viaverde (energia 0,148), bluecharge (home).
+curl estático (valores no HTML): edp(nov 2026? valores só via JS — usar browser), enable (página /condutores, 2026-10-24: publica ENERGIA — 0,12 €/kWh no Continente e 0,15 €/kWh na Madeira/Açores, "exclui tarifa OPC, taxas e impostos (TAR, EGME, IEC e IVA)"; ciclo bi-horário semanal; o final vem do somatório energia+TAR — REGION_SPLITS no seed), evaz (tabela PricesTable no HTML), goldenergy (0,2222/0,2778 em goldenergy.pt/**mobilidade-eletrica/** — não no blog), luzigas (K's: 0.05 ceme / 0.005 casa; CGS), meo (0,2250 M5/M4 + 0,2500 M3/M2; base 0.195=Colaboradores só no sheet/app), repsol (0,2868), viaverde (energia 0,148), bluecharge (home).
 
 Imagens PNG de tarifário (download + read da imagem): charge2go (`/tarifarios/` → img desktop `TARIFARIOS-*.png`, energia 0,1697 s/ TAR; ⚠️ há `mobile_image` antigo a par, ignorar), evpower (`/particulares/` → `tarifario_janeiro_2026.png`), acp (página mostra só nota TAR; valores via screenshot do user).
 

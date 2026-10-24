@@ -1,275 +1,90 @@
-# 08 — Migração SQLite → PostgreSQL (Zerops)
+# 08 — Dois backends de BD: SQLite (dev) e PostgreSQL (produção)
 
-Objetivo: substituir o ficheiro SQLite local (`./data/ceme.db`) por uma
-base de dados PostgreSQL gerenciada no Zerops, mantendo o backend
-Node.js funcional e os 74 testes verdes.
+> **Estado:** a migração está feita. A produção corre em PostgreSQL (serviço
+> `db` no Zerops); dev e testes correm em SQLite. O SQLite **não** foi
+> substituído — ficou como backend de dev, de propósito: arranque sem
+> dependências e testes sem servidor. Este documento descreve como os dois
+> convivem; o plano original da migração está no histórico do git.
 
-## Porquê
+## Porquê PostgreSQL em produção
 
-O backend usa `node:sqlite` + ficheiro `.db` local. Isso não sobrevive a
-redeploy/container efémero no Zerops (sem disco persistente garantido entre
-builds) e não escala para múltiplas instâncias da API. O PostgreSQL do
-Zerops resolve persistência, backups automáticos e HA como toggle.
+Um ficheiro SQLite no contentor não sobrevive a um redeploy no Zerops (sem
+disco persistente garantido) e não é partilhado entre réplicas. O
+PostgreSQL gerido resolve persistência, backups e réplicas.
 
-## Escopo da migração
+## Quem escolhe
 
-| Camada | Mudança |
-|---|---|
-| Driver | `node:sqlite` (`DatabaseSync`) → `pg` (node-postgres, assíncrono) |
-| Schema | `schema.sql` (SQLite) → `schema.postgres.sql` (PostgreSQL) |
-| Seed | `seed.js` (SQLite sync) → `seed.postgres.js` (pg async) |
-| Queries | `?` placeholders → `$1`, `$2`…; `date('now')` → `CURRENT_DATE` |
-| Conexão | `DB_PATH` ficheiro → `DATABASE_URL` env (injetada pelo Zerops) |
-| Testes | `node --test` continua a funcionar com uma BD de teste (testcontainers ou DB local) |
+O **ambiente**, não o código: `backend/src/db.js` usa o PostgreSQL quando há
+`DATABASE_URL`, e o `node:sqlite` (`DB_PATH`, por omissão
+`backend/data/ceme.db`) quando não há. O resto do código só vê
+`query`/`get`/`run` (assíncronos) e escreve SQL num dialecto comum.
 
-## Ficheiros a criar / editar
+| peça | SQLite | PostgreSQL |
+|---|---|---|
+| ligação | `db.js` (`node:sqlite`) | `db/pg.js` (pool lazy; parsers de tipo) |
+| schema | `db/schema.sql` | `db/schema.postgres.sql` |
+| seed | `db/seed.js` | `db/seed.postgres.js` |
+| placeholders | `$1, $2…` traduzidos para `?` em `db.js` | nativos |
 
-```
-backend/
-  package.json            # adicionar dependência pg
-  src/
-    server.js             # adaptar para pg + DATABASE_URL
-    db/
-      schema.postgres.sql # schema em dialeto PostgreSQL
-      seed.postgres.js    # seed idempotente (INSERT ... ON CONFLICT)
-      pg.js               # helper de conexão/pool pg
-    engine/               # sem alteração (cálculo puro, sem SQL direto)
-    omie/                 # sem alteração (ler ficheiros cache, não BD)
-    auth/                 # sem alteração (JWT em memória)
-  test/
-    poc.test.js           # ajustar setup para BD pg de teste
-zerops.yml                # já criado (api + db + cache)
-```
+## Regras para os dois dialectos
 
-## Passo 1 — Adicionar dependência
+- **SQL comum.** `$N` em todo o lado; `ON CONFLICT … DO UPDATE` (upsert)
+  funciona nos dois; `"from"`/`"to"` entre aspas (são reservadas).
+- **Datas são texto `YYYY-MM-DD`.** No pg, o `pg.js` regista parsers para que
+  `DATE`/`TIMESTAMP` não virem `Date` (que serializava como o dia anterior em
+  UTC) — guardado em `pg-parity.test.js`.
+- **"Hoje" vem do código, não da BD.** Nada de `CURRENT_DATE` para validades:
+  é o dia UTC (o pool corre em UTC) e o SQLite também. O dia civil passa-se
+  como parâmetro (`civilDay()`, ver docs/02).
+- **Os dois schemas andam juntos.** Uma coluna, um índice ou uma tabela nova
+  vai aos dois ficheiros. Os dois seeds também: `seed-parity.test.js`
+  compara os dados (`CEMES`, `TARIFFS`, `NOTES`, `VERSIONS`, `CAMPAIGN_END`)
+  e falha se divergirem.
+- **O seed é convergente**, não "só insere": `ON CONFLICT … DO UPDATE` — um
+  arranque com o seed novo actualiza os valores que mudaram (e não reabre
+  campanhas que um operador fechou: `valid_to` fica de fora do UPDATE).
 
-```json
-{
-  "dependencies": {
-    "pg": "^8.13.0"
-  }
-}
-```
+## Migrações (`db/migrate.js`)
 
-```sh
-cd backend && npm install
-```
+O `CREATE TABLE IF NOT EXISTS` não acrescenta colunas a uma tabela que já
+existe — foi isso que um dia deixou a produção em crash loop. Por isso, no
+arranque (`server.js`), por esta ordem:
 
-## Passo 2 — Schema PostgreSQL (`backend/src/db/schema.postgres.sql`)
+1. `migrateOmieTables()` — **antes** do schema: renomeia colunas cujo nome
+   mudou (ex. `day_utc` → `day_lisbon`, sem perder dados) e só depois deita
+   fora tabelas do OMIE com uma forma antiga incompatível (o schema recria-as);
+2. o schema do dialecto;
+3. `migrateAddedColumns()` — colunas novas em tabelas que já existem
+   (`ADDED_COLUMNS`);
+4. TAR, chave da env, seed, derivados do OMIE.
 
-Diferenças chave vs SQLite:
-- `INTEGER PRIMARY KEY AUTOINCREMENT` → `SERIAL PRIMARY KEY`
-- `TEXT PRIMARY KEY` mantém-se
-- `datetime('now')` → `now()`
-- `REAL` → `REAL` (ou `DOUBLE PRECISION`)
-- `INTEGER DEFAULT 0` para booleans → `BOOLEAN DEFAULT FALSE` (ou manter INTEGER)
-- Remover `PRAGMA journal_mode = WAL` (não existe no Postgres)
+`migrate.test.js` cobre estes caminhos em SQLite. **Lacuna conhecida:** não
+há testes end-to-end contra um PostgreSQL real (os caminhos `to_regclass`
+do `migrate.js`, por exemplo, só correm em produção). Está no roadmap.
 
-Exemplo das tabelas principais:
+## Variáveis de ambiente
 
-```sql
-CREATE TABLE IF NOT EXISTS ceme (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  brand_color TEXT,
-  website TEXT, email TEXT, phone TEXT, whatsapp TEXT,
-  created_at TIMESTAMP DEFAULT now(), updated_at TIMESTAMP
-);
+| variável | o que é | onde se define |
+|---|---|---|
+| `DATABASE_URL` | liga ao PostgreSQL | `zerops.yml` (`${db_connectionString}`, do serviço `db`) |
+| `DB_PATH` | ficheiro SQLite (só sem `DATABASE_URL`) | local |
+| `JWT_SECRET` | assina as sessões web | env secret do serviço `api` (gerada no import; editável na GUI) |
+| `NODE_ENV` | `production` faz o `/v1/session` recusar a secret de dev (503) | `zerops.yml` |
+| `CEME_API_KEY` | chave de terceiros (docs/04) | env secret, opcional |
+| `CEME_READONLY`, `CEME_SKIP_SEED` | previews e snapshots (`docs/preview-envs.md`) | por ambiente |
 
-CREATE TABLE IF NOT EXISTS tariff (
-  id TEXT PRIMARY KEY,
-  ceme_id TEXT NOT NULL REFERENCES ceme(id),
-  name TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('FIXED','INDEXED')),
-  voltage TEXT NOT NULL CHECK (voltage IN ('BT','MT','BT_MT')),
-  schedule TEXT NOT NULL CHECK (schedule IN ('SIMPLES','BI_HORARIA')),
-  cycle TEXT NOT NULL CHECK (cycle IN ('DIARIO','SEMANAL','SIMPLES')),
-  green BOOLEAN DEFAULT FALSE,
-  access TEXT,
-  bundle BOOLEAN DEFAULT FALSE,
-  popular BOOLEAN DEFAULT FALSE,
-  source_url TEXT,
-  regions TEXT NOT NULL DEFAULT 'CONT'
-);
+As fontes e os TTLs do OMIE não são env vars: estão em `omie/tf.js`,
+`omie/omiees.js` e `omie/pipeline.js` (docs/03).
 
-CREATE TABLE IF NOT EXISTS tariff_version (
-  id SERIAL PRIMARY KEY,
-  tariff_id TEXT NOT NULL REFERENCES tariff(id),
-  valid_from DATE NOT NULL,
-  valid_to DATE,
-  campaign INTEGER DEFAULT 0,
-  status TEXT DEFAULT 'DRAFT',
-  origin TEXT,
-  k_index_eur_mwh REAL,
-  cgs_eur_mwh REAL,
-  omie_aggregation TEXT DEFAULT 'SPLIT_VAZIO_FORA',
-  notes TEXT,
-  created_by TEXT,
-  created_at TIMESTAMP DEFAULT now()
-);
+## Verificar um deploy
 
-CREATE TABLE IF NOT EXISTS price_component (
-  tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
-  period TEXT NOT NULL CHECK (period IN ('VAZIO','FORA_VAZIO','UNICO')),
-  energy_eur_kwh REAL,
-  activation_eur REAL DEFAULT 0,
-  support_eur REAL DEFAULT 0,
-  iec_eur_kwh REAL DEFAULT 0,
-  PRIMARY KEY (tariff_version_id, period)
-);
+`GET /healthz` (processo vivo) e `GET /readyz` (processo + BD, só de
+loopback) são as rotas sem auth; o resto (`/v1/*`) precisa de sessão ou
+chave. Ver `infra.md`.
 
-CREATE TABLE IF NOT EXISTS tar (
-  valid_from DATE NOT NULL,
-  valid_to DATE,
-  region TEXT NOT NULL DEFAULT 'CONT',
-  voltage TEXT NOT NULL,
-  period TEXT NOT NULL,
-  price_eur_kwh REAL NOT NULL,
-  PRIMARY KEY (valid_from, region, voltage, period)
-);
+## Voltar ao SQLite
 
-CREATE TABLE IF NOT EXISTS omie_spot (
-  ts_lisbon TIMESTAMP PRIMARY KEY,
-  market_day DATE,
-  market_period INTEGER,
-  price_pt_eur_mwh REAL NOT NULL,
-  price_es_eur_mwh REAL,
-  source TEXT NOT NULL,
-  flags TEXT,
-  ingested_at TIMESTAMP DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS omie_daily (
-  date DATE PRIMARY KEY,
-  avg_pt REAL, avg_vazio_pt REAL,
-  avg_fora_vazio_pt REAL, min_pt REAL, max_pt REAL, source TEXT
-);
--- loss_profile, suggestion, api_client, api_key, audit_log idênticas em estrutura
-```
-
-## Passo 3 — Helper de conexão (`backend/src/db/pg.js`)
-
-```js
-import { Pool } from 'pg';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // SSL opcional; o Zerops injeta DATABASE_URL já com os parâmetros certos
-});
-
-export async function query(sql, params = []) {
-  const { rows } = await pool.query(sql, params);
-  return rows;
-}
-
-export async function get(sql, params = []) {
-  const rows = await query(sql, params);
-  return rows[0] || null;
-}
-
-export async function run(sql, params = []) {
-  return pool.query(sql, params);
-}
-
-export function close() {
-  return pool.end();
-}
-```
-
-## Passo 4 — Adaptar `server.js`
-
-Substituir:
-
-```js
-import { DatabaseSync } from 'node:sqlite';
-// ...
-mkdirSync('./data', { recursive: true });
-const db = new DatabaseSync(DB_PATH);
-db.exec(readFileSync(new URL('./db/schema.sql', import.meta.url), 'utf8'));
-```
-
-por:
-
-```js
-import { query, get, run, close } from './db/pg.js';
-// ...
-// schema executado uma vez no arranque (idempotente)
-await run(await readFile(new URL('./db/schema.postgres.sql', import.meta.url)));
-await seed();  // seed agora usa pg
-```
-
-E substituir todas as chamadas `db.prepare(...).all()/get()/run()` por `query()`/`get()`/`run()` com placeholders `$1`, `$2`…
-
-Exemplo de conversão:
-
-```js
-// Antes (SQLite)
-const row = db.prepare('SELECT * FROM tariff WHERE id=?').get(id);
-
-// Depois (Postgres)
-const row = await get('SELECT * FROM tariff WHERE id=$1', [id]);
-```
-
-Notas específicas no `server.js`:
-- `date('now')` nas queries → `CURRENT_DATE`
-- `INSERT OR IGNORE` → `INSERT ... ON CONFLICT (id) DO NOTHING`
-- `AUTOINCREMENT` no `tariff_version` → `SERIAL` (já no schema)
-- O `seed(db)` passa a ser `await seed()` (async)
-
-## Passo 5 — Adaptar `seed.js`
-
-O seed atual é síncrono e usa `DatabaseSync`. Criar `seed.postgres.js` com
-`pg`, usando `query()` e `ON CONFLICT` para idempotência:
-
-```js
-export async function seed() {
-  // ceme
-  for (const c of CEMES) {
-    await query(
-      `INSERT INTO ceme (id, name, brand_color, website) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (id) DO NOTHING`,
-      c
-    );
-  }
-  // tariff, tariff_version, price_component, tar — idêntico raciocínio
-}
-```
-
-## Passo 6 — Testes
-
-Os testes em `backend/test/*.test.js` usam `node:sqlite` diretamente.
-Criar um ficheiro de setup de teste que:
-
-1. Leia `DATABASE_URL_TEST` (Postgres local ou container)
-2. Rode `schema.postgres.sql` + `seed.postgres.js`
-3. Exporte um helper `db` com `query/get/run` compatível com o que os testes esperam
-
-Se quiser evitar instalar Postgres local nos testes, usar `testcontainers`
-ou rodar os testes contra o serviço `db` do Zerops num ambiente de staging.
-
-## Passo 7 — Variáveis de ambiente (Zerops)
-
-No `zerops.yml` já estão mapeadas:
-
-| Variável | Origem |
-|---|---|
-| `DATABASE_URL` | injetado automaticamente pelo serviço `db` |
-| `JWT_SECRET` | definir com `zcli secret set JWT_SECRET=<valor>` |
-| `PORT` | `3001` |
-
-As fontes OMIE e o TTL do cache não são env vars: estão fixas em `backend/src/omie/cache.js` (ver `docs/03` para a ingestão directa do omie.es, ainda por implementar).
-
-## Ordem de execução recomendada
-
-1. Criar `zerops.yml` (feito) + `schema.postgres.sql` + `pg.js` + `seed.postgres.js`
-2. Adaptar `server.js` para usar `pg`
-3. Adicionar `pg` ao `package.json` e `npm install`
-4. Criar DB de teste local e rodar `npm test` → 74 testes verdes
-5. Criar os serviços `api`, `db`, `cache` no projeto Zerops (consola ou import YAML) e fazer `zcli push api --setup api` → o `db` injeta `DATABASE_URL`
-6. Verificar `GET /v1/health` e `GET /v1/tariffs` no endpoint deployado
-
-## Rollback
-
-O ficheiro `./data/ceme.db` continua no repositório (gitignorado ou não).
-Para voltar ao SQLite: remover as dependências `pg`, restaurar o
-`server.js` original e desfazer o `zerops.yml`.
+Não há volta "de produção": os dados da produção (OMIE ingerido, chaves)
+vivem no PostgreSQL e divergiram de qualquer `ceme.db` local (que está no
+`.gitignore`). Correr sem `DATABASE_URL` dá um SQLite novo, semeado do zero
+— serve para dev, não para recuperar a produção.

@@ -1,15 +1,16 @@
-// Seed completo para PostgreSQL: 24 CEME / 128 tarifários extraídos do sheet em 2026-10-15.
-// (Okeana removida em 2026-10-18: última info de 2023, sem EGME discriminado.)
+// Seed completo para PostgreSQL: os mesmos CEME e tarifários do seed.js
+// (extraídos do sheet em 2026-10-15).
 // Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
 // act = EGME, o valor que a CEME publica (só o miio não cobra).
-// Os ajustes de valores (Frota EDP 2026-10-22, promo EZU expirada, etc.)
-// estão documentados por extenso no cabeçalho do seed.js — mantêm os dois
-// ficheiros em paralelo a editar TODAS as alterações lá e aqui.
+// Os ajustes de valores (Frota EDP, promo EZU expirada, etc.) estão no
+// histórico do git do seed.js (`git log -p backend/src/db/seed.js`). Os dois
+// ficheiros andam em paralelo: TODAS as alterações lá e aqui (o
+// seed-parity.test.js compara-os).
 import { readFile } from 'node:fs/promises';
 import { query, run } from './pg.js';
-import { SPLITS } from './seed.js';
+import { SPLITS, REGION_SPLITS, regionFinal } from './seed.js';
 
-const CEMES = [
+export const CEMES = [
   ['acp', "ACP", "#ac2925", "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ['atlante', "Atlante", "#45a267", "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ['bluecharge', "Bluecharge", "#5bc0de", "https://www.bluecharge.pt/"],
@@ -36,7 +37,7 @@ const CEMES = [
   ['ynerluz', "Ynerluz", "#888888", "https://www.ynerluz.com/aderir-mobilidade-eletrica/"],
 ];
 
-const TARIFFS = [
+export const TARIFFS = [
   ["atlante-bt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1466, "FORA_VAZIO": 0.2392}, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ["atlante-mt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1357, "FORA_VAZIO": 0.2012}, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ["atlante-bt-myatlantebus", "atlante", "myAtlante Business (AC)", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1066, "FORA_VAZIO": 0.1992}, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
@@ -97,8 +98,8 @@ const TARIFFS = [
   ["acp-mt-acpelectricb", "acp", "ACP Electric by EVIO - sócio ACP", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 1, "CONT", {"VAZIO": 0.1663, "FORA_VAZIO": 0.2318}, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ["acp-bt-acpelectricb-2", "acp", "ACP Electric by EVIO - não sócio ACP", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ["acp-mt-acpelectricb-2", "acp", "ACP Electric by EVIO - não sócio ACP", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
-  ["enable-bt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.2122}, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
-  ["enable-mt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.2122}, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
+  ["enable-bt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT,MAD,AZO", { "VAZIO": 0.1466, "FORA_VAZIO": 0.2392 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
+  ["enable-mt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT,MAD,AZO", { "VAZIO": 0.1357, "FORA_VAZIO": 0.2012 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
   ["evio-bt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-mt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-bt-evio", "evio", "EVIO", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.15, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
@@ -170,7 +171,7 @@ const TARIFFS = [
 // Notas que a folha CEME nao traz, porem o nome do tarifario sugere. Sao
 // CODIGOS, nao texto: o cliente traduz (mesmo padrao de OMIE_CONT_REF), para
 // nao meter portugues na interface english.
-const NOTES = {
+export const NOTES = {
   'atlante-bt-myatlanteac': 'AC_DC_FLAT',
   'atlante-mt-myatlanteac': 'AC_DC_FLAT',
   'atlante-bt-myatlantebus': 'AC_DC_FLAT',
@@ -203,7 +204,7 @@ export const VERSIONS = {
 // documenta porque é que acabou. Fica star no UPDATE e não no INSERT:
 // valid_from é a chave do conflito, logo re-correr o seed nunca reabre
 // uma campanha fechada.
-const CAMPAIGN_END = {
+export const CAMPAIGN_END = {
   // EZU "AB Energia": elétrico a 0,099 €/kWh + TAR — promo terminada a
   // 30/09/2026 (página ezu.pt/ceme, verificada 2026-10-22).
   'ezu-bt-abenergia': '2026-09-30',
@@ -254,6 +255,11 @@ export async function seed() {
   }
 
   // tariff_version
+  // omie_aggregation = SPLIT_VAZIO_FORA para todos: só importa nos indexados,
+  // e os indexados do seed são todos bi-horários (Ynerluz e MEO no ciclo
+  // diário, LuziGas no semanal) — o OMIE de cada período é a média desse
+  // período no ciclo do próprio tarifário (server.js). UNICA (um só OMIE)
+  // fica para um indexado simples, que hoje não existe.
   for (const t of TARIFFS) {
     const [id] = t;
     const v = VERSIONS[id] || {};
@@ -267,7 +273,7 @@ export async function seed() {
          cgs_eur_mwh = EXCLUDED.cgs_eur_mwh,
          omie_aggregation = EXCLUDED.omie_aggregation,
          notes = EXCLUDED.notes`,
-      [id, SHEET_SNAPSHOT, 'SEED_' + id, v.k ?? null, v.cgs ?? null, NOTES[id] ?? null]
+      [id, SHEET_SNAPSHOT, 'SEED_' + SHEET_SNAPSHOT, v.k ?? null, v.cgs ?? null, NOTES[id] ?? null]
     );
   }
 
@@ -281,7 +287,8 @@ export async function seed() {
     );
   }
 
-  // price_component
+  // price_component (Continente) + price_component_region (ilhas, só onde o
+  // CEME cobra diferente — mesmo padrão do seed SQLite, à paridade).
   for (const t of TARIFFS) {
     const [id, , , , , , , , , , , , prices, act, support, iec] = t;
     const v = VERSIONS[id] || {};
@@ -321,6 +328,23 @@ export async function seed() {
            tar_eur_kwh = EXCLUDED.tar_eur_kwh`,
         [vid, 'VAZIO', act, support, iec]
       );
+    }
+
+    for (const [region, perSplit] of Object.entries(REGION_SPLITS[id] || {})) {
+      for (const [per, s] of Object.entries(perSplit)) {
+        await query(
+          `INSERT INTO price_component_region (tariff_version_id, region, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh, energy_only_eur_kwh, tar_eur_kwh)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (tariff_version_id, region, period) DO UPDATE SET
+             energy_eur_kwh = EXCLUDED.energy_eur_kwh,
+             activation_eur = EXCLUDED.activation_eur,
+             support_eur = EXCLUDED.support_eur,
+             iec_eur_kwh = EXCLUDED.iec_eur_kwh,
+             energy_only_eur_kwh = EXCLUDED.energy_only_eur_kwh,
+             tar_eur_kwh = EXCLUDED.tar_eur_kwh`,
+          [vid, region, per, regionFinal(s.energy, s.tar), act, support, iec, s.energy, s.tar]
+        );
+      }
     }
   }
 }

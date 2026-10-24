@@ -3,7 +3,7 @@
 --   - INTEGER PRIMARY KEY AUTOINCREMENT  -> SERIAL PRIMARY KEY
 --   - datetime('now')                    -> now()
 --   - PRAGMA journal_mode = WAL          -> removido (nao existe no Postgres)
---   - INSERT OR IGNORE                   -> INSERT ... ON CONFLICT (id) DO NOTHING (no seed)
+--   (o seed é um upsert ON CONFLICT … DO UPDATE nos dois dialetos)
 
 CREATE TABLE IF NOT EXISTS ceme (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, brand_color TEXT,
@@ -48,6 +48,22 @@ CREATE TABLE IF NOT EXISTS price_component (
   PRIMARY KEY (tariff_version_id, period)
 );
 
+-- Preços por região: quando o CEME cobra diferente nas ilhas (ex.: a Enable
+-- publica energia 0,15 €/kWh na Madeira/Açores vs 0,12 no Continente), as
+-- linhas da ilha vivem aqui, POR CIMA dos preços por omissão de
+-- `price_component` (que são os do Continente). Só há linhas de região onde
+-- os valores divergem; onde não há, o tarifário cota-se com o preço CONT em
+-- qualquer região — e a TAR (tabela `tar`) segue sempre a região pedida.
+CREATE TABLE IF NOT EXISTS price_component_region (
+  tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
+  region TEXT NOT NULL CHECK (region IN ('MAD','AZO')),
+  period TEXT NOT NULL CHECK (period IN ('VAZIO','FORA_VAZIO','UNICO')),
+  energy_eur_kwh REAL, activation_eur REAL DEFAULT 0,
+  support_eur REAL DEFAULT 0, iec_eur_kwh REAL DEFAULT 0,
+  energy_only_eur_kwh REAL, tar_eur_kwh REAL,
+  PRIMARY KEY (tariff_version_id, region, period)
+);
+
 CREATE TABLE IF NOT EXISTS tar (
   valid_from DATE NOT NULL, valid_to DATE, region TEXT NOT NULL DEFAULT 'CONT',
   voltage TEXT NOT NULL, period TEXT NOT NULL, price_eur_kwh REAL NOT NULL,
@@ -63,13 +79,13 @@ CREATE TABLE IF NOT EXISTS tar (
 -- `source` diz de onde veio o preço: 'OMIE_ES' (o ficheiro oficial) ou 'TF'
 -- (o Tiago Felícia, que traz também a classificação do período horário).
 CREATE TABLE IF NOT EXISTS omie_spot (
-  ts_utc TIMESTAMPTZ NOT NULL, day_utc DATE NOT NULL, min_utc INTEGER NOT NULL,
+  ts_utc TIMESTAMPTZ NOT NULL, day_lisbon DATE NOT NULL, min_lisbon INTEGER NOT NULL,
   price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL,
   bd TEXT, bs TEXT,
   source TEXT NOT NULL, flags TEXT, ingested_at TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (ts_utc, source)
 );
-CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_utc);
+CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_lisbon);
 
 -- Os agregados diários (as médias por ciclo horário), materializados a
 -- partir das linhas de cima.
@@ -106,6 +122,8 @@ CREATE TABLE IF NOT EXISTS api_key (
   hash TEXT NOT NULL, prefix TEXT NOT NULL,
   revoked_at TIMESTAMP, expires_at TIMESTAMP
 );
+-- A auth de X-API-Key procura pelo hash em cada pedido.
+CREATE INDEX IF NOT EXISTS idx_api_key_hash ON api_key(hash);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id SERIAL PRIMARY KEY, at TIMESTAMP DEFAULT now(),

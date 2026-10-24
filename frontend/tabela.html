@@ -53,6 +53,10 @@
     th.num {
       text-align: right;
     }
+
+    tr.ilha td {
+      background: rgba(0, 0, 0, .03);
+    }
   </style>
 </head>
 
@@ -75,7 +79,7 @@
     <p class="meta" id="status"></p>
   </main>
   <footer id="foot"></footer>
-  <script>window.__LANG__ = null;</script>
+  <script>window.__LANG__=null;</script>
   <script src="/strings.js"></script>
   <script src="/pwa.js"></script>
   <script>
@@ -133,30 +137,31 @@
         a.ceme.localeCompare(b.ceme, 'pt') ||
         a.name.localeCompare(b.name, 'pt') ||
         String(a.voltage).localeCompare(String(b.voltage)));
-      const body = rows.map(r => {
+      /* Uma linha por (tarifário, região): Continente primeiro, depois as ilhas
+       * que divergem (r.regionPrices só tem chave onde o preço difere). */
+      const rowHtml = (r, region) => {
+        const rp = region ? r.regionPrices[region] : r;
+        const prices = rp.prices, split = rp.split;
+        const name = region ? `${esc(r.name)} <small>· ${esc(((CEME_I18N.regions[region] || {})[LANG] || {}).curto || region)}</small>` : esc(r.name);
         const cells = [
           `<td>${esc(r.ceme)}</td>`,
-          `<td>${esc(r.name)}</td>`,
+          `<td>${name}</td>`,
           `<td>${esc(r.voltage)}</td>`,
           `<td>${r.schedule === 'SIMPLES' ? t('simple') : t('biho')}</td>`,
           `<td>${r.schedule === 'SIMPLES' ? '—' : (r.cycle === 'SEMANAL' ? t('cSem') : t('cDia'))}</td>`,
         ];
+        const fmt = (k) => {
+          const sp = split && split[k];
+          return (sp && sp.energy != null && sp.tar != null) ? `${nf(sp.energy)} + ${nf(sp.tar)}` : nf(prices[k]);
+        };
         if (r.kind === 'INDEXED') cells.push(`<td colspan="2">${t('idx')}</td>`);
-        else if (r.schedule === 'SIMPLES') {
-          const sp = r.split && r.split.UNICO;
-          const val = (sp && sp.energy != null && sp.tar != null)
-            ? `${nf(sp.energy)} + ${nf(sp.tar)}` : nf(r.prices.UNICO);
-          cells.push(`<td colspan="2" class="num">${val}</td>`);
-        } else {
-          const cheias = (r.split && r.split.FORA_VAZIO && r.split.FORA_VAZIO.energy != null && r.split.FORA_VAZIO.tar != null)
-            ? `${nf(r.split.FORA_VAZIO.energy)} + ${nf(r.split.FORA_VAZIO.tar)}` : nf(r.prices.FORA_VAZIO);
-          const vazio = (r.split && r.split.VAZIO && r.split.VAZIO.energy != null && r.split.VAZIO.tar != null)
-            ? `${nf(r.split.VAZIO.energy)} + ${nf(r.split.VAZIO.tar)}` : nf(r.prices.VAZIO);
-          cells.push(`<td class="num">${cheias}</td><td class="num">${vazio}</td>`);
-        }
+        else if (r.schedule === 'SIMPLES') cells.push(`<td colspan="2" class="num">${fmt('UNICO')}</td>`);
+        else cells.push(`<td class="num">${fmt('FORA_VAZIO')}</td><td class="num">${fmt('VAZIO')}</td>`);
         cells.push(`<td class="num">${r.activation ? nf(r.activation) : '—'}</td>`);
-        return `<tr>${cells.join('')}</tr>`;
-      }).join('');
+        return `<tr${region ? ' class="ilha"' : ''}>${cells.join('')}</tr>`;
+      };
+      const body = rows.map(r => rowHtml(r, null) +
+        Object.keys(r.regionPrices || {}).map(g => rowHtml(r, g)).join('')).join('');
       document.getElementById('app').innerHTML =
         `<p class="meta">${t('footData', { n: String(rows.length), d: dtDay(d.at) })}</p>` +
         `<table>${head()}<tbody>${body}</tbody></table>`;
