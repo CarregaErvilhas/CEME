@@ -114,6 +114,13 @@ ter sido publicado com uma TAR que entretanto mudou.
 Nos indexados a decomposição é sempre exacta: a TAR é uma parcela da própria
 fórmula.
 
+Onde a própria página do CEME dá os ingredientes (a Enable publica a energia
+à parte — 0,12 €/kWh no Continente, 0,15 €/kWh nas ilhas — e exclui
+explicitamente "tarifa OPC, taxas e impostos (TAR, EGME, IEC e IVA)"), o
+final deriva no seed: `final = energia + TAR` (arredondado para cima a 4
+casas, `regionFinal`). Não é derivação "nossa": é a aritmética que o CEME
+anuncia; as âncoras do `golden.test.js` congelam o resultado.
+
 ### EGME / taxa de activação
 
 O `act` é **o que o CEME publica**, à data da verificação — entra na conta

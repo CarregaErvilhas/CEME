@@ -57,10 +57,20 @@ devolve `warning: 'OMIE_CONT_REF'` (badge no cartão) e
 `/v1/indexed/quarters` devolve o mesmo `warning` para MAD/AZO. O valor é
 **ilustrativo, não contractual** (a ilha não compra no MIBEL).
 
-Disponibilidade: todos os tarifários do seed estão marcados `regions='CONT'`,
-mas isso é **informação, não filtro** — todos se cotam em qualquer região,
-com o IVA e os ciclos dessa região, e o cartão diz onde o tarifário é
-comercializado.
+Disponibilidade: os tarifários do seed estão marcados com a(s) região(ões)
+onde são comercializados (CSV `regions`); isso é **informação, não filtro** —
+todos se cotam em qualquer região, com o IVA e os ciclos dessa região, e o
+cartão diz onde o tarifário é comercializado.
+
+## Preço por região
+
+Quando o CEME cobra diferente nas ilhas, as linhas divergentes vivem em
+`price_component_region` (chave por versão × região × período), POR CIMA das
+do Continente (`price_component`): só existem onde há divergência publicada —
+onde não há, o preço é o do Continente em qualquer região. A TAR segue sempre
+o `tar` da região pedida e é igual nas três (ver «TAR nas ilhas», abaixo).
+Hoje (2026-10-24) o único caso é a Enable: energia 0,12 vs 0,15 €/kWh
+(`REGION_SPLITS` no seed; moto: `comps(vid, region)` no `server.js`).
 
 ## TAR nas ilhas
 

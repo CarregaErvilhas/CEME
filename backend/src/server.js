@@ -306,8 +306,16 @@ async function allTariffs(day = today()) {
   `, [day, today()]);
 }
 
-async function comps(vid) {
+async function comps(vid, region = 'CONT') {
   const rows = await query('SELECT * FROM price_component WHERE tariff_version_id = $1', [vid]);
+  // Linhas de região POR CIMA das de omissão (Continente): só existem onde o
+  // CEME cobra diferente nas ilhas (price_component_region). Vão DEPOIS das
+  // de omissão — preço e decomposição usam "a última vence", logo a ilha
+  // sobrepõe ao Continente e um período sem linha própria cai no preço CONT.
+  if (region && region !== 'CONT') {
+    const reg = await query('SELECT * FROM price_component_region WHERE tariff_version_id = $1 AND region = $2', [vid, region]);
+    rows.push(...reg);
+  }
   let out;
   try { out = pickComponents(rows); }
   catch (e) { throw new Error(`${e.message} na versão ${vid}`); }
@@ -359,7 +367,7 @@ async function tarFor(region, voltage, period, day = today()) {
 
 async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot }) {
   const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
-  const { price, act, iec, sup, split } = await comps(t.vid);
+  const { price, act, iec, sup, split } = await comps(t.vid, region);
   const meta = {
     id: t.id, ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
     schedule: t.schedule, cycle: t.cycle, green: !!t.green, access: t.access,
@@ -767,7 +775,9 @@ const server = http.createServer(async (req, res) => {
         // Fixo sem versão em vigor, ou sem preços de energia (ex. só EGME),
         // não dá comparação: fica null — a UI trata como "sem fixo" e esconde
         // colunas, em vez de mostrar uma referência vazia com nome.
-        const fp = fv ? (await comps(fv.id)).price : null;
+        // Preços por região: o fixo é cotado na MESMA região que os quartos
+        // (a ilha sobrepõe ao Continente quando há linhas de região).
+        const fp = fv ? (await comps(fv.id, region)).price : null;
         if (fp && Object.keys(fp).length) {
           fixPrice = fp;
           const fc = await get('SELECT name FROM ceme WHERE id = $1', [ft.ceme_id]);

@@ -65,8 +65,16 @@ export const SPLITS = {
   'charge2go-bt-ecogreen-2': { FORA_VAZIO: { energy: 0.1697, tar: 0.1192 }, VAZIO: { energy: 0.1697, tar: 0.0266 } },
   'charge2go-mt-ecogreen': { FORA_VAZIO: { energy: 0.1697, tar: 0.0812 }, VAZIO: { energy: 0.1697, tar: 0.0157 } },
   'charge2go-mt-ecogreen-2': { FORA_VAZIO: { energy: 0.1697, tar: 0.0812 }, VAZIO: { energy: 0.1697, tar: 0.0157 } },
-  'enable-bt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.0922 } },
-  'enable-mt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.0922 } },
+  // Enable (página /condutores, verificada 2026-10-24): publica a ENERGIA,
+  // não o preço final — 0,12 €/kWh em Portugal Continental e 0,15 €/kWh na
+  // Madeira e nos Açores — e exclui "tarifa OPC, taxas e impostos (TAR, EGME,
+  // IEC e IVA)". O final = energia + TAR (universal por tensão/período, a
+  // mesma nas três regiões — docs/07-ilhas.md). O ciclo de rede do Mobi.E é
+  // o bi-horário semanal: vazio ao domingo // fora-vazio nos dias úteis
+  // 07:00–24:00 // sábado com dois blocos (época Verão vs Inverno). Ilhas:
+  // REGION_SPLITS em baixo.
+  'enable-bt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.1192 }, VAZIO: { energy: 0.12, tar: 0.0266 } },
+  'enable-mt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.0812 }, VAZIO: { energy: 0.12, tar: 0.0157 } },
   'evio-bt-evio': { FORA_VAZIO: { energy: 0.169, tar: 0.1192 }, VAZIO: { energy: 0.169, tar: 0.0266 } },
   'evio-bt-gochargeby': { FORA_VAZIO: { energy: 0.169, tar: 0.1192 }, VAZIO: { energy: 0.169, tar: 0.0266 } },
   'evio-mt-evio': { FORA_VAZIO: { energy: 0.169, tar: 0.0812 }, VAZIO: { energy: 0.169, tar: 0.0157 } },
@@ -105,6 +113,31 @@ export const SPLITS = {
   'miio-mt-miioonebi': { FORA_VAZIO: { energy: 0.17, tar: 0.0812 }, VAZIO: { energy: 0.17, tar: 0.0157 } },
   'miio-mt-miioonebi-2': { FORA_VAZIO: { energy: 0.17, tar: 0.0812 }, VAZIO: { energy: 0.17, tar: 0.0157 } },
 };
+
+// Preços por região, POR CIMA dos do Continente (price_component_region):
+// só há entrada onde o CEME cobra diferente nas ilhas — onde não há, o
+// tarifário cota-se com o preço CONT em qualquer região. A forma é a mesma do
+// SPLITS, mas por região; o preço FINAL da ilha é derivado aqui e não
+// transcrito: a Enable publica a energia (0,15 €/kWh nas ilhas vs 0,12 no
+// Continente) e a composição está na própria página — final = energia + TAR.
+// A TAR é a mesma nas três regiões (diretiva ERSE n.º 1/2026: uma tabela
+// para Continente, RAA e RAM — docs/07-ilhas.md). O sumamento arredonda
+// para cima a 4 casas, como os finais transcritos em cima.
+export const REGION_SPLITS = {
+  'enable-bt-tarifasimple': {
+    MAD: { VAZIO: { energy: 0.15, tar: 0.0266 }, FORA_VAZIO: { energy: 0.15, tar: 0.1192 } },
+    AZO: { VAZIO: { energy: 0.15, tar: 0.0266 }, FORA_VAZIO: { energy: 0.15, tar: 0.1192 } },
+  },
+  'enable-mt-tarifasimple': {
+    MAD: { VAZIO: { energy: 0.15, tar: 0.0157 }, FORA_VAZIO: { energy: 0.15, tar: 0.0812 } },
+    AZO: { VAZIO: { energy: 0.15, tar: 0.0157 }, FORA_VAZIO: { energy: 0.15, tar: 0.0812 } },
+  },
+};
+
+// O final das linhas de REGION_SPLITS (energia + TAR arredondado para cima
+// a 4 casas). Exportado para o seed.postgres.js — os dois seeds têm de
+// derivar EXACTAMENTE o mesmo valor.
+export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1e-9) / 10000;
 
 export const TARIFFS = [
   // (AC) = carregamento em corrente alternada. A Atlante tem um preço
@@ -170,8 +203,8 @@ export const TARIFFS = [
   ["acp-mt-acpelectricb", "acp", "ACP Electric by EVIO - sócio ACP", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 1, "CONT", { "VAZIO": 0.1663, "FORA_VAZIO": 0.2318 }, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ["acp-bt-acpelectricb-2", "acp", "ACP Electric by EVIO - não sócio ACP", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", { "VAZIO": 0.1956, "FORA_VAZIO": 0.2882 }, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ["acp-mt-acpelectricb-2", "acp", "ACP Electric by EVIO - não sócio ACP", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", { "VAZIO": 0.1847, "FORA_VAZIO": 0.2502 }, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
-  ["enable-bt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", { "UNICO": 0.2122 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
-  ["enable-mt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", { "UNICO": 0.2122 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
+  ["enable-bt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT,MAD,AZO", { "VAZIO": 0.1466, "FORA_VAZIO": 0.2392 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
+  ["enable-mt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT,MAD,AZO", { "VAZIO": 0.1357, "FORA_VAZIO": 0.2012 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
   ["evio-bt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", { "VAZIO": 0.1956, "FORA_VAZIO": 0.2882 }, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-mt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", { "VAZIO": 0.1847, "FORA_VAZIO": 0.2502 }, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-bt-evio", "evio", "EVIO", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 0, "CONT", { "VAZIO": 0.1956, "FORA_VAZIO": 0.2882 }, 0.15, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
@@ -296,6 +329,10 @@ export function seed(db) {
   db.exec(`DELETE FROM price_component WHERE tariff_version_id IN
     (SELECT id FROM tariff_version WHERE id NOT IN
       (SELECT MAX(id) FROM tariff_version GROUP BY tariff_id, valid_from))`);
+  // Linhas por região acompanham: nenhuma versão órfã (mesma razão de cima).
+  db.exec(`DELETE FROM price_component_region WHERE tariff_version_id IN
+    (SELECT id FROM tariff_version WHERE id NOT IN
+      (SELECT MAX(id) FROM tariff_version GROUP BY tariff_id, valid_from))`);
   db.exec(`DELETE FROM tariff_version WHERE id NOT IN
     (SELECT MAX(id) FROM tariff_version GROUP BY tariff_id, valid_from)`);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_tariff_version ON tariff_version(tariff_id, valid_from)');
@@ -338,6 +375,13 @@ export function seed(db) {
       energy_eur_kwh=excluded.energy_eur_kwh, activation_eur=excluded.activation_eur,
       support_eur=excluded.support_eur, iec_eur_kwh=excluded.iec_eur_kwh,
       energy_only_eur_kwh=excluded.energy_only_eur_kwh, tar_eur_kwh=excluded.tar_eur_kwh`);
+  const insPR = db.prepare(`INSERT INTO price_component_region
+    (tariff_version_id,region,period,energy_eur_kwh,activation_eur,support_eur,iec_eur_kwh,energy_only_eur_kwh,tar_eur_kwh)
+    VALUES (?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(tariff_version_id, region, period) DO UPDATE SET
+      energy_eur_kwh=excluded.energy_eur_kwh, activation_eur=excluded.activation_eur,
+      support_eur=excluded.support_eur, iec_eur_kwh=excluded.iec_eur_kwh,
+      energy_only_eur_kwh=excluded.energy_only_eur_kwh, tar_eur_kwh=excluded.tar_eur_kwh`);
   try { db.exec('ALTER TABLE tariff ADD COLUMN bundle INTEGER DEFAULT 0'); } catch { /* já existe */ }
   try { db.exec('ALTER TABLE tariff ADD COLUMN regions TEXT DEFAULT \'CONT\''); } catch { /* já existe */ }
   try { db.exec('ALTER TABLE price_component ADD COLUMN energy_only_eur_kwh REAL'); } catch { /* já existe */ }
@@ -356,6 +400,15 @@ export function seed(db) {
     // INDEXED: o €/kWh é calculado em runtime, mas a ativação (EGME),
     // o apoio e o IEC são os mesmos — têm de vir da linha do sheet.
     else insP.run(vid, 'VAZIO', null, act, support, iec, null, null);
+    // Linhas por região (só onde o CEME cobra diferente nas ilhas): mesmo act,
+    // apoio e IEC do Continente — pickComponents rebenta no teste se uma
+    // versão divergir entre regiões.
+    const regs = REGION_SPLITS[id] || {};
+    for (const [region, perSplit] of Object.entries(regs)) {
+      for (const [per, s] of Object.entries(perSplit)) {
+        insPR.run(vid, region, per, regionFinal(s.energy, s.tar), act, support, iec, s.energy, s.tar);
+      }
+    }
   }
   for (const [id, end] of Object.entries(CAMPAIGN_END)) {
     db.prepare("UPDATE tariff_version SET valid_to=?, campaign=1, status='EXPIRED' WHERE tariff_id=?").run(end, id);

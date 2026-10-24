@@ -32,7 +32,7 @@ ORDER BY t.ceme_id, t.id, p.period COLLATE NOCASE;"
 (⚠️ usar caminho absoluto ou cd correcto — já falhou por cwd.)
 
 ## Classificação dos CEMEs (método × CEME, verificado 2026-10-22)
-curl estático (valores no HTML): edp(nov 2026? valores só via JS — usar browser), enable (0,12 energia), evaz (tabela PricesTable no HTML), goldenergy (0,2222/0,2778 em goldenergy.pt/**mobilidade-eletrica/** — não no blog), luzigas (K's: 0.05 ceme / 0.005 casa; CGS), meo (0,2250 M5/M4 + 0,2500 M3/M2; base 0.195=Colaboradores só no sheet/app), repsol (0,2868), viaverde (energia 0,148), bluecharge (home).
+curl estático (valores no HTML): edp(nov 2026? valores só via JS — usar browser), enable (página /condutores, 2026-10-24: publica ENERGIA — 0,12 €/kWh no Continente e 0,15 €/kWh na Madeira/Açores, "exclui tarifa OPC, taxas e impostos (TAR, EGME, IEC e IVA)"; ciclo bi-horário semanal; o final vem do somatório energia+TAR — REGION_SPLITS no seed), evaz (tabela PricesTable no HTML), goldenergy (0,2222/0,2778 em goldenergy.pt/**mobilidade-eletrica/** — não no blog), luzigas (K's: 0.05 ceme / 0.005 casa; CGS), meo (0,2250 M5/M4 + 0,2500 M3/M2; base 0.195=Colaboradores só no sheet/app), repsol (0,2868), viaverde (energia 0,148), bluecharge (home).
 
 Imagens PNG de tarifário (download + read da imagem): charge2go (`/tarifarios/` → img desktop `TARIFARIOS-*.png`, energia 0,1697 s/ TAR; ⚠️ há `mobile_image` antigo a par, ignorar), evpower (`/particulares/` → `tarifario_janeiro_2026.png`), acp (página mostra só nota TAR; valores via screenshot do user).
 
