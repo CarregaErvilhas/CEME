@@ -179,7 +179,9 @@ Os dois ficheiros alinham-se pelo **instante**, não pelo período.
 
 A web lê `bd_*`/`bs_*` do último dia **completo** de `/v1/omie/daily` e
 envia `omieCycles` no `POST /v1/simulate`: cada indexado usa o par do seu
-ciclo. Ver `02-motor-calculo.md`.
+ciclo — é a referência de recurso: com o OMIE em automático a web envia
+também `useSpot` e o indexado é cotado ao quarto do carregamento. Ver
+`02-motor-calculo.md`.
 
 ## Validação defensiva (erros reais, sobretudo na mudança de hora)
 

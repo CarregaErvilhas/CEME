@@ -172,6 +172,11 @@ O pedido `/v1/simulate` aceita:
 - `omie` / `omieVazio` / `omieFora` — override explícito, vale para todos
   (é o que o slider do comparador usa).
 
+- `useSpot: true` — cota os indexados ao OMIE **do quarto de hora de `at`**
+  (e às perdas desse quarto), em vez das médias por período; sem quarto
+  disponível cai nas médias. `omieSpot` na resposta diz que quarto foi usado.
+  A web envia-o enquanto o OMIE está em automático.
+
 A web tira as médias de `/v1/omie/daily` (`bd_*` = ciclo diário, `bs_*` =
 semanal), do **último dia completo** (`complete: true`): depois das ~13:00
 o dia de amanhã já aparece, mas sem a última hora de Lisboa (ver docs/03).

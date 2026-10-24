@@ -169,7 +169,9 @@ kWh, portanto estão internamente coerentes; ao largar, tudo é recalculado.
   assistente usa as mesmas funções.
 - **OMIE de referência:** por omissão = o último dia **completo** de
   `/v1/omie/daily`, com as médias vazio/fora **por ciclo** (`omieCycles`:
-  diário e semanal) — cada indexado usa as do seu ciclo. O slider manual do
+  diário e semanal) — cada indexado usa as do seu ciclo. No ranking, em
+  automático, a web envia também `useSpot` e o preço do indexado é o do quarto
+  de hora do carregamento (`omieRef`/`omieSpot`). O slider manual do
   comparador desliga o modo automático e passa a valer para todos.
 - **Potência do ramal (BT/MT):** selector no cartão de energia. O dedup por
   `ceme|nome` (`dedupByRamal()`) é **o mesmo** no ranking, no modal de

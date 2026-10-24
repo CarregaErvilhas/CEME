@@ -129,7 +129,12 @@ Notas:
   anterior — CEMEs que não actualizaram; taxas próprias acima do legal são
   legítimas e não contam). Actualizar é tarefa de
   verificação do seed, não de substituição no código (ver docs/02).
-- OMIE dos indexados (`SPLIT_VAZIO_FORA`): com `omieCycles`, cada indexado
+- `useSpot: true`: os indexados são cotados ao OMIE do quarto de hora de `at`
+  (com as perdas desse quarto), por cima de `omie*`/`omieCycles`, que ficam
+  só como recurso se o quarto não existir. `omieRef` passa a ser o OMIE do
+  quarto e `omieSpot` `{utc, eurKwh}` diz qual foi (null sem `useSpot` ou sem
+  quarto). Detalhe em docs/02.
+- OMIE dos indexados (`SPLIT_VAZIO_FORA`), sem `useSpot`: com `omieCycles`, cada indexado
   usa o par vazio/fora **do seu ciclo**; sem ele, `omieVazio`/`omieFora`
   valem para todos (override explícito); sem nenhum, o `omie` único.
 - Erros em `{error:{code,message}}`. As **datas devolvidas são UTC** (ISO
