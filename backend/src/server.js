@@ -537,6 +537,7 @@ const METHODS = {
 const MAX_BODY = 64 * 1024; // 64 KB — corpos raquíticos; pedir mais é abuso
 
 const server = http.createServer(async (req, res) => {
+  try {
   const url = new URL(req.url, 'http://x');
   // Web sem auth (ficheiros estáticos); a API continua toda com auth.
   // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
@@ -970,6 +971,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   json(res, 404, { error: { code: 'not_found', message: url.pathname } }, headers);
+  } catch (e) {
+    console.error('[ceme-v2] erro no handler:', e);
+    if (!res.headersSent) {
+      json(res, 500, { error: { code: 'internal_error', message: 'erro interno' } });
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  }
 });
 
 server.on('error', (e) => {
@@ -979,5 +988,11 @@ server.on('error', (e) => {
     process.exit(1);
   }
   console.error('[ceme-v2] erro no servidor:', e);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[ceme-v2] unhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[ceme-v2] uncaughtException:', err);
 });
 server.listen(PORT, () => console.log(`ceme-v2 http://localhost:${PORT}/ db=${USE_PG ? 'postgresql' : 'sqlite'}`));
