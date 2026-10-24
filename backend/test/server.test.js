@@ -500,3 +500,57 @@ describe('servidor: CEME_API_KEY — tirar a env revoga a chave', () => {
     await stop(p);
   });
 });
+
+// Regressão: no comparador, indexado DIÁRIO (ynerluz) vs fixo SEMANAL (miio)
+// não partilham fronteiras. Sábado 24/10/2026 (ainda hora de Verão): o
+// indexado passa a fora-de-vazio às 08:00, o fixo semanal só às 09:00.
+// O teste de compare.test.js só cobre o motor; este apanha a rota (período
+// de cada tarifário calculado no seu ciclo, e exposto nos dois campos).
+describe('servidor: /v1/indexed/quarters com fixo de outro ciclo', () => {
+  const PORT2 = PORT + 7;
+  const B2 = `http://127.0.0.1:${PORT2}`;
+  let proc2, token2;
+
+  before(async () => {
+    proc2 = spawnServer({ ...process.env, JWT_SECRET: 'test-secret-server-tests' }, PORT2);
+    await waitUp(`${B2}/`);
+    const db = new DatabaseSync(path.join(dir, `ceme-${PORT2}.db`));
+    const t0 = Date.parse('2026-10-23T23:00:00Z'); // 00:00 de 24/10 em Lisboa (WEST)
+    for (let i = 0; i < 96; i++) {
+      db.prepare("INSERT OR REPLACE INTO omie_spot (ts_utc,day_lisbon,min_lisbon,price_pt_eur_mwh,source) VALUES (?,?,?,?,'omie')")
+        .run(new Date(t0 + i * 900000).toISOString(), '2026-10-24', i * 15, 100 + i);
+    }
+    db.close();
+    token2 = (await (await fetch(`${B2}/v1/session`, { method: 'POST' })).json()).token;
+  });
+  after(() => { if (proc2) proc2.kill('SIGTERM'); });
+
+  it('cada tarifário no seu período: fixo semanal só passa a fora às 09:00 locais', async () => {
+    const r = await fetch(`${B2}/v1/indexed/quarters?tariff=ynerluz-bt&region=CONT&tz=Europe/Lisbon&fixed=miio-bt-miiobihor&date=2026-10-24`,
+      { headers: { Authorization: `Bearer ${token2}` } });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    const at = (hhmm) => j.quarters.find(x => x.start === hhmm);
+    assert.equal(at('08:00').period, 'FORA_VAZIO', 'ynerluz (diário) já em fora às 08:00');
+    assert.equal(at('08:00').fixPeriod, 'VAZIO', 'miio (semanal, sábado) ainda em vazio às 08:00');
+    assert.equal(at('08:00').fixed, 0.2666);
+    assert.equal(at('09:00').fixPeriod, 'FORA_VAZIO');
+    assert.equal(at('09:00').fixed, 0.3592);
+    assert.equal(at('14:00').fixPeriod, 'VAZIO', 'o semanal volta a vazio às 14:00 (sábado, Verão)');
+    assert.equal(at('14:00').period, 'FORA_VAZIO', 'o diário só volta às 22:00');
+  });
+
+  it('caso inverso: indexado semanal (luzigas) vs fixo diário (miio): fronteiras às 14:00 e 20:00 vs 22:00', async () => {
+    const r = await fetch(`${B2}/v1/indexed/quarters?tariff=luzigas-casa-bt&region=CONT&tz=Europe/Lisbon&fixed=miio-bt-miioonebi-2&date=2026-10-24`,
+      { headers: { Authorization: `Bearer ${token2}` } });
+    const j = await r.json();
+    const at = (hhmm) => j.quarters.find(x => x.start === hhmm);
+    assert.equal(at('15:00').period, 'VAZIO', 'luzigas (semanal, sábado de Verão) em vazio 14:00-20:00');
+    assert.equal(at('15:00').fixPeriod, 'FORA_VAZIO', 'miio diário em fora até às 22:00');
+    assert.equal(at('20:00').period, 'FORA_VAZIO');
+    assert.equal(at('20:00').fixPeriod, 'FORA_VAZIO');
+    assert.equal(at('22:00').period, 'VAZIO');
+    assert.equal(at('22:00').fixPeriod, 'VAZIO');
+    assert.ok(at('15:00').price < at('20:00').price, 'o indexado sobe às 20:00 (TAR de fora)');
+  });
+});
