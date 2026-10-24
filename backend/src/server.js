@@ -357,7 +357,7 @@ async function tarFor(region, voltage, period, day = today()) {
 }
 
 
-async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles }) {
+async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot }) {
   const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
   const { price, act, iec, sup, split } = await comps(t.vid);
   const meta = {
@@ -404,20 +404,24 @@ async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, om
     if (agg === 'SPLIT_VAZIO_FORA') return (per === 'VAZIO' ? (pair.vazio ?? omie) : (pair.fora ?? omie));
     return omie;
   };
+  // `spot`: o OMIE (e as perdas) do quarto de hora do carregamento — o que o
+  // CEME cobra de facto nesse instante. Quando há, substitui as médias por
+  // período (que só servem de referência para um carregamento sem hora).
+  const spotKwh = spot?.omieKwh ?? null;
   const out = {};
   // Nos indexados a energia e a TAR estão SEPARADAS por construção: o preço
   // é (OMIE + K + CGS) × (1 + perdas) + TAR. Logo a decomposição é exacta
   // — não é aritmética nossa, é a fórmula.
   const splitIdx = {};
   for (const per of ['VAZIO', 'FORA_VAZIO']) {
-    const oref = omieForPeriod(per);
+    const oref = spotKwh ?? omieForPeriod(per);
     const tar = await tarOf(per);
     const tarEurKwh = tar ?? 0;
-    const price = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: lossPer?.[per] ?? vm.loss, formula: vm.formula }).price;
+    const price = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: spot?.loss ?? lossPer?.[per] ?? vm.loss, formula: vm.formula }).price;
     out[per] = price;
     splitIdx[per] = tar == null ? null : { energy: price - tar, tar };
   }
-  const omieRef = (agg === 'SPLIT_VAZIO_FORA') ? (pair.vazio ?? omie) : omie;
+  const omieRef = spotKwh ?? ((agg === 'SPLIT_VAZIO_FORA') ? (pair.vazio ?? omie) : omie);
   // Guarda: indexado com ciclo SIMPLES só tem preço UNICO — o motor só sabe
   // preços por período (VAZIO/FORA_VAZIO). Não há tarifário assim no seed,
   // mas um futuro seed sem esta guarda fazia o quoteFixed rebentar com
@@ -428,7 +432,7 @@ async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, om
     out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
   }
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region, split: splitIdx });
-  return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
+  return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: spot?.loss ?? lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], omieSpot: spotKwh != null, lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }
 
 // Negociação de idioma a partir do cabeçalho Accept-Language. Só há PT e EN:
@@ -849,7 +853,7 @@ const server = http.createServer(async (req, res) => {
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
           return json(res, 400, { error: { code: 'bad_request', message: 'corpo deve ser um objecto JSON' } }, headers);
         }
-        const { kwh = 40, at, region = 'CONT', omie = 0.20, omieVazio, omieFora, omieCycles } = parsed;
+        const { kwh = 40, at, region = 'CONT', omie = 0.20, omieVazio, omieFora, omieCycles, useSpot } = parsed;
         if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } }, headers);
         if (typeof kwh !== 'number' || !Number.isFinite(kwh) || kwh <= 0 || kwh > 1000) {
           return json(res, 400, { error: { code: 'bad_kwh', message: 'kwh deve ser um número maior que 0 e até 1000' } }, headers);
@@ -880,6 +884,17 @@ const server = http.createServer(async (req, res) => {
         // amanhã, depois de uma mudança de preço, usa o preço de amanhã).
         const day = civilDay(now, REGIONS[region].tz);
         const tariffs = await allTariffs(day);
+        // useSpot: cota os indexados ao OMIE do quarto de hora do carregamento
+        // (e às perdas desse quarto). Sem quarto disponível (dia sem dados,
+        // OMIE em baixo) cai nas médias por período, sem rebentar o pedido.
+        let spot = null;
+        if (useSpot === true) {
+          try {
+            const qs = await getQuarters(civilDay(now));
+            const r = qs.rows.find(x => { const t0 = Date.parse(x.utc); return t0 <= now.getTime() && now.getTime() < t0 + 15 * 60000; });
+            if (r && Number.isFinite(r.pt)) spot = { omieKwh: r.pt / 1000, utc: r.utc, loss: null };
+          } catch (e) { console.warn('[ceme-v2] simulate: sem OMIE do quarto, a usar médias:', e.message); }
+        }
         // Isolamento por tarifário: um seed com um único período divergente
         // não pode derrubar os 128 — quarentena em vez de 400 (princípio do
         // docs/03). O tarifário a mais sai fora do ranking; a lista mantém
@@ -900,7 +915,7 @@ const server = http.createServer(async (req, res) => {
             if (i >= tariffs.length) return;
             const t = tariffs[i];
             try {
-              results[i] = await quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles });
+              results[i] = await quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) } });
             } catch (e) {
               // com identidade, para quem lê os logs/BD saber o que foi posto de lado
               console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
@@ -915,7 +930,7 @@ const server = http.createServer(async (req, res) => {
         const data = results.filter(Boolean);
         data.sort((x, y) => x.totalEur - y.totalEur);
         const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
-        json(res, 200, { at: now.toISOString(), kwh, region, omieRef: omie, avg: Math.round(avg * 100) / 100, data }, headers);
+        json(res, 200, { at: now.toISOString(), kwh, region, omieRef: spot ? spot.omieKwh : omie, omieSpot: spot ? { utc: spot.utc, eurKwh: spot.omieKwh } : null, avg: Math.round(avg * 100) / 100, data }, headers);
       } catch (e) { json(res, 400, { error: { code: 'quote_failed', message: e.message } }, headers); }
     });
     return;

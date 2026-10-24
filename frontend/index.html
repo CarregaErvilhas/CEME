@@ -892,6 +892,8 @@ async function refresh() {
   // o automático vai por ciclo.
   if (S.omieAuto !== false && S.omieCycles) body.omieCycles = S.omieCycles;
   if (at) body.at = at;
+  // OMIE automático: o indexado cota-se ao OMIE do quarto de hora do carregamento.
+  if (S.omieAuto !== false) body.useSpot = true;
   const j = await api('/v1/simulate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   LAST = j.data || []; AVG = j.avg; AT = j.at; OMIE = j.omieRef;
   if (!S.chargeAt && !S.forceServerTime && j.at) {
