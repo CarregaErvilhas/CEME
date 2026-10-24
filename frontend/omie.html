@@ -127,6 +127,17 @@ table.tb tr.total td { font-weight: 700; }
 .note { font-size: 0.85rem; color: #5F6368; margin: 6px 0 0; }
 .partial { color: #A1500F; }
 #status { padding: 10px 16px; max-width: 1180px; margin: 0 auto; color: #5F6368; }
+/* selector de língua no rodapé: as mesmas bandeiras do simulador, sobre
+   fundo claro (o anel é escuro em vez de branco). */
+.langs { display: inline-flex; gap: 6px; margin-left: auto; align-items: center; }
+.langs button { padding: 0; border: 0; background: none; border-radius: 3px; cursor: pointer; line-height: 0; font-size: 0; opacity: .45; transition: opacity .15s; }
+.langs button svg { display: block; height: 15px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.28); transition: box-shadow .15s; }
+.langs button[data-lang="pt"] svg { width: 26.25px; }
+.langs button[data-lang="en"] svg { width: 30px; }
+.langs button:hover { opacity: .9; }
+.langs button.on { opacity: 1; }
+.langs button.on svg { box-shadow: 0 0 0 1.5px #424242; }
+
 .err { color: #B3261E; }
 </style>
 </head>
@@ -147,6 +158,7 @@ table.tb tr.total td { font-weight: 700; }
     <input type="checkbox" id="cvd" style="cursor:pointer;">
     <span id="cvdLabel"></span>
   </label>
+  <span class="langs" role="group" aria-label="Idioma / Language"><button data-lang="pt" title="Português" aria-label="Português"><svg viewBox="0 0 35 20" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="14" height="20" fill="#046A38"/><rect x="14" width="21" height="20" fill="#DA291C"/></svg></button><button data-lang="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="oJack"><path d="M0,0 H60 V30 H0 Z"/></clipPath></defs><g clip-path="url(#oJack)"><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" stroke-width="6"/><path d="M30,0 V30 M0,15 H60" stroke="#FFFFFF" stroke-width="10"/></g><path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V30 M0,15 H60" stroke="#C8102E" stroke-width="6"/></svg></button></span>
 </p>
 <script>window.__LANG__=null;</script>
 <script src="/strings.js"></script>
@@ -271,6 +283,16 @@ function card(cls, title, meta, value, tip) {
     `<div class="v">${value}</div></div>`;
 }
 
+// O período que a previsão cobre, para não se ler como "o mês todo" quando
+// só há futuros diários para parte dele. São dias civis de Lisboa.
+function forecastPeriod(f) {
+  if (f.value == null || !f.coverageTo) return '';
+  const [y, m] = f.month.split('-').map(Number);
+  const last = `${f.month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+  return `${dtDay(f.month + '-01')}<br>${dtDay(f.coverageTo)}`
+    + (f.coverageTo < last ? ` · ${t('forecastPartial')}` : '');
+}
+
 function drawCards(d) {
   const c = d.cards;
   const isToday = c.today.date === d.today;
@@ -335,7 +357,7 @@ function drawCards(d) {
     card('today', isToday ? t('cardToday') : t('cardLast'), dtDay(c.today.date), euro(c.today.value), tips.today),
     card('rest', t('cardTomorrow'), dtDay(c.tomorrow.date) + (c.tomorrow.source === 'fpbd' ? ' · ' + t('omipEst') : ''), euro(c.tomorrow.value), tips.tomorrow),
     card('rest', t('cardLast30'), `${dt(c.last30.fromUtc || c.last30.from)}<br>${dt(c.last30.toUtc || c.last30.to)}`, euro(c.last30.value), tips.last30),
-    card('rest', t('cardForecast', { m: mesNome(c.forecast.month) }), '', euro(c.forecast.value), tips.forecast),
+    card('rest', t('cardForecast', { m: mesNome(c.forecast.month) }), forecastPeriod(c.forecast), euro(c.forecast.value), tips.forecast),
     card('rest', t('cardMonth', { m: mesNome(c.monthToDate.month) }), `${dt(c.monthToDate.fromUtc || c.monthToDate.from)}<br>${dt(c.monthToDate.toUtc || c.monthToDate.to)}`, euro(c.monthToDate.value), tips.month),
   ].join('');
   document.getElementById('cards').innerHTML = html;
@@ -469,6 +491,19 @@ async function api(path) {
   }
   aplicarPaleta(inicial);
 })();
+
+// --- língua: as bandeiras do rodapé, com a mesma persistência do simulador
+// (`ceme:lang` em localStorage; o simulador e esta página partilham a escolha).
+function setLang(l, persist = true) {
+  LANG = l === 'en' ? 'en' : 'pt';
+  if (persist) { try { localStorage.setItem('ceme:lang', LANG); } catch (e) {} }
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
+  document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === LANG));
+  const lbl = document.getElementById('cvdLabel'); if (lbl) lbl.textContent = t('cvdToggle');
+  if (lastData) draw(lastData);
+}
+document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => setLang(b.dataset.lang));
+setLang(LANG, false);
 
 const cvdCb = document.getElementById('cvd');
 if (cvdCb) cvdCb.addEventListener('change', (e) => {
