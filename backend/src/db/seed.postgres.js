@@ -8,7 +8,7 @@
 // seed-parity.test.js compara-os).
 import { readFile } from 'node:fs/promises';
 import { query, run } from './pg.js';
-import { SPLITS } from './seed.js';
+import { SPLITS, REGION_SPLITS, regionFinal } from './seed.js';
 
 export const CEMES = [
   ['acp', "ACP", "#ac2925", "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
@@ -98,8 +98,8 @@ export const TARIFFS = [
   ["acp-mt-acpelectricb", "acp", "ACP Electric by EVIO - sócio ACP", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 1, "CONT", {"VAZIO": 0.1663, "FORA_VAZIO": 0.2318}, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ["acp-bt-acpelectricb-2", "acp", "ACP Electric by EVIO - não sócio ACP", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
   ["acp-mt-acpelectricb-2", "acp", "ACP Electric by EVIO - não sócio ACP", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 0, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.15, 0.0, 0.001, 0, "https://www.acp.pt/veiculos/eletricos/app-e-cartao-acp-electric/para-socios-e-nao-socios"],
-  ["enable-bt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "BT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.2122}, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
-  ["enable-mt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "MT", "SIMPLES", "SIMPLES", 1, "AMBOS", 1, 0, "CONT", {"UNICO": 0.2122}, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
+  ["enable-bt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT,MAD,AZO", { "VAZIO": 0.1466, "FORA_VAZIO": 0.2392 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
+  ["enable-mt-tarifasimple", "enable", "Tarifa Simples", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT,MAD,AZO", { "VAZIO": 0.1357, "FORA_VAZIO": 0.2012 }, 0.1088, 0.0, 0.001, 0, "https://www.enable-mobility.com/condutores"],
   ["evio-bt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-mt-hyundaiblue", "evio", "Hyundai Blue", "FIXED", "MT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 0, 1, "CONT", {"VAZIO": 0.1847, "FORA_VAZIO": 0.2502}, 0.1572, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
   ["evio-bt-evio", "evio", "EVIO", "FIXED", "BT", "BI_HORARIA", "DIARIO", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1956, "FORA_VAZIO": 0.2882}, 0.15, 0.0, 0.001, 0, "https://ceme.go-evio.com/pt/site-ceme"],
@@ -287,7 +287,8 @@ export async function seed() {
     );
   }
 
-  // price_component
+  // price_component (Continente) + price_component_region (ilhas, só onde o
+  // CEME cobra diferente — mesmo padrão do seed SQLite, à paridade).
   for (const t of TARIFFS) {
     const [id, , , , , , , , , , , , prices, act, support, iec] = t;
     const v = VERSIONS[id] || {};
@@ -327,6 +328,23 @@ export async function seed() {
            tar_eur_kwh = EXCLUDED.tar_eur_kwh`,
         [vid, 'VAZIO', act, support, iec]
       );
+    }
+
+    for (const [region, perSplit] of Object.entries(REGION_SPLITS[id] || {})) {
+      for (const [per, s] of Object.entries(perSplit)) {
+        await query(
+          `INSERT INTO price_component_region (tariff_version_id, region, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh, energy_only_eur_kwh, tar_eur_kwh)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (tariff_version_id, region, period) DO UPDATE SET
+             energy_eur_kwh = EXCLUDED.energy_eur_kwh,
+             activation_eur = EXCLUDED.activation_eur,
+             support_eur = EXCLUDED.support_eur,
+             iec_eur_kwh = EXCLUDED.iec_eur_kwh,
+             energy_only_eur_kwh = EXCLUDED.energy_only_eur_kwh,
+             tar_eur_kwh = EXCLUDED.tar_eur_kwh`,
+          [vid, region, per, regionFinal(s.energy, s.tar), act, support, iec, s.energy, s.tar]
+        );
+      }
     }
   }
 }

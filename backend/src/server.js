@@ -306,8 +306,24 @@ async function allTariffs(day = today()) {
   `, [day, today()]);
 }
 
-async function comps(vid) {
-  const rows = await query('SELECT * FROM price_component WHERE tariff_version_id = $1', [vid]);
+async function comps(vid, region = 'CONT') {
+  let rows = await query('SELECT * FROM price_component WHERE tariff_version_id = $1', [vid]);
+  // Linhas de região POR CIMA das de omissão (Continente): só existem onde o
+  // CEME cobra diferente nas ilhas (price_component_region). Vão DEPOIS das
+  // de omissão — preço e decomposição usam "a última vence", logo a ilha
+  // sobrepõe ao Continente e um período sem linha própria cai no preço CONT.
+  if (region && region !== 'CONT') {
+    const reg = await query('SELECT * FROM price_component_region WHERE tariff_version_id = $1 AND region = $2', [vid, region]);
+    rows = [...rows, ...reg];
+  }
+  return compRows(rows, vid);
+}
+
+// O formato { price, split } a partir das linhas JÁ MESCLADAS de uma versão
+// (Continente + região, só região, ou só Continente). Usado pelo comps() e
+// pelo /v1/tabela (que precisa do mesmo formato por ilha, sem o merge POR
+// CIMA — as linhas de região são mostradas À PARTE, nunca misturadas).
+function compRows(rows, vid) {
   let out;
   try { out = pickComponents(rows); }
   catch (e) { throw new Error(`${e.message} na versão ${vid}`); }
@@ -359,7 +375,7 @@ async function tarFor(region, voltage, period, day = today()) {
 
 async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot }) {
   const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
-  const { price, act, iec, sup, split } = await comps(t.vid);
+  const { price, act, iec, sup, split } = await comps(t.vid, region);
   const meta = {
     id: t.id, ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
     schedule: t.schedule, cycle: t.cycle, green: !!t.green, access: t.access,
@@ -710,11 +726,27 @@ const server = http.createServer(async (req, res) => {
     for (const t of await allTariffs()) {
       if (t.vid == null) continue; // sem versão em vigência (ex.: campanha expirada)
       const cp = await comps(t.vid);
+      // Ilhas: os preços À PARTE por região, para os CEMEs que cobram
+      // diferente nas ilhas (price_component_region) — ex.: a Enable, energia
+      // 0,15 vs 0,12 €. No MESMO formato price/split de cima, um mapa
+      // região → { prices, split }. Onde o CEME não diverge, NÃO há chave: o
+      // tarifário cota-se com o preço do Continente em qualquer região (não
+      // se inventa preço insular), e o /tabela não mostra linha nenhuma.
+      const regRows = await query(
+        `SELECT region, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh,
+                energy_only_eur_kwh, tar_eur_kwh
+         FROM price_component_region WHERE tariff_version_id = $1`, [t.vid]);
+      const regionPrices = {};
+      for (const region of [...new Set(regRows.map(r => r.region))].sort()) {
+        const rp = compRows(regRows.filter(r => r.region === region), t.vid);
+        regionPrices[region] = { prices: rp.price, split: rp.split };
+      }
       out.push({
         ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
         schedule: t.schedule, cycle: t.cycle, green: t.green, bundle: t.bundle,
         popular: t.popular, access: t.access,
         prices: cp.price, activation: cp.act, iec: cp.iec, split: cp.split,
+        ...(Object.keys(regionPrices).length ? { regionPrices } : {}),
       });
     }
     const ver = await get(
@@ -767,7 +799,9 @@ const server = http.createServer(async (req, res) => {
         // Fixo sem versão em vigor, ou sem preços de energia (ex. só EGME),
         // não dá comparação: fica null — a UI trata como "sem fixo" e esconde
         // colunas, em vez de mostrar uma referência vazia com nome.
-        const fp = fv ? (await comps(fv.id)).price : null;
+        // Preços por região: o fixo é cotado na MESMA região que os quartos
+        // (a ilha sobrepõe ao Continente quando há linhas de região).
+        const fp = fv ? (await comps(fv.id, region)).price : null;
         if (fp && Object.keys(fp).length) {
           fixPrice = fp;
           const fc = await get('SELECT name FROM ceme WHERE id = $1', [ft.ceme_id]);

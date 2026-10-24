@@ -14,7 +14,8 @@
 | `ceme` | 24 comercializadores (nome, cor, site) |
 | `tariff` | os tarifários (CEME, nome, fixo/indexado, tensão, ciclo, verde, bundle, regiões, URL fonte) |
 | `tariff_version` | versão com `valid_from`/`valid_to`, `k_index_eur_mwh`, `cgs_eur_mwh`, `omie_aggregation`, estado. Chave única `(tariff_id, valid_from)`: uma versão por tarifário e data. `valid_from` no seed é a **data de captura** (`SHEET_SNAPSHOT`), não a data de início do contrato — a folha CEME não tem coluna de datas |
-| `price_component` | preço €/kWh por período + `activation_eur` (EGME) + `support_eur` + `iec_eur_kwh`. `energy_eur_kwh` é o preço **final** que o CEME publica (já com a TAR dentro); `energy_only_eur_kwh` + `tar_eur_kwh` são a decomposição **quando a folha a tinha** (o CEME publicava a energia à parte) — NULL quando não a temos, porque não se inventa |
+| `price_component` | preço €/kWh por período + `activation_eur` (EGME) + `support_eur` + `iec_eur_kwh`. `energy_eur_kwh` é o preço **final** que o CEME publica (já com a TAR dentro); `energy_only_eur_kwh` + `tar_eur_kwh` são a decomposição **quando a folha a tinha** (o CEME publicava a energia à parte) — NULL quando não a temos, porque não se inventa. Estas são as linhas de omissão = Continente |
+| `price_component_region` | os mesmos componentes, mas POR REGIÃO (`MAD`/`AZO`): só as linhas onde o CEME cobra diferente nas ilhas (ex.: a Enable, energia 0,15 vs 0,12). Sobrepondo-se às de omissão na leitura (`comps(vid, region)`); um tarifário sem linhas aqui cota-se com o preço do Continente em qualquer região |
 | `tar` | TAR por região/tensão/período, versionada |
 | `omie_daily` | agregados diários materializados a partir de `omie_spot`: `avg_pt`, `min_pt`, `max_pt` e as quatro médias por ciclo (`bd_v`/`bd_f`/`bs_v`/`bs_f`) — é o que serve `/v1/omie/daily` |
 | `omie_spot` | quartos-horários, um por linha, indexados pelo **instante UTC** (`ts_utc`) e pela fonte (`source`: `OMIE_ES` ou `TF`) |

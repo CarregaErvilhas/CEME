@@ -48,6 +48,22 @@ CREATE TABLE IF NOT EXISTS price_component (
   PRIMARY KEY (tariff_version_id, period)
 );
 
+-- Preços por região: quando o CEME cobra diferente nas ilhas (ex.: a Enable
+-- publica energia 0,15 €/kWh na Madeira/Açores vs 0,12 no Continente), as
+-- linhas da ilha vivem aqui, POR CIMA dos preços por omissão de
+-- `price_component` (que são os do Continente). Só há linhas de região onde
+-- os valores divergem; onde não há, o tarifário cota-se com o preço CONT em
+-- qualquer região — e a TAR (tabela `tar`) segue sempre a região pedida.
+CREATE TABLE IF NOT EXISTS price_component_region (
+  tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
+  region TEXT NOT NULL CHECK (region IN ('MAD','AZO')),
+  period TEXT NOT NULL CHECK (period IN ('VAZIO','FORA_VAZIO','UNICO')),
+  energy_eur_kwh REAL, activation_eur REAL DEFAULT 0,
+  support_eur REAL DEFAULT 0, iec_eur_kwh REAL DEFAULT 0,
+  energy_only_eur_kwh REAL, tar_eur_kwh REAL,
+  PRIMARY KEY (tariff_version_id, region, period)
+);
+
 CREATE TABLE IF NOT EXISTS tar (
   valid_from DATE NOT NULL, valid_to DATE, region TEXT NOT NULL DEFAULT 'CONT',
   voltage TEXT NOT NULL, period TEXT NOT NULL, price_eur_kwh REAL NOT NULL,
