@@ -457,6 +457,7 @@
         cardTomorrow: 'Média OMIE de Amanhã (até às 23h)',
         cardLast30: 'Média OMIE dos últimos 30 dias',
         cardForecast: 'Previsão Futuro de {m}',
+        forecastPartial: 'parcial: só até onde há futuro publicado',
         cardMonth: 'Média OMIE do mês {m}',
         // cabeçalhos das tabelas
         thOmie: 'OMIE (€/MWh)',
@@ -484,6 +485,7 @@
         cardTomorrow: 'OMIE average for tomorrow (up to 23h)',
         cardLast30: 'OMIE average over the last 30 days',
         cardForecast: 'Forecast for {m}',
+        forecastPartial: 'partial: only as far as futures are published',
         cardMonth: 'OMIE average for {m}',
         thOmie: 'OMIE (€/MWh)',
         thWeekly: 'Bi-hourly weekly',

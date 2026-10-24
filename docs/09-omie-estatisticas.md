@@ -97,6 +97,93 @@ Cada cartão tem uma tooltip com a fórmula (soma / nº de quartos, a mistura
 mercado vs futuro), a idade do ficheiro do TF e a hora de emissão do
 ficheiro da OMIE — para quem quiser conferir o número.
 
+## Como se calcula a "Previsão Futuro de [mês]"
+
+É o único número da página que mistura mercado com futuros. Código:
+`aggregate()` em `backend/src/omie/stats.js` (bloco "Previsão do mês" e o
+campo `cards.forecast`); testes em `backend/test/omie-stats.test.js`
+(procurar "previsão").
+
+### O que é o FPB D
+
+Contrato de futuros do **OMIP** (o mercado a prazo ibérico): `FPB` = futuro
+de carga **base** da zona **P**ortugal, `D` = contrato **diário**. Cada dia
+tem um único preço (€/MWh) para as 24 horas — é uma média esperada do dia,
+**sem forma** (não diz quais quartos são mais caros). O TF republica-os no
+ficheiro de futuros (`TF_FUTURES_URL` em `omie/tf.js`), uma linha por
+contrato, por exemplo `FPB D Sa24Oct-26,24/10/2026,<preço>,...`. Os
+contratos semanais (`FPB Wk..`) e mensais (`FPB M ..`) estão no mesmo
+ficheiro mas **não** são usados no cálculo.
+
+### Do ficheiro ao número
+
+1. **Ingestão** (`pipeline.js`, refresh de fundo; TTL em `TTL_FUTURES`):
+   `parseTfFutures` lê as tabelas `TABELA_FUTUROS_<zona>`; `parseTfDailyFutures`
+   fica com a zona PT, só os contratos `FPB D`, converte a data
+   (`dd/mm/aaaa` → ISO) e ordena. O resultado vai para `omie_meta` (chave
+   `futures`, campo `daily`).
+2. **Dicionário** (`getStats`): `daily` passa a `{ 'AAAA-MM-DD': €/MWh }`
+   (`fpbDaily`) e é entregue a `aggregate()`.
+3. **Parte já realizada (mercado).** Os quartos de **mercado** do mês civil
+   de Lisboa em curso, até ao último dia com preço publicado (`cutoff`).
+   Estimativas OMIP por quarto do TF (`est`) ficam de fora.
+4. **Parte por realizar (futuro).** Para cada dia do mês **posterior** ao
+   `cutoff` que tenha `FPB D` publicado, soma-se `FPB D × nº de quartos
+   desse dia` (`expectedQuartersForLisbonDay`: 96, ou 92/100 nos dias de
+   mudança de hora). Dias sem `FPB D` ficam de fora.
+5. **Média ponderada por quartos:**
+
+```
+previsão = ( Σ preço dos quartos de mercado  +  Σ_dias (FPB D × quartos do dia) )
+           / ( nº de quartos de mercado       +  Σ_dias quartos do dia )
+```
+
+   Pesar por **quartos** (e não por dias) é o que faz a previsão ser
+   directamente comparável com a "Média OMIE do mês": é a mesma média de
+   quartos, em que os que faltam valem o preço do futuro do seu dia.
+
+### Casos limite (todos com teste)
+
+- **Cobertura parcial.** O OMIP só publica futuros diários para os
+  próximos dias. Se o mês ainda tem dias além do último `FPB D`, a previsão
+  é calculada só com o que há e `coverageTo` diz até que dia chega — não
+  se extrapola o resto do mês.
+- **Sem nenhum `FPB D` para os dias em falta.** `value = null`; o cartão
+  fica vazio em vez de repetir a média do mês.
+- **Mês já fechado** (sem dias por publicar): é só a média de mercado e
+  `coverageTo` é o último dia do mês.
+- **Dia parcialmente publicado.** Se o `cutoff` é o dia de amanhã (com ~92
+  quartos publicados à tarde, ver docs/03) esse dia conta como mercado
+  com os quartos que tem; **não** se lhe junta `FPB D`, porque o
+  `FPB D` só entra para dias depois do `cutoff`.
+- **Mudança de hora.** O peso do dia segue o número real de quartos (por
+  isso o último domingo de Outubro pesa 100).
+- **Uma fonte de futuro só.** Não há interpolação, nem curvas, nem
+  estimativas OMIP por quarto: a regra do projecto é "um número publicado
+  por dia, usado tal como vem".
+
+### O período que o cartão mostra
+
+Por baixo do título, o cartão mostra o período coberto: do dia 1 do mês
+até `coverageTo` (dias civis de Lisboa). Se `coverageTo` é anterior ao
+último dia do mês, acrescenta "parcial": a previsão é só até onde há
+`FPB D` publicado, não é o mês todo. Para um número do mês inteiro há o
+contrato mensal `FPB M`, mas o OMIP só o publica para meses futuros; o do
+mês em curso já foi desdobrado em dias e semanas (ver o ficheiro de
+futuros). Código: `forecastPeriod` em `frontend/omie.html`.
+
+### O que a API devolve (`cards.forecast`)
+
+`value` (a previsão), `quarters` (denominador), `mtdQuarters`/`mtdSum` (a
+parte de mercado), `fpbDays` (`[{ date, value, quarters }]` — o que entrou
+do futuro), `sum` (numerador) e `coverageTo`. A tooltip do cartão em
+`frontend/omie.html` mostra a mesma fórmula com estes campos, para quem
+quiser conferir à mão.
+
+O cartão "Média OMIE de Amanhã" usa o mesmo `FPB D`, mas isolado: quando
+amanhã ainda não tem quartos de mercado, mostra o `FPB D` desse dia
+(`source: 'fpbd'`, assinalado como futuro).
+
 ## De onde vêm os dados
 
 Duas fontes, reconciliadas por **instante** (ver `03-omie-ingestao.md`):
