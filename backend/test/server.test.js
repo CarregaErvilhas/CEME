@@ -12,6 +12,7 @@ import { tmpdir, networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import { signJwt } from '../src/auth/tokens.js';
 
 const dir = mkdtempSync(path.join(tmpdir(), 'ceme-server-test-'));
 const PORT = 30000 + (process.pid % 20000);
@@ -99,7 +100,16 @@ describe('servidor: hardening HTTP', () => {
     assert.equal(bad.status, 400);
   });
 
-  it('HTML também leva nosniff', async () => {
+  it('alvo `//`: 400 e o processo continua vivo (antes o new URL matava-o)', async () => {
+  const status = await new Promise((resolve, reject) => {
+    http.request({ host: '127.0.0.1', port: PORT, path: '//', method: 'GET' }, r => { r.resume(); resolve(r.statusCode); })
+      .on('error', reject).end();
+  });
+  assert.equal(status, 400);
+  assert.equal((await fetch(`${BASE}/healthz`)).status, 200);
+});
+
+it('HTML também leva nosniff', async () => {
     assert.equal((await fetch(`${BASE}/`)).headers.get('x-content-type-options'), 'nosniff');
   });
 
@@ -470,6 +480,12 @@ describe('servidor: secret de dev não emite tokens em produção', () => {
     const r = await fetch(`http://127.0.0.1:${PORT + 1}/v1/session`, { method: 'POST' });
     assert.equal(r.status, 503);
     assert.equal((await r.json()).error.code, 'no_secret');
+  });
+
+  it('Bearer assinado com a secret de dev pública → 401 (não só o mint está fechado)', async () => {
+    const forged = signJwt({ kind: 'WEB_SESSION', sid: 'x' }, 'dev-only-change-me');
+    const r = await fetch(`http://127.0.0.1:${PORT + 1}/v1/health`, { headers: { Authorization: `Bearer ${forged}` } });
+    assert.equal(r.status, 401);
   });
 });
 

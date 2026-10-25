@@ -31,6 +31,9 @@ const USE_PG = !!process.env.DATABASE_URL;
 const DEV_FALLBACK = 'dev-only-change-me';
 const SECRET = process.env.JWT_SECRET || DEV_FALLBACK;
 const WEAK_SECRET = SECRET === DEV_FALLBACK;
+// Com a secret de dev em produção nem se emite (/v1/session) nem se aceita
+// Bearer: a secret é pública, qualquer um fabricava um token que não expira.
+const WEAK_IN_PROD = WEAK_SECRET && process.env.NODE_ENV === 'production';
 if (WEAK_SECRET) console.warn('[ceme-v2] AVISO: JWT_SECRET não definida — a secret de dev "dev-only-change-me" está em uso. Qualquer pessoa pode fabricar sessões.',
   'Com NODE_ENV=production, POST /v1/session devolve 503 em vez de emitir tokens.',
   'Em publicação: export JWT_SECRET=<openssl rand -hex 32>.');
@@ -259,11 +262,27 @@ const rateLimited = (res, rl, limit) => json(res, 429, {
   error: { code: 'rate_limited', message: 'limite de requisições excedido; repetir depois de Retry-After' },
 }, rlHeaders(rl, limit));
 
-const clientIp = (req) => (req.socket && req.socket.remoteAddress) || 'unknown';
+// Atrás do proxy (Cloudflare + L7 do Zerops) o peer TCP é sempre o proxy e o
+// limitador dava UM orçamento global a todos os clientes. CEME_TRUST_PROXY=N
+// diz quantos saltos de confiança há à frente do processo: o IP do cliente é
+// a N-ésima entrada a contar da DIREITA de X-Forwarded-For (as da esquerda
+// são forjáveis). Por omissão (0) usa-se o peer, como antes.
+const TRUST_PROXY = Math.max(0, parseInt(process.env.CEME_TRUST_PROXY || '0', 10) || 0);
+const clientIp = (req) => {
+  if (TRUST_PROXY > 0) {
+    const hops = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
+    const ip = hops[hops.length - TRUST_PROXY];
+    if (ip) return ip;
+  }
+  return (req.socket && req.socket.remoteAddress) || 'unknown';
+};
 
 async function auth(req) {
   const h = req.headers.authorization || '';
-  if (h.startsWith('Bearer ')) return verifyJwt(h.slice(7), SECRET);
+  if (h.startsWith('Bearer ')) {
+    if (WEAK_IN_PROD) return { ok: false, error: 'no_secret' };
+    return verifyJwt(h.slice(7), SECRET);
+  }
   const k = req.headers['x-api-key'];
   if (k) {
     // Valida contra o hash em BD (revogada/expirada exclui). Antes aceitava
@@ -536,8 +555,10 @@ const METHODS = {
 };
 const MAX_BODY = 64 * 1024; // 64 KB — corpos raquíticos; pedir mais é abuso
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://x');
+async function handle(req, res) {
+  let url;
+  try { url = new URL(req.url, 'http://x'); }
+  catch { return json(res, 400, { error: { code: 'bad_request', message: 'alvo do pedido inválido' } }); }
   // Web sem auth (ficheiros estáticos); a API continua toda com auth.
   // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
   const readStatic = method => method === 'GET' || method === 'HEAD';
@@ -690,7 +711,7 @@ const server = http.createServer(async (req, res) => {
     if (!sessRl.allowed) return rateLimited(res, sessRl, RATE_SESSION);
     // Com a secret de dev em produção, proteger o bilhete: 503 em vez de
     // emitir tokens fabricáveis. Em dev/CI a secret segue a ser aceitável.
-    if (WEAK_SECRET && process.env.NODE_ENV === 'production') {
+    if (WEAK_IN_PROD) {
       return json(res, 503, { error: { code: 'no_secret', message: 'JWT_SECRET em falta: export JWT_SECRET=<openssl rand -hex 32>' } });
     }
     const token = signJwt({ kind: 'WEB_SESSION', sid: Math.random().toString(36).slice(2) }, SECRET);
@@ -754,7 +775,8 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { at: ver?.d ?? null, data: out }, headers);
   }
   if (url.pathname === '/v1/omie/daily' && req.method === 'GET') {
-    const days = Math.min(120, Math.max(7, Number(url.searchParams.get('days') || 60)));
+    const nDays = Number(url.searchParams.get('days') || 60);
+    const days = Number.isFinite(nDays) ? Math.min(120, Math.max(7, Math.trunc(nDays))) : 60;
     getDaily(days).then(
       d => json(res, 200, d, headers),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `séries indisponíveis: ${e.message}` } }, headers));
@@ -781,7 +803,17 @@ const server = http.createServer(async (req, res) => {
     const t = (await query('SELECT * FROM tariff WHERE id = $1', [tid || ''])).find(x => x.kind === 'INDEXED')
       || (await query("SELECT * FROM tariff WHERE kind = 'INDEXED' ORDER BY id LIMIT 1"))[0];
     if (!t) return json(res, 404, { error: { code: 'no_indexed', message: 'sem tarifário indexado' } }, headers);
-    const ver = await get('SELECT * FROM tariff_version WHERE tariff_id = $1 ORDER BY valid_from DESC LIMIT 1', [t.id]);
+    // A versão em vigor hoje; se ainda nenhuma começou, a primeira que vier
+    // (como allTariffs/tarFor). Uma versão já fechada nunca fixa o preço.
+    const ver = await get(
+      `SELECT * FROM tariff_version WHERE tariff_id = $1
+        AND valid_from <= $2 AND (valid_to IS NULL OR valid_to > $2)
+        ORDER BY valid_from DESC LIMIT 1`, [t.id, today()]
+    ) || await get(
+      `SELECT * FROM tariff_version WHERE tariff_id = $1 AND valid_from > $2
+        ORDER BY valid_from ASC LIMIT 1`, [t.id, today()]
+    );
+    if (!ver) return json(res, 404, { error: { code: 'no_indexed_version', message: 'sem versão em vigor do tarifário indexado' } }, headers);
 
     // Fixo de referencia: o que o cliente escolheu no comparador. Sem ele nao
     // ha com quem comparar — o endpoint so sabe quanto o INDEXADO custa.
@@ -970,7 +1002,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   json(res, 404, { error: { code: 'not_found', message: url.pathname } }, headers);
+}
+
+// Fronteira de erro: o node:http ignora a promessa que o listener devolve, por
+// isso uma rejeição (BD em baixo, dados inesperados) seria `unhandledRejection`
+// e o Node terminava o processo — o site todo por um pedido. Responde 500.
+const server = http.createServer(async (req, res) => {
+  try { await handle(req, res); }
+  catch (e) {
+    console.error('[ceme-v2] erro no pedido:', e);
+    if (!res.headersSent) json(res, 500, { error: { code: 'internal', message: 'erro interno' } });
+    else res.end();
+  }
 });
+process.on('unhandledRejection', (e) => console.error('[ceme-v2] rejeição não tratada:', e));
 
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
