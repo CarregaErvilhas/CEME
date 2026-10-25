@@ -541,7 +541,7 @@ function detail(q) {
     <tr><td title="${i18n('verifiedTip')}">${i18n('verified')}</td><td colspan="2">${q.valid_from || '—'}</td></tr></table>
     ${q.notes ? `<p class="note-ac">${noteText(q.notes)}</p>` : ''}
     <small>${i18n('breakdownNote')}</small><br>
-    ${q.source_url ? `<a class="src" href="${q.source_url}" target="_blank" rel="noopener">${i18n('confirmSrc')}</a>` : ''}</details>`;
+    ${/^https?:\/\//i.test(q.source_url || '') ? `<a class="src" href="${esc(q.source_url)}" target="_blank" rel="noopener">${i18n('confirmSrc')}</a>` : ''}</details>`;
 }
 // Rampa de calor do preço: verde nos baratos, vermelho nos caros.
 // A escala e logarítmica entre o mais barato e o mais caro de toda a lista —

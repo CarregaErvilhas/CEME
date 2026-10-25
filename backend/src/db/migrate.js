@@ -68,6 +68,15 @@ const DAILY_COLS = ['date', 'bd_v', 'bd_f', 'bs_v', 'bs_f'];
 // forma abaixo, senão a tabela (cheia) era deitada fora por "forma antiga".
 const SPOT_RENAMES = [['day_utc', 'day_lisbon'], ['min_utc', 'min_lisbon']];
 
+// Uma tabela deitada fora deixa o `omie_meta` a descrever dados que já não
+// existem: com `last_refresh` < 1 h o ensureFresh() não reingere e as rotas
+// servem série vazia / agregado antigo como actuais. Limpam-se os dois.
+async function forgetOmieFreshness(notes) {
+  if (!(await tableExists('omie_meta'))) return;
+  await run(`DELETE FROM omie_meta WHERE key IN ('last_refresh', 'stats')`);
+  notes.push('omie_meta: last_refresh e stats limpos (forçam reingestão)');
+}
+
 export async function migrateOmieTables() {
   const notes = [];
 
@@ -91,6 +100,7 @@ export async function migrateOmieTables() {
       } else {
         await query('DROP TABLE omie_spot');
         notes.push('omie_spot: forma antiga (hora local) deitada fora');
+        await forgetOmieFreshness(notes);
       }
     }
   }
@@ -102,6 +112,7 @@ export async function migrateOmieTables() {
       } else {
         await query('DROP TABLE omie_daily');
         notes.push('omie_daily: forma antiga deitada fora');
+        await forgetOmieFreshness(notes);
       }
     }
   }
