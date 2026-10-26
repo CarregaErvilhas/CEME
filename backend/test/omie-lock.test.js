@@ -13,8 +13,8 @@ import { execFileSync } from 'node:child_process';
 const dir = mkdtempSync(path.join(tmpdir(), 'ceme-lock-test-'));
 process.env.DB_PATH = path.join(dir, 'lock.db');
 
-const { run, get } = await import('../src/db.js');
-await run(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
+const { run, get, exec } = await import('../src/db.js');
+await exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
 const { acquireLock, releaseLock, LOCK_TTL_MS } = await import('../src/omie/pipeline.js');
 const lockValue = async () => (await get(`SELECT value FROM omie_meta WHERE key = 'refresh_lock'`))?.value ?? null;
 
@@ -54,20 +54,21 @@ describe('OMIE — lock do refresh', () => {
 });
 
 describe('CEME_READONLY — a BD não se toca', () => {
-  it('run() recusa escrever; ensureFresh não ingere', () => {
+  it('run() e exec() recusam escrever; ensureFresh não ingere', () => {
     const roDir = mkdtempSync(path.join(tmpdir(), 'ceme-ro-test-'));
     const src = new URL('../src/', import.meta.url).pathname;
     const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
-      const { run, query } = await import('${src}db.js');
+      const { run, exec, query } = await import('${src}db.js');
       const { ensureFresh } = await import('${src}omie/pipeline.js');
-      let refused = false;
-      try { await run("CREATE TABLE x (a INTEGER)"); } catch (e) { refused = /CEME_READONLY/.test(e.message); }
+      let refused = 0;
+      try { await run("CREATE TABLE x (a INTEGER)"); } catch (e) { refused += /CEME_READONLY/.test(e.message); }
+      try { await exec("CREATE TABLE y (a INTEGER); CREATE TABLE z (a INTEGER)"); } catch (e) { refused += /CEME_READONLY/.test(e.message); }
       const fresh = await ensureFresh();
       const tables = (await query("SELECT name FROM sqlite_master WHERE type = 'table'")).length;
       console.log(JSON.stringify({ refused, fresh, tables }));
     `], { env: { ...process.env, CEME_READONLY: '1', DB_PATH: path.join(roDir, 'ro.db') }, encoding: 'utf8' });
     const r = JSON.parse(out.trim().split('\n').pop());
-    assert.equal(r.refused, true, 'a escrita tem de rebentar');
+    assert.equal(r.refused, 2, 'as duas escritas têm de rebentar');
     assert.deepEqual(r.fresh, { fresh: true, readonly: true }, 'sem ingestion');
     assert.equal(r.tables, 0, 'nada foi criado');
   });

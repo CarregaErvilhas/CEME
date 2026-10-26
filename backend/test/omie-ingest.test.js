@@ -11,7 +11,7 @@ import path from 'node:path';
 const dir = mkdtempSync(path.join(tmpdir(), 'ceme-omie-test-'));
 process.env.DB_PATH = path.join(dir, 'omie.db');
 
-const { run, query } = await import('../src/db.js');
+const { run, query, exec } = await import('../src/db.js');
 const { readFileSync } = await import('node:fs');
 const { reconcile, upsertSpot, spotForDay, upsertDaily, dailyRows } = await import('../src/omie/store.js');
 const { lisbonMidnightUtc, expectedQuartersForLisbonDay } = await import('../src/omie/convert.js');
@@ -101,7 +101,7 @@ describe('ingestão OMIE — instante e mudança de hora', () => {
 
 describe('ingestão OMIE — a BD', () => {
   before(async () => {
-    await run(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
+    await exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
   });
   after(() => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* já foi */ } });
 

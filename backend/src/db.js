@@ -9,7 +9,8 @@
 // query(sql, params) → todas as linhas
 // get(sql, params)   → a primeira linha, ou null
 // run(sql, params)   → para INSERT/UPDATE/DELETE; vê `affected()` abaixo
-let queryImpl, getImpl, runImpl, closeImpl;
+// exec(sql)          → várias instruções de uma vez, sem parâmetros (o schema)
+let queryImpl, getImpl, runImpl, execImpl, closeImpl;
 let dbInstance = null; // só em SQLite: alguns testes mexem directamente na BD
 
 if (process.env.DATABASE_URL) {
@@ -17,6 +18,7 @@ if (process.env.DATABASE_URL) {
   queryImpl = pg.query;
   getImpl = pg.get;
   runImpl = pg.run;
+  execImpl = (sql) => pg.run(sql);
   closeImpl = pg.close;
 } else {
   const { DatabaseSync } = await import('node:sqlite');
@@ -31,8 +33,8 @@ if (process.env.DATABASE_URL) {
   const db = new DatabaseSync(process.env.DB_PATH || path.join(DATA_DIR, 'ceme.db'));
   dbInstance = db;
   // Dois detalhes do node:sqlite:
-  //   - prepare() só aceita UMA instrução. Um texto sem parâmetros e com `;`
-  //     (o schema, por exemplo) vai por db.exec(), que aceita várias.
+  //   - prepare() só aceita UMA instrução. Para várias de uma vez (o schema)
+  //     usa exec(), que vai por db.exec().
   //   - Não percebe os parâmetros `$1, $2…` do PostgreSQL. Como escreves o SQL
   //     sempre no estilo do Postgres, aqui troca-se cada `$N` por `?` e
   //     monta-se a lista de valores pela ordem em que os `$N` APARECEM. Se o
@@ -47,10 +49,6 @@ if (process.env.DATABASE_URL) {
     return { sql: out, params: order.map(i => params[i]) };
   };
   queryImpl = async (sql, params = []) => {
-    if (params.length === 0 && sql.includes(';')) {
-      db.exec(sql);
-      return [];
-    }
     const { sql: q, params: p } = compile(sql, params);
     return db.prepare(q).all(...p);
   };
@@ -59,28 +57,28 @@ if (process.env.DATABASE_URL) {
     return db.prepare(q).get(...p) || null;
   };
   runImpl = async (sql, params = []) => {
-    if (params.length === 0 && sql.includes(';')) {
-      db.exec(sql);
-      return { changes: db.changes };
-    }
     const { sql: q, params: p } = compile(sql, params);
     return db.prepare(q).run(...p);
   };
+  execImpl = async (sql) => { db.exec(sql); };
   closeImpl = async () => db.close();
 }
 
 // CEME_READONLY=1: estás ligado a uma BD que não é tua (por exemplo, um
 // preview a ler a BD de produção). O arranque já salta as escritas, e aqui há
-// uma última rede de segurança: qualquer `run()` atira um erro em vez de
-// escrever. O `query()` não tem esta guarda, por isso escritas têm de ir
-// sempre por `run()`.
+// uma última rede de segurança: qualquer `run()` ou `exec()` atira um erro em
+// vez de escrever. O `query()` não tem esta guarda, por isso escritas têm de
+// ir sempre por `run()` (ou `exec()`).
 export const READONLY = process.env.CEME_READONLY === '1';
-const guardedRun = READONLY
-  ? async (sql) => { throw new Error(`CEME_READONLY: escrita recusada (${String(sql).trim().split(/\s+/).slice(0, 3).join(' ')} …)`); }
-  : runImpl;
+const refuse = async (sql) => { throw new Error(`CEME_READONLY: escrita recusada (${String(sql).trim().split(/\s+/).slice(0, 3).join(' ')} …)`); };
+const guardedRun = READONLY ? refuse : runImpl;
+const guardedExec = READONLY ? refuse : execImpl;
+
+// true quando estás ligado ao PostgreSQL (há DATABASE_URL).
+export const USE_PG = !!process.env.DATABASE_URL;
 
 // Quantas linhas um `run()` mudou. O SQLite chama-lhe `changes` e o pg
 // `rowCount`; isto dá-te o número nos dois casos.
 export const affected = (res) => Number(res && (res.changes != null ? res.changes : res.rowCount)) || 0;
 
-export { queryImpl as query, getImpl as get, guardedRun as run, closeImpl as close, dbInstance };
+export { queryImpl as query, getImpl as get, guardedRun as run, guardedExec as exec, closeImpl as close, dbInstance };

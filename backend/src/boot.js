@@ -1,0 +1,93 @@
+// O arranque: prepara a BD antes de o servidor aceitar pedidos. Corre uma
+// vez, a partir de server.js.
+//
+// A ordem importa:
+//   1. migrações do OMIE (antes do schema; vê db/migrate.js);
+//   2. o schema do dialecto em uso (seguro de repetir);
+//   3. colunas novas em tabelas que já existiam (antes do seed, que as usa);
+//   4. a chave da API de terceiros (CEME_API_KEY);
+//   5. a TAR;
+//   6. o seed (CEMEs, tarifários, preços);
+//   7. os resumos do OMIE, recalculados a partir do que já está na BD.
+//
+// Variáveis de ambiente opcionais (úteis em previews, docs/preview-envs.md):
+//   CEME_READONLY=1  não escreve nada na BD: salta tudo isto menos a leitura,
+//                    o OMIE não actualiza, e db.js recusa qualquer escrita.
+//                    Para ligares a uma BD que não é tua.
+//   CEME_SKIP_SEED=1 corre tudo menos o seed, para não pisar dados copiados
+//                    de outro ambiente.
+import { readFile } from 'node:fs/promises';
+import { run, exec, dbInstance, READONLY, USE_PG } from './db.js';
+import { hashKey } from './auth/tokens.js';
+import { REGIONS } from './engine/regions.js';
+import { rebuildDerived } from './omie/pipeline.js';
+import { migrateOmieTables, migrateAddedColumns } from './db/migrate.js';
+
+const log = (...a) => console.warn('[ceme-v2]', ...a);
+
+export async function boot() {
+  const skipSeed = READONLY || process.env.CEME_SKIP_SEED === '1';
+  if (READONLY) log('modo READONLY: bootstrap de escrita desactivado.');
+
+  if (!READONLY) {
+    for (const n of await migrateOmieTables()) log(`migração: ${n}`);
+    const schemaFile = new URL(USE_PG ? './db/schema.postgres.sql' : './db/schema.sql', import.meta.url);
+    await exec(await readFile(schemaFile, 'utf8'));
+    for (const n of await migrateAddedColumns()) log(`migração: ${n}`);
+    await syncEnvApiKey();
+    await syncTar();
+  }
+
+  if (!skipSeed) {
+    if (USE_PG) {
+      const { seed } = await import('./db/seed.postgres.js');
+      await seed();
+    } else {
+      const { seed } = await import('./db/seed.js');
+      await seed(dbInstance);
+    }
+  } else {
+    log('seed saltado (CEME_SKIP_SEED/CEME_READONLY).');
+  }
+
+  if (!READONLY) {
+    try { await rebuildDerived(); console.log('[ceme-v2] derivados recalculados no arranque'); }
+    catch (e) { log('rebuildDerived falhou:', e.message); }
+  }
+}
+
+// A API key de terceiros vem da variável CEME_API_KEY; na BD fica só o hash
+// (linha 'env-key'). A variável manda:
+//   - definida: grava o hash e reactiva a chave (trocar o valor invalida a
+//     antiga);
+//   - ausente: revoga a chave que estiver na BD.
+async function syncEnvApiKey() {
+  const key = process.env.CEME_API_KEY;
+  if (!key) {
+    await run(`UPDATE api_key SET revoked_at = CURRENT_TIMESTAMP WHERE id = 'env-key' AND revoked_at IS NULL`);
+    return;
+  }
+  await run(`INSERT INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')
+    ON CONFLICT (id) DO NOTHING`);
+  await run(`INSERT INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', $1, $2)
+    ON CONFLICT (id) DO UPDATE SET hash = $1, prefix = $2, revoked_at = NULL`,
+    [hashKey(key), key.slice(0, 8)]);
+}
+
+// TAR da mobilidade eléctrica em 2026, em €/kWh sem IVA (ERSE, Diretiva
+// n.º 1/2026, art. 23.º). A ERSE publica uma tabela só para Continente,
+// Açores e Madeira; grava-se uma cópia por região porque a TAR procura-se
+// sempre pela região do carregamento (uma região sem TAR é erro, nunca zero).
+export const TAR_2026 = { BT: { VAZIO: 0.0266, FORA_VAZIO: 0.1192 }, MT: { VAZIO: 0.0157, FORA_VAZIO: 0.0812 } };
+
+async function syncTar() {
+  for (const region of Object.keys(REGIONS)) {
+    for (const [voltage, byPeriod] of Object.entries(TAR_2026)) {
+      for (const [period, price] of Object.entries(byPeriod)) {
+        await run(`INSERT INTO tar (valid_from, valid_to, region, voltage, period, price_eur_kwh)
+          VALUES ('2026-01-01', NULL, $1, $2, $3, $4)
+          ON CONFLICT (valid_from, region, voltage, period) DO NOTHING`, [region, voltage, period, price]);
+      }
+    }
+  }
+}
