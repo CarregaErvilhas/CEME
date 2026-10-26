@@ -19,6 +19,7 @@
       install: 'Instalar',
       dismiss: 'Agora não',
       ios: 'No Safari: toca em Partilhar → "Adicionar ao ecrã principal".',
+      manual: 'No menu do browser (⋮), escolhe "Instalar app" ou "Adicionar ao ecrã principal".',
     },
     en: {
       title: 'Install CEME',
@@ -26,6 +27,7 @@
       install: 'Install',
       dismiss: 'Not now',
       ios: 'In Safari: tap Share → "Add to Home Screen".',
+      manual: 'In the browser menu (⋮), choose "Install app" or "Add to Home screen".',
     },
   }[lang];
 
@@ -34,13 +36,22 @@
     window.matchMedia('(display-mode: standalone)').matches ||
     window.navigator.standalone === true;
 
+  // "Agora não" lembra-se 7 dias (localStorage pode falhar: modo privado, etc.).
+  const DISMISS_KEY = 'ceme-install-dismissed';
+  function dismissed() {
+    try { return Date.now() - Number(localStorage.getItem(DISMISS_KEY)) < 7 * 864e5; } catch (e) { return false; }
+  }
+  function rememberDismiss() {
+    try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch (e) {}
+  }
+
   function hideBanner() {
     const el = document.getElementById('ceme-install');
     if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
   function showBanner(opts) {
-    if (isStandalone) return;
+    if (isStandalone || dismissed()) return;
     if (document.getElementById('ceme-install')) return;
     const el = document.createElement('div');
     el.id = 'ceme-install';
@@ -53,9 +64,9 @@
     el.innerHTML =
       '<div style="flex:1;min-width:0">' +
         '<div style="font-weight:600">' + T.title + '</div>' +
-        '<div style="font-size:13px;color:#6F6F6F">' + (opts && opts.ios ? T.ios : T.body) + '</div>' +
+        '<div style="font-size:13px;color:#6F6F6F">' + (opts && opts.ios ? T.ios : opts && opts.manual ? T.manual : T.body) + '</div>' +
       '</div>' +
-      (opts && opts.ios ? '' :
+      (opts && (opts.ios || opts.manual) ? '' :
         '<button id="ceme-install-btn" style="height:36px;padding:0 14px;border:1px solid #1E1E1E;border-radius:6px;background:#FBFBFB;color:#1E1E1E;font:inherit;cursor:pointer">' + T.install + '</button>') +
       '<button id="ceme-install-dismiss" aria-label="' + T.dismiss + '" style="border:0;background:none;font-size:20px;line-height:1;color:#6F6F6F;cursor:pointer;padding:0 4px">×</button>';
     document.body.appendChild(el);
@@ -70,12 +81,13 @@
       });
     }
     const dismiss = document.getElementById('ceme-install-dismiss');
-    if (dismiss) dismiss.addEventListener('click', hideBanner);
+    if (dismiss) dismiss.addEventListener('click', () => { rememberDismiss(); hideBanner(); });
   }
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    hideBanner(); // substitui as instruções manuais, se já estavam visíveis
     if (!isStandalone) showBanner();
   });
 
@@ -84,15 +96,24 @@
     hideBanner();
   });
 
+  function whenReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+
   // iOS Safari não dispara beforeinstallprompt: mostra instruções manuais.
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  // iPadOS 13+ apresenta-se como Mac, daí o teste de ecrã táctil.
+  const isIOS = (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) && !window.MSStream;
   if (isIOS && !isStandalone) {
-    // Espera a página estar pronta antes de mostrar o banner.
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => showBanner({ ios: true }));
-    } else {
-      showBanner({ ios: true });
-    }
+    whenReady(() => showBanner({ ios: true }));
+  } else if (!isStandalone && /Android|Mobi/i.test(navigator.userAgent)) {
+    // Android: o Chrome só dispara o evento se quiser (já instalada, recusada há
+    // pouco, Firefox/Samsung que nem o têm). Sem evento ao fim de uns segundos,
+    // mostra instruções manuais em vez de ficar calado.
+    window.addEventListener('load', () => {
+      setTimeout(() => { if (!deferredPrompt) showBanner({ manual: true }); }, 4000);
+    });
   }
 
   // Registo do service worker (necessário para a instalabilidade).
