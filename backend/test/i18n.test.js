@@ -10,8 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
-import { seed } from '../src/db/seed.js';
+import { seededDb } from './seeded-db.js';
 
 const html = readFileSync(new URL('../../frontend/index.html', import.meta.url), 'utf8');
 const a = html.indexOf('const NAME_RULES = [');
@@ -30,15 +29,9 @@ const en = (name) => {
 };
 const pt = (name) => name;
 
-function db() {
-  const d = new DatabaseSync(':memory:');
-  d.exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
-  seed(d);
-  return d;
-}
 
 describe('tradução dos nomes dos tarifários', () => {
-  it('traduz o vocabulário genérico', () => {
+  it('traduz o vocabulário genérico', async () => {
     const casos = [
       ['Cartão EDP Charge (Bi-Horário)', 'EDP Charge card (bi-hourly)'],
       ['Cartão EDP Charge (Simples)', 'EDP Charge card (simple rate)'],
@@ -62,21 +55,21 @@ describe('tradução dos nomes dos tarifários', () => {
     for (const [orig, esperado] of casos) assert.equal(en(orig), esperado, orig);
   });
 
-  it('não toca nas marcas nem nos nomes comerciais', () => {
+  it('não toca nas marcas nem nos nomes comerciais', async () => {
     const intactos = ['myAtlante (AC)', 'myAtlante Business (AC)', 'Eco Green', 'VECARD',
       'GOW', 'Hyundai Blue', 'AB Energia', 'Go.Charge by EVIO', 'EVIO',
       'Via Verde Electric by ECOCHOICE', 'Prio Electric (EUR/kWh)'];
     for (const n of intactos) assert.equal(en(n), n, n);
   });
 
-  it('em português o nome sai tal e qual (fonte: o CEME)', () => {
+  it('em português o nome sai tal e qual (fonte: o CEME)', async () => {
     for (const n of ['Cartão EDP Charge (Bi-Horário)', 'Mobilidade Elétrica', 'Tarifário Indexado Cliente CEME']) {
       assert.equal(pt(n), n);
     }
   });
 
-  it('nenhum dos nomes do seed fica com português por traduzir', () => {
-    const nomes = db().prepare('SELECT DISTINCT name FROM tariff').all().map(r => r.name);
+  it('nenhum dos nomes do seed fica com português por traduzir', async () => {
+    const nomes = (await seededDb()).prepare('SELECT DISTINCT name FROM tariff').all().map(r => r.name);
     assert.ok(nomes.length >= 50, `seed tem ${nomes.length} nomes distintos`);
     // Words that mean the translation did not reach that name.
     const sobra = /\b(sócio|scrição|Clientes|Cartão|Bi-Horário|Tarifário|Energia Verde|Mobilidade Elétrica|desconto|pré-pago|pós-pago)\b/;
@@ -86,7 +79,7 @@ describe('tradução dos nomes dos tarifários', () => {
     assert.deepEqual(maus, [], `nomes por traduzir: ${maus.map(m => m[0]).join(', ')}`);
   });
 
-  it('a ordem das regras é a dos frase mais longos primeiro', () => {
+  it('a ordem das regras é a dos frase mais longos primeiro', async () => {
     // Se uma regra curta anteceder a longa que a contém, sobra texto em PT.
     for (let i = 0; i < NAME_RULES.length; i++) {
       for (let j = i + 1; j < NAME_RULES.length; j++) {
@@ -103,7 +96,7 @@ describe('i18n: a função de tradução não pode ser sombreada', () => {
   // Uma variável `t` (ex.: `.map(t => ...)`) tapava uma função de tradução
   // chamada `t()`. Por isso a função chama-se `i18n()` e os tarifários `tf`. Este teste falha se alguém voltar a usar
   // `t` como variável perto de uma chamada de tradução.
-  it('não há variáveis chamadas `t` a sombrear o i18n', () => {
+  it('não há variáveis chamadas `t` a sombrear o i18n', async () => {
     const js = html.slice(html.lastIndexOf('<script>'));
     const linhas = js.split('\n');
     const Maus = [];

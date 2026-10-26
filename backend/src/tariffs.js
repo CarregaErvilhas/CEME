@@ -14,7 +14,7 @@ import { lossByPeriod } from './engine/losses.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { civilDay } from './omie/convert.js';
 import { pickComponents } from './db/components.js';
-import { VERSIONS } from './db/seed.postgres.js';
+import { VERSIONS } from './db/seed-data.js';
 
 // "Hoje" em Portugal, para escolher a versão em vigor (vê civilDay).
 export const today = () => civilDay();

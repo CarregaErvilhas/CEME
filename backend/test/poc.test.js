@@ -1,10 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTfDaily, parseTfFutures, parseTfQuarters } from '../src/omie/tf.js';
-import { seed } from '../src/db/seed.js';
+import { seededDb } from './seeded-db.js';
 import { pickComponents } from '../src/db/components.js';
-import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
 
 describe('pickComponents: coerência por versão', () => {
   const r = (period, act, iec = 0.001) => ({ period, energy_eur_kwh: 0.1, activation_eur: act, support_eur: 0, iec_eur_kwh: iec });
@@ -38,7 +36,7 @@ describe('pickComponents: coerência por versão', () => {
 });
 
 describe('cache OMIE: parsers defensivos', () => {
-  it('diário: filtra últimos N e ignora linhas más', () => {
+  it('diário: filtra últimos N e ignora linhas más', async () => {
     const csv = 'dia,data_iso,dias,quartos,pt_medio,pt_min,pt_max,pt_desvio,es_medio,spread_pt_es,horas_negativas,bd_v,bd_f,bs_v,bs_f,td_v,td_c,td_p,ts_v,ts_c,ts_p\n' +
       '01/01/2010,2010-01-01,1,96,7.2,0.0,30.8,11.88,6.77,0.43,0,4.94,8.82,0.0,10.17,4.94,5.58,16.91,0.0,8.57,14.0\n' +
       'linha má\n' +
@@ -48,10 +46,10 @@ describe('cache OMIE: parsers defensivos', () => {
     assert.equal(rows[0].bd_v, 4.94);
     assert.equal(rows[1].bd_v, null);
   });
-  it('diário: rebenta com schema inesperado (fail fast)', () => {
+  it('diário: rebenta com schema inesperado (fail fast)', async () => {
     assert.throws(() => parseTfDaily('a,b,c\n1,2,3\n', 60), /schema/);
   });
-  it('futuros: extrai contratos PT', () => {
+  it('futuros: extrai contratos PT', async () => {
     const csv = 'TABELA_FUTUROS_PT\nContrato,Descricao,Valor,Data\nFPB D Fr16Oct-26,16/10/2026,199.38,15/10/2026\nTABELA_FIM\n';
     const rows = parseTfFutures(csv);
     assert.equal(rows.length, 1);
@@ -60,10 +58,8 @@ describe('cache OMIE: parsers defensivos', () => {
 });
 
 describe('seed: distingue variantes', () => {
-  it('particular vs business e Ks diferentes', () => {
-    const db = new DatabaseSync(':memory:');
-    db.exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
-    seed(db);
+  it('particular vs business e Ks diferentes', async () => {
+    const db = await seededDb();
     const names = db.prepare("SELECT id,name FROM tariff WHERE ceme_id='atlante' ORDER BY id").all();
     assert.ok(names.length >= 2 && names.some(t => /Business/.test(t.name)), 'Atlante tem variante Business');
     const ks = db.prepare(`SELECT t.id,v.k_index_eur_mwh k FROM tariff t JOIN tariff_version v ON v.tariff_id=t.id
@@ -75,17 +71,12 @@ describe('seed: distingue variantes', () => {
 });
 
 describe('auditoria EGME (tarifa de activação)', () => {
-  const fresh = () => {
-    const db = new DatabaseSync(':memory:');
-    db.exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
-    seed(db);
-    return db;
-  };
+  const fresh = seededDb;
   // CEMEs que não cobram EGME. Todos os restantes devem ter uma activação > 0.
   const SEM_EGME = new Set(['miio']);
 
-  it('só o miio fica sem EGME', () => {
-    const db = fresh();
+  it('só o miio fica sem EGME', async () => {
+    const db = await fresh();
     const q = `SELECT DISTINCT t.ceme_id, pc.activation_eur a FROM price_component pc
       JOIN tariff_version v ON v.id=pc.tariff_version_id JOIN tariff t ON t.id=v.tariff_id
       WHERE pc.activation_eur IS NULL OR pc.activation_eur = 0 ORDER BY t.ceme_id`;
@@ -93,8 +84,8 @@ describe('auditoria EGME (tarifa de activação)', () => {
     assert.deepEqual(sem.filter(c => !SEM_EGME.has(c)), [], `CEMEs sem EGME que não deveriam: ${sem}`);
   });
 
-  it('os indexados também carregam EGME (o bug era só no seed)', () => {
-    const db = fresh();
+  it('os indexados também carregam EGME', async () => {
+    const db = await fresh();
     const rows = db.prepare(`SELECT t.id, pc.activation_eur a FROM tariff t
       JOIN tariff_version v ON v.tariff_id=t.id JOIN price_component pc ON pc.tariff_version_id=v.id
       WHERE t.kind='INDEXED'`).all();
@@ -103,8 +94,8 @@ describe('auditoria EGME (tarifa de activação)', () => {
     assert.deepEqual(sem, [], `indexados sem EGME: ${sem}`);
   });
 
-  it('os valores de EGME-known estão versionados por CEME', () => {
-    const db = fresh();
+  it('os valores de EGME-known estão versionados por CEME', async () => {
+    const db = await fresh();
     const byCeme = db.prepare(`SELECT t.ceme_id, pc.activation_eur a FROM tariff t
       JOIN tariff_version v ON v.tariff_id=t.id JOIN price_component pc ON pc.tariff_version_id=v.id
       WHERE t.ceme_id NOT IN ('miio') GROUP BY t.ceme_id`).all();
@@ -116,7 +107,7 @@ describe('auditoria EGME (tarifa de activação)', () => {
 describe('quarters CSV defensivo', () => {
   const HEAD = 'dia,hora,intervalo,Simples,BD,BS,TD,TS,preco_pt,preco_es';
 
-  it('pára nos blocos TABELA_ e conta os quartos', () => {
+  it('pára nos blocos TABELA_ e conta os quartos', async () => {
     const csv = `${HEAD}\n15/10/2026,00:15,[00:00-00:15[,S,V,V,V,V,104.70,104.70\n15/10/2026,00:30,[00:15-00:30[,S,V,V,V,V,103.98,103.98\nTABELA_ATUALIZACOES\nchave,valor\n`;
     const { days } = parseTfQuarters(csv);
     const rows = days.get('2026-10-15');
@@ -130,7 +121,7 @@ describe('quarters CSV defensivo', () => {
   // quartos de 00:00 a 23:45 de Lisboa. (O dia de mercado do OMIE é o de
   // Madrid — uma hora à frente — e é por isso que as duas fontes se
   // alinham pelo instante e não pelo período.)
-  it('o dia tem 96 quartos, de 00:00 a 23:45 de Lisboa', () => {
+  it('o dia tem 96 quartos, de 00:00 a 23:45 de Lisboa', async () => {
     const linhas = [];
     for (let p = 1; p <= 96; p++) {
       // A coluna `hora` do TF é o FIM do quarto ("00:15" = [00:00-00:15[);

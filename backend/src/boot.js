@@ -17,11 +17,12 @@
 //   CEME_SKIP_SEED=1 corre tudo menos o seed, para não pisar dados copiados
 //                    de outro ambiente.
 import { readFile } from 'node:fs/promises';
-import { run, exec, dbInstance, READONLY, USE_PG } from './db.js';
+import { query, run, exec, READONLY, USE_PG } from './db.js';
 import { hashKey } from './auth/tokens.js';
 import { rebuildDerived } from './omie/pipeline.js';
 import { migrateOmieTables, migrateAddedColumns } from './db/migrate.js';
 import { syncTar } from './db/tar.js';
+import { seed } from './db/seed.js';
 
 const log = (...a) => console.warn('[ceme-v2]', ...a);
 
@@ -39,13 +40,7 @@ export async function boot() {
   }
 
   if (!skipSeed) {
-    if (USE_PG) {
-      const { seed } = await import('./db/seed.postgres.js');
-      await seed();
-    } else {
-      const { seed } = await import('./db/seed.js');
-      await seed(dbInstance);
-    }
+    await seed({ query, run });
   } else {
     log('seed saltado (CEME_SKIP_SEED/CEME_READONLY).');
   }

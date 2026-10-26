@@ -12,21 +12,17 @@
 // "cobertura" no fim (e não por estas âncoras).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
-import { seed, SHEET_SNAPSHOT } from '../src/db/seed.js';
+import { PRICES_VERIFIED_ON } from '../src/db/seed-data.js';
+import { seededDb, reseed } from './seeded-db.js';
 import { quoteFixed } from '../src/engine/quote.js';
 import { pickComponents } from '../src/db/components.js';
 
 const AT = new Date('2026-10-15T22:09:00+01:00'); // 22:09 de uma quinta, fora-de-vazio
 const KWH = 40;
 
-function seeded() {
-  const db = new DatabaseSync(':memory:');
-  db.exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
-  seed(db);
-  return db;
-}
+const seeded = seededDb;
+// Uma BD só para os blocos que só lêem.
+const shared = await seededDb();
 
 // [tariff_id, total €, €/kWh s/ IVA] com os preços publicados pelos CEME.
 // Só mudam quando um preço publicado muda, e re-congelam-se correndo o motor
@@ -63,9 +59,9 @@ function quoteFromDb(db, id, { kwh = KWH, at = AT, region = 'CONT' } = {}) {
 }
 
 describe('golden: fixos a 40 kWh, 2026-10-15 22:09 (CONT)', () => {
-  const db = seeded();
+  const db = shared;
   for (const [id, total, eurKwh] of GOLDEN) {
-    it(`${id} = ${total.toFixed(2)} €`, () => {
+    it(`${id} = ${total.toFixed(2)} €`, async () => {
       const { q } = quoteFromDb(db, id);
       assert.equal(q.totalEur.toFixed(2), total.toFixed(2), `total de ${id}`);
       assert.equal(q.eurKwhNoIva.toFixed(2), eurKwh.toFixed(2), `€/kWh de ${id}`);
@@ -85,8 +81,8 @@ describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
   for (const [id, scenarioTotal, scenarioKwh] of [
     ['viaverde-mt-viaverdeelec', 8.25, 0.17],
   ]) {
-    it(`${id} ficaria em ${scenarioTotal.toFixed(2)} € com a EGME legal 2026`, () => {
-      const db = seeded();
+    it(`${id} ficaria em ${scenarioTotal.toFixed(2)} € com a EGME legal 2026`, async () => {
+      const db = await seeded();
       const { t, q, price, act, sup, iec } = quoteFromDb(db, id);
       assert.ok(act > EGME_2026, `${id} tem de estar acima do legal no seed (publicado)`);
       const cenário = quoteFixed({
@@ -103,13 +99,13 @@ describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
 describe('golden: o motor arredonda como a fatura', () => {
   // Um caso de ponta a ponta: Atlante myAtlante (AC) MT/semanal, 40 kWh,
   // 2026-10-15 22:09. Se o arredondamento por parcela mudar, o número muda.
-  it('Atlante myAtlante (AC) MT/semanal fecha em 10,09 €', () => {
-    const { q } = quoteFromDb(seeded(), 'atlante-mt-myatlanteac');
+  it('Atlante myAtlante (AC) MT/semanal fecha em 10,09 €', async () => {
+    const { q } = quoteFromDb(await seeded(), 'atlante-mt-myatlanteac');
     assert.equal(q.totalEur, 10.09);
   });
-  it('o ROUNDUP é por componente (fatura), não no fim', () => {
+  it('o ROUNDUP é por componente (fatura), não no fim', async () => {
     // 40 × 0,2012 = 8,048 -> 8,05 pelo ROUNDUP; sem ROUNDUP daria 8,198 × 1,23.
-    const { q } = quoteFromDb(seeded(), 'atlante-mt-myatlanteac');
+    const { q } = quoteFromDb(await seeded(), 'atlante-mt-myatlanteac');
     const semArredondar = (40 * 0.2012 + 0.11 + 40 * 0.001) * 1.23;
     assert.equal(q.totalEur, 10.09);
     assert.ok(Math.abs(semArredondar - 10.08) < 0.005, `sem arredondar daria ${semArredondar.toFixed(4)}`);
@@ -117,14 +113,14 @@ describe('golden: o motor arredonda como a fatura', () => {
 });
 
 describe('golden: preços por região (price_component_region)', () => {
-  const db = seeded();
+  const db = shared;
   // Domingo ao meio-dia (MAD 12:00 local, AZO 11:00 local): VAZIO nas três
   // regiões no ciclo semanal. Terça: dia útil não-sábado — Fora nos três
   // (MAD/AZO: 07:00–24:00; CONT: 07:00–24:00).
   const DOMINGO = new Date('2026-11-01T12:00:00Z');
   const TERCA = new Date('2026-11-03T12:00:00Z');
 
-  it('enable BT vazio: continente 0,1466; ilha 0,1766 (energia 0,15 + TAR 0,0266)', () => {
+  it('enable BT vazio: continente 0,1466; ilha 0,1766 (energia 0,15 + TAR 0,0266)', async () => {
     const cont = quoteFromDb(db, 'enable-bt-tarifasimple', { at: DOMINGO, region: 'CONT' });
     assert.equal(cont.q.breakdown.final, 0.1466);
     assert.equal(cont.q.totalEur, 7.41);
@@ -136,7 +132,7 @@ describe('golden: preços por região (price_component_region)', () => {
     assert.equal(azo.q.totalEur, 8.38); // IVA 16% dos Açores
   });
 
-  it('enable BT fora-vazio: continente 0,2392; ilha 0,2692 (energia 0,15 + TAR 0,1192)', () => {
+  it('enable BT fora-vazio: continente 0,2392; ilha 0,2692 (energia 0,15 + TAR 0,1192)', async () => {
     const cont = quoteFromDb(db, 'enable-bt-tarifasimple', { at: TERCA, region: 'CONT' });
     assert.equal(cont.q.breakdown.final, 0.2392);
     assert.equal(cont.q.period, 'FORA_VAZIO');
@@ -145,7 +141,7 @@ describe('golden: preços por região (price_component_region)', () => {
     assert.equal(mad.q.totalEur, 13.33);
   });
 
-  it('CEME sem linhas de região cota-se com o preço do Continente na ilha', () => {
+  it('CEME sem linhas de região cota-se com o preço do Continente na ilha', async () => {
     // O default é um só: onde não há divergência publicada, não se inventa
     // preço insular — o EVIO nas ilhas sai com a mesma energia+TAR do continente.
     // (EVIO é ciclo DIARIO: domingo não é vazio — ao meio-dia é fora-vazio.)
@@ -156,14 +152,14 @@ describe('golden: preços por região (price_component_region)', () => {
 });
 
 describe('cobertura do seed', () => {
-  it('todas as 24 CEME e 128 tarifários', () => {
-    const db = seeded();
+  it('todas as 24 CEME e 128 tarifários', async () => {
+    const db = await seeded();
     assert.equal(db.prepare('SELECT COUNT(*) c FROM ceme').get().c, 24);
     assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 128);
   });
 
-  it('preços finais têm no máximo 4 casas e foram arredondados para cima', () => {
-    const db = seeded();
+  it('preços finais têm no máximo 4 casas e foram arredondados para cima', async () => {
+    const db = await seeded();
     const prices = db.prepare('SELECT energy_eur_kwh FROM price_component WHERE energy_eur_kwh IS NOT NULL').all()
       .concat(db.prepare('SELECT energy_eur_kwh FROM price_component_region WHERE energy_eur_kwh IS NOT NULL').all());
     assert.ok(prices.length > 0);
@@ -179,8 +175,8 @@ describe('cobertura do seed', () => {
       WHERE v.tariff_id='edp-bt-cartoedp-12' AND p.period='VAZIO'`).get().energy_eur_kwh, 0.1446);
   });
 
-  it('ACP não-sócio, Hyundai Blue e miio têm decomposição energia + TAR', () => {
-    const db = seeded();
+  it('ACP não-sócio, Hyundai Blue e miio têm decomposição energia + TAR', async () => {
+    const db = await seeded();
     const check = (id, period, energy, tar, final) => {
       const row = db.prepare(`SELECT p.energy_eur_kwh, p.energy_only_eur_kwh, p.tar_eur_kwh
         FROM price_component p JOIN tariff_version v ON v.id=p.tariff_version_id
@@ -203,8 +199,8 @@ describe('cobertura do seed', () => {
     check('enable-mt-tarifasimple', 'FORA_VAZIO', 0.12, 0.0812, 0.2012);
   });
 
-  it('Enable nas ilhas = energia 0,15 + TAR (linhas de região por cima do CONT)', () => {
-    const db = seeded();
+  it('Enable nas ilhas = energia 0,15 + TAR (linhas de região por cima do CONT)', async () => {
+    const db = await seeded();
     const checkRegion = (id, region, period, energy, tar, final) => {
       const row = db.prepare(`SELECT pcr.energy_eur_kwh, pcr.energy_only_eur_kwh, pcr.tar_eur_kwh, pcr.activation_eur, pcr.iec_eur_kwh, pc.activation_eur AS act_cont, pc.iec_eur_kwh AS iec_cont
         FROM price_component_region pcr
@@ -232,8 +228,8 @@ describe('cobertura do seed', () => {
 
   // seed() corre em CADA arranque do servidor. Sem chave unica em
   // tariff_version, cada arranque duplicava as 128 versoes.
-  it('seed() é idempotente: arrancar duas vezes não duplica versões', () => {
-    const d1 = seeded(); seed(d1); seed(d1);
+  it('seed() é idempotente: arrancar duas vezes não duplica versões', async () => {
+    const d1 = await seeded(); await reseed(d1); await reseed(d1);
     const versoes = d1.prepare('SELECT COUNT(*) c FROM tariff_version').get().c;
     const porTarifario = d1.prepare('SELECT COUNT(*) c FROM (SELECT tariff_id FROM tariff_version GROUP BY tariff_id HAVING COUNT(*)>1)').get().c;
     assert.equal(porTarifario, 0, 'há tarifários com mais de uma versão para a mesma data');
@@ -246,18 +242,18 @@ describe('cobertura do seed', () => {
     assert.equal(orfasReg, 0, `${orfasReg} price_component_region órfãos`);
   });
 
-  it('todas as versões partilham a data de captura (nenhuma data inventada)', () => {
-    const db = seeded();
+  it('todas as versões partilham a data de captura (nenhuma data inventada)', async () => {
+    const db = await seeded();
     // Só sabemos quando os preços foram verificados, não quando cada contrato
-    // começou. Por isso todas as versões usam essa data (SHEET_SNAPSHOT).
-    const d = db.prepare('SELECT COUNT(*) c FROM tariff_version WHERE valid_from != ? OR valid_from IS NULL').get(SHEET_SNAPSHOT);
-    assert.equal(d.c, 0, `${d.c} versoes com data diferente de ${SHEET_SNAPSHOT}`);
+    // começou. Por isso todas as versões usam essa data (PRICES_VERIFIED_ON).
+    const d = db.prepare('SELECT COUNT(*) c FROM tariff_version WHERE valid_from != ? OR valid_from IS NULL').get(PRICES_VERIFIED_ON);
+    assert.equal(d.c, 0, `${d.c} versoes com data diferente de ${PRICES_VERIFIED_ON}`);
     const aberta = db.prepare("SELECT COUNT(*) c FROM tariff_version WHERE valid_to IS NOT NULL AND status='ACTIVE'").get();
     assert.equal(aberta.c, 0, 'uma versao ACTIVE nao pode ter valid_to');
   });
 
-  it('todo o tarifário tem versão com componente de preço (ou é INDEXED)', () => {
-    const db = seeded();
+  it('todo o tarifário tem versão com componente de preço (ou é INDEXED)', async () => {
+    const db = await seeded();
     const semPreco = db.prepare(`SELECT t.id FROM tariff t
       JOIN tariff_version v ON v.tariff_id=t.id
       WHERE NOT EXISTS (SELECT 1 FROM price_component pc WHERE pc.tariff_version_id=v.id)
@@ -265,16 +261,16 @@ describe('cobertura do seed', () => {
     assert.deepEqual(semPreco, [], `fixos sem componente de preço: ${semPreco.map(r => r.id).join(', ')}`);
   });
 
-  it('todo o indexado tem K e CGM', () => {
-    const db = seeded();
+  it('todo o indexado tem K e CGM', async () => {
+    const db = await seeded();
     const semK = db.prepare(`SELECT t.id FROM tariff t JOIN tariff_version v ON v.tariff_id=t.id
       WHERE t.kind='INDEXED' AND (v.k_index_eur_mwh IS NULL OR v.cgs_eur_mwh IS NULL)`).all();
     assert.deepEqual(semK, [], `indexados sem K/CGS: ${semK.map(r => r.id).join(', ')}`);
   });
 
-  it('a EGME só falta no miio', () => {
+  it('a EGME só falta no miio', async () => {
     // Os indexados também têm de levar a taxa de activação do seed.
-    const db = seeded();
+    const db = await seeded();
     const sem = db.prepare(`SELECT DISTINCT t.ceme_id FROM tariff t
       JOIN tariff_version v ON v.tariff_id=t.id JOIN price_component pc ON pc.tariff_version_id=v.id
       WHERE pc.activation_eur IS NULL OR pc.activation_eur=0`).all().map(r => r.ceme_id);
