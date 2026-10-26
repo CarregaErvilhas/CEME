@@ -315,7 +315,7 @@
         err: 'Could not calculate. Check your internet connection.',
       },
     },
-    // Página "Sobre" (frontend/about.html): a história do projecto, o que
+    // Página "Sobre" (frontend/about.html): de onde vem o projecto, o que
     // faz, e porque é que é útil também a quem tem um ponto de carregamento.
     about: {
       pt: {
@@ -444,9 +444,8 @@
       },
     },
     // Página "Estatísticas OMIE" (frontend/omie.html): as tabelas mensais
-    // de preços e as células de referência que estavam na folha de cálculo.
-    // Os textos são os da folha ("Vazio", "Cheia", "Total geral") — mudar
-    // de vocabulary aqui seria mudar o que a pessoa reconhece.
+    // de preços e os cartões. Usa o vocabulário que quem segue o OMIE já
+    // conhece ("Vazio", "Cheia", "Total geral").
     omie: {
       pt: {
         docTitle: 'Estatísticas OMIE',
@@ -505,7 +504,7 @@
       },
     },
     // Página "Tabela de tarifários" (frontend/tabela.html, sem link no site):
-    // os tarifários em vigor, directamente da BD, na grelha da folha.
+    // os tarifários em vigor, directamente da BD, numa grelha simples.
     tabela: {
       pt: {
         docTitle: 'Tabela — Comparador CEME',

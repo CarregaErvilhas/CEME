@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// ETL da folha "CEME" -> a decomposição energia + TAR que o seed guarda.
+// Extrai, da folha de cálculo "Comparador Mobie CEME" (Google Sheets), a
+// separação energia + TAR dos preços, para o SPLITS do seed.
 //
 // A folha tem, para cada tarifário, três grupos de colunas de preço:
 //   K/L/M  "Valores ERSE"          Ponta / Cheias / Vazio
@@ -7,9 +8,8 @@
 //   Q/R/S  o display: "outras fontes" se houver, senão ERSE
 //
 // Quando a célula de "outras fontes" é uma fórmula `=0,1+TAR!$B$5`, o CEME
-// publicava a ENERGIA à parte e a folha compunha o total. Essa é a
-// decomposição que o site mostra — e que o seed tinha perdido (guardava só o
-// valor final).
+// publica a ENERGIA à parte e a folha compõe o total. É essa separação que
+// o site mostra no detalhe da conta.
 //
 // Uso (depois de `sh scripts/etl-sheets.sh`, que deixa os dumps em
 // backend/seed/):

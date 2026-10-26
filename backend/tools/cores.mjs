@@ -89,7 +89,7 @@ export const contraste = (a, b) => {
 export const tintaPara = (bg) =>
   contraste(bg, '#FFFFFF') >= contraste(bg, '#1A1A1A') ? '#FFFFFF' : '#1A1A1A';
 
-// --- a mistura de cores que a página faz (em sRGB, como a folha) --------
+// --- a mistura de cores que a página faz (interpolação simples em sRGB) ---
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 export const mix = (a, b, t) => {
   const A = hex(a), B = hex(b);
@@ -155,8 +155,8 @@ export function avaliarEscala(stops) {
 /**
  * Distância mínima entre as cores de duas escalas diferentes.
  *
- * Os dois meios (pivôs) não contam: os dois são "o meio" e na folha
- * original também se pareciam (amarelo e branco).
+ * Os dois meios (pivôs) não contam: os dois representam "o meio" e é
+ * aceitável que se pareçam (amarelo e branco).
  */
 export function cruzar(a, b) {
   let pior = Infinity, par = null;
