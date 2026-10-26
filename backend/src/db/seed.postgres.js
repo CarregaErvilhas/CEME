@@ -1,11 +1,7 @@
-// Seed completo para PostgreSQL: os mesmos CEME e tarifários do seed.js
-// (extraídos do sheet em 2026-10-15).
-// Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
-// act = EGME, o valor que a CEME publica (só o miio não cobra).
-// Os ajustes de valores (Frota EDP, promo EZU expirada, etc.) estão no
-// histórico do git do seed.js (`git log -p backend/src/db/seed.js`). Os dois
-// ficheiros andam em paralelo: TODAS as alterações lá e aqui (o
-// seed-parity.test.js compara-os).
+// Os dados de arranque para PostgreSQL (produção). É a mesma informação que
+// seed.js, escrita com a biblioteca `pg`: lê o cabeçalho e a explicação dos
+// campos de TARIFFS lá. Qualquer mudança vai aos dois ficheiros; o
+// test/seed-parity.test.js compara-os.
 import { readFile } from 'node:fs/promises';
 import { query, run } from './pg.js';
 import { SPLITS, REGION_SPLITS, regionFinal } from './seed.js';
@@ -37,6 +33,7 @@ export const CEMES = [
   ['ynerluz', "Ynerluz", "#888888", "https://www.ynerluz.com/aderir-mobilidade-eletrica/"],
 ];
 
+// Os campos de cada linha estão explicados em seed.js, por cima de TARIFFS.
 export const TARIFFS = [
   ["atlante-bt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1466, "FORA_VAZIO": 0.2392}, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ["atlante-mt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", {"VAZIO": 0.1357, "FORA_VAZIO": 0.2012}, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
@@ -168,9 +165,10 @@ export const TARIFFS = [
   ["meo-dinamica-mt", "meo", "Mobilidade Elétrica com Tarifa Dinâmica Exclusivo Clientes MEO *e* MEO Energia", "INDEXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 1, "CONT", null, 0.1088, 0.0, 0.001, 0, "https://www.meoenergia.pt/mobilidade-eletrica"],
 ];
 
-// Notas que a folha CEME nao traz, porem o nome do tarifario sugere. Sao
-// CODIGOS, nao texto: o cliente traduz (mesmo padrao de OMIE_CONT_REF), para
-// nao meter portugues na interface english.
+// Notas por tarifário. São CÓDIGOS, não texto: o frontend traduz cada um
+// para PT ou EN (vê NOTE_KEY em frontend/index.html).
+//   AC_DC_FLAT: o preço é para postos AC; nos postos DC o CEME tem outro
+//   preço, com a tarifa do posto incluída, que o simulador não calcula.
 export const NOTES = {
   'atlante-bt-myatlanteac': 'AC_DC_FLAT',
   'atlante-mt-myatlanteac': 'AC_DC_FLAT',
@@ -178,13 +176,17 @@ export const NOTES = {
   'atlante-mt-myatlantebus': 'AC_DC_FLAT',
 };
 
-// Data em que a folha CEME (e portanto o simulador original) reflecte a ERSE.
-// E o que sabemos com certeza. O que NAO sabemos, e nunca vamos saber sem ir a
-// cada comercializador, e a data em que cada tarifario comecou a vigorar — a
-// folha nao tem coluna de datas. Por isso `valid_from` = data de captura, e a
-// UI diz "precos verificados em" e nao "em vigor desde".
+// A data em que os preços do seed foram verificados. Usa-se como
+// `valid_from` de todas as versões e a interface mostra-a como "preços
+// verificados em". Não é a data em que cada tarifário começou: essa não se
+// sabe sem perguntar a cada CEME.
 export const SHEET_SNAPSHOT = '2026-10-15';
 
+// Parâmetros dos indexados, por tarifário (vê engine/indexed.js):
+//   k:       margem do CEME, €/kWh
+//   cgs:     custos de gestão do sistema, €/kWh
+//   loss:    perdas fixas a usar só se não houver perfil por quarto de hora
+//   formula: 'ynerluz' para a fórmula alternativa; sem isto, 'standard'.
 export const VERSIONS = {
   "ynerluz-bt": { k: 0.02, cgs: 0.025, loss: 0.1531275537, formula: "ynerluz" },
   "ynerluz-mt": { k: 0.02, cgs: 0.025, loss: 0.07127022935, formula: "ynerluz" },
@@ -198,26 +200,19 @@ export const VERSIONS = {
   "meo-dinamica-mt": { k: 0.065, cgs: 0.0 },
 };
 
-// Campanhas com fim à data (DIA INCLUÍDO a terminar, tal como no site
-// EZU): valid_to em passado esconde o tarifário do simulador — server.js
-// filtra `valid_to IS NULL OR valid_to > CURRENT_DATE` — e campaign=1
-// documenta porque é que acabou. Fica star no UPDATE e não no INSERT:
-// valid_from é a chave do conflito, logo re-correr o seed nunca reabre
-// uma campanha fechada.
+// Campanhas que já acabaram: { id do tarifário: último dia, inclusive }.
+// O seed põe esse dia em `valid_to`, `campaign = 1` e `status = 'EXPIRED'`,
+// e o simulador deixa de mostrar o tarifário no dia seguinte. Como o
+// UPDATE corre depois do upsert, voltar a correr o seed nunca reabre uma
+// campanha fechada.
 export const CAMPAIGN_END = {
-  // EZU "AB Energia": elétrico a 0,099 €/kWh + TAR — promo terminada a
-  // 30/09/2026 (página ezu.pt/ceme, verificada 2026-10-22).
+  // EZU "AB Energia" (página ezu.pt/ceme).
   'ezu-bt-abenergia': '2026-09-30',
   'ezu-mt-abenergia': '2026-09-30',
 };
 
 export async function seed() {
-  // Idempotente E convergente: as linhas existentes são atualizadas para o
-  // que está no código. Antes era tudo `DO NOTHING`, o que tornava o seed um
-  // no-op em qualquer BD já povoada: corrigir um preço no código e voltar a
-  // fazer deploy não mudava nada em produção, sem qualquer aviso.
-  // As chaves (id / valid_from / period) mantêm-se, portanto re-correr o
-  // seed nunca duplica linhas.
+  // Upserts: insere ou actualiza, nunca duplica.
 
   // ceme
   for (const c of CEMES) {
@@ -254,12 +249,8 @@ export async function seed() {
     );
   }
 
-  // tariff_version
-  // omie_aggregation = SPLIT_VAZIO_FORA para todos: só importa nos indexados,
-  // e os indexados do seed são todos bi-horários (Ynerluz e MEO no ciclo
-  // diário, LuziGas no semanal) — o OMIE de cada período é a média desse
-  // período no ciclo do próprio tarifário (server.js). UNICA (um só OMIE)
-  // fica para um indexado simples, que hoje não existe.
+  // tariff_version. `valid_to` não entra no UPDATE (o seed não reabre uma
+  // versão fechada à mão); `omie_aggregation` é SPLIT_VAZIO_FORA em todos.
   for (const t of TARIFFS) {
     const [id] = t;
     const v = VERSIONS[id] || {};
@@ -277,9 +268,7 @@ export async function seed() {
     );
   }
 
-  // Campanhas expiradas (ver comment em seed.js): valid_to passado =
-  // fora do simulador; campaign=1 = razão documentada; status EXPIRED =
-  // uma versão ACTIVE nunca tem valid_to (invariante do golden.test.js).
+  // Campanhas que acabaram (vê CAMPAIGN_END).
   for (const [id, end] of Object.entries(CAMPAIGN_END)) {
     await query(
       `UPDATE tariff_version SET valid_to = $1, campaign = 1, status = 'EXPIRED' WHERE tariff_id = $2`,
@@ -288,7 +277,7 @@ export async function seed() {
   }
 
   // price_component (Continente) + price_component_region (ilhas, só onde o
-  // CEME cobra diferente — mesmo padrão do seed SQLite, à paridade).
+  // CEME cobra diferente).
   for (const t of TARIFFS) {
     const [id, , , , , , , , , , , , prices, act, support, iec] = t;
     const v = VERSIONS[id] || {};
@@ -350,14 +339,9 @@ export async function seed() {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('seed.postgres.js')) {
-  // Aplica o schema primeiro: correr `node seed.postgres.js` contra uma BD
-  // vazia falhava com "relation does not exist", porque o schema só era
-  // aplicado pelo server.js no arranque. Idempotente (CREATE TABLE IF NOT
-  // EXISTS), portanto correr novamente é seguro.
-  //
-  // E depois as colunas em falta: o `CREATE TABLE IF NOT EXISTS` não as
-  // acrescenta a uma tabela que já existe, e sem esta migração o seed
-  // rebentava contra a forma antiga da BD ("column ... does not exist").
+  // `node src/db/seed.postgres.js` (com DATABASE_URL) corre o seed à mão.
+  // Aplica primeiro o schema e as colunas em falta (db/migrate.js), para
+  // funcionar também numa BD vazia.
   const schemaSql = await readFile(
     new URL('./schema.postgres.sql', import.meta.url),
     'utf8'

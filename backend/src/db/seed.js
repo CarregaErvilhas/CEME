@@ -1,18 +1,16 @@
-// Seed completo: os CEME e tarifários extraídos do sheet em 2026-10-15 (as
-// contagens estão congeladas no golden.test.js, «cobertura do seed»).
-// As correcções posteriores (valores verificados online) estão no histórico
-// do git deste ficheiro: `git log -p backend/src/db/seed.js`.
-// Valores finais €/kWh (c/ TAR, s/ IVA). indexed: calculado em runtime.
-// act = a taxa de activação PUBLICADA por cada CEME no sheet, à data da
-// captura (2026-10-15) — um único significado, invariante ao longo do tempo:
-// o que a folha diz, é isso. Quatro CEMEs ainda mostravam o EGME de 2025
-// (0,1572: Charge2Go, Via Verde, EVPower e parte da EVIO) apesar do valor
-// legal 2026 ser 0,1088 (Regul. ERSE 7/2026) — CEMEs não actualizam de
-// imediato, e o simulador mostra o publicado, não o regulamentar. O legal
-// (0,1088) fica como referência na API (`egme_legal`) + flag
-// `activation_stale` quando o publicado está acima do legal. Já em 0,1088
-// na captura: EZU, EDP, bluecharge, moeve, etc. o miio não cobra. Ver
-// docs/02-motor-calculo.md.
+// Os dados de arranque: CEME, tarifários e preços.
+//
+// O seed corre em cada arranque do servidor e é CONVERGENTE: insere o que
+// falta e actualiza o que mudou (upsert com ON CONFLICT … DO UPDATE). Para
+// corrigires um preço, mudas aqui, fazes deploy e a BD apanha a mudança.
+//
+// Há duas cópias dos dados: este ficheiro (SQLite, dev e testes) e
+// seed.postgres.js (produção). Mudanças vão sempre aos dois; o
+// test/seed-parity.test.js falha se divergirem. SPLITS, REGION_SPLITS e
+// regionFinal só existem aqui e o seed.postgres.js importa-os.
+//
+// Os preços vêm das páginas públicas de cada CEME. O procedimento de
+// verificação está em .opencode/commands/ceme-check.md.
 //
 import { DatabaseSync } from 'node:sqlite';
 
@@ -43,17 +41,12 @@ export const CEMES = [
   ['ynerluz', "Ynerluz", "#888888", "https://www.ynerluz.com/aderir-mobilidade-eletrica/"],
 ];
 
-// A decomposição do preço em energia + TAR — para os tarifários em que a fonte publica a separação ou em que ela se recupera sem ambiguidade.
+// O preço final partido em energia + TAR, por período, para os tarifários
+// em que o CEME publica a separação (ou ela se tira sem ambiguidade). Onde
+// não há entrada, a interface mostra só o total "energia + TAR".
 //
-// Os preços finais transcritos abaixo não passam de 4 casas decimais: quando
-// a fonte tem mais precisão, arredondamos sempre para cima para não subestimar
-// o custo usado nas contas. Os factores de perdas e outros parâmetros de
-// fórmulas mantêm a precisão original.
-//
-// A referência da célula (o `tar` de cada período) vem da folha e não da
-// tabela `tar`: um tarifário pode ter sido publicado com a TAR de 2025 e o
-// valor não bater certo com a TAR em vigor. Onde não há decomposição,
-// `energy_only` fica NULL — não se inventa.
+// O `tar` de cada período é o que o CEME usou na conta dele, não o da tabela
+// `tar`: se um dia não baterem certo, fica à vista em vez de escondido.
 export const SPLITS = {
   'acp-bt-acpelectricb': { FORA_VAZIO: { energy: 0.1506, tar: 0.1192 }, VAZIO: { energy: 0.1506, tar: 0.0266 } },
   'acp-mt-acpelectricb': { FORA_VAZIO: { energy: 0.1506, tar: 0.0812 }, VAZIO: { energy: 0.1506, tar: 0.0157 } },
@@ -65,14 +58,9 @@ export const SPLITS = {
   'charge2go-bt-ecogreen-2': { FORA_VAZIO: { energy: 0.1697, tar: 0.1192 }, VAZIO: { energy: 0.1697, tar: 0.0266 } },
   'charge2go-mt-ecogreen': { FORA_VAZIO: { energy: 0.1697, tar: 0.0812 }, VAZIO: { energy: 0.1697, tar: 0.0157 } },
   'charge2go-mt-ecogreen-2': { FORA_VAZIO: { energy: 0.1697, tar: 0.0812 }, VAZIO: { energy: 0.1697, tar: 0.0157 } },
-  // Enable (página /condutores, verificada 2026-10-24): publica a ENERGIA,
-  // não o preço final — 0,12 €/kWh em Portugal Continental e 0,15 €/kWh na
-  // Madeira e nos Açores — e exclui "tarifa OPC, taxas e impostos (TAR, EGME,
-  // IEC e IVA)". O final = energia + TAR (universal por tensão/período, a
-  // mesma nas três regiões — docs/07-ilhas.md). O ciclo de rede do Mobi.E é
-  // o bi-horário semanal: vazio ao domingo // fora-vazio nos dias úteis
-  // 07:00–24:00 // sábado com dois blocos (época Verão vs Inverno). Ilhas:
-  // REGION_SPLITS em baixo.
+  // Enable: publica só a energia (um valor no Continente, outro nas ilhas,
+  // vê REGION_SPLITS) e diz que exclui TAR, EGME, IEC e IVA. O final é
+  // energia + TAR, no ciclo bi-horário semanal.
   'enable-bt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.1192 }, VAZIO: { energy: 0.12, tar: 0.0266 } },
   'enable-mt-tarifasimple': { FORA_VAZIO: { energy: 0.12, tar: 0.0812 }, VAZIO: { energy: 0.12, tar: 0.0157 } },
   'evio-bt-evio': { FORA_VAZIO: { energy: 0.169, tar: 0.1192 }, VAZIO: { energy: 0.169, tar: 0.0266 } },
@@ -97,13 +85,12 @@ export const SPLITS = {
   'viaverde-bt-viaverdeelec-2': { FORA_VAZIO: { energy: 0.148, tar: 0.1192 }, VAZIO: { energy: 0.148, tar: 0.0266 } },
   'viaverde-mt-viaverdeelec': { FORA_VAZIO: { energy: 0.148, tar: 0.0812 }, VAZIO: { energy: 0.148, tar: 0.0157 } },
   'viaverde-mt-viaverdeelec-2': { FORA_VAZIO: { energy: 0.148, tar: 0.0812 }, VAZIO: { energy: 0.148, tar: 0.0157 } },
-  // ACP não-sócio e Hyundai Blue seguem o preço da EVIO (energia+TAR), por
-  // isso a decomposição é a mesma da EVIO.
+  // ACP não-sócio e Hyundai Blue usam o preço da EVIO, logo a mesma separação.
   'acp-bt-acpelectricb-2': { FORA_VAZIO: { energy: 0.169, tar: 0.1192 }, VAZIO: { energy: 0.169, tar: 0.0266 } },
   'acp-mt-acpelectricb-2': { FORA_VAZIO: { energy: 0.169, tar: 0.0812 }, VAZIO: { energy: 0.169, tar: 0.0157 } },
   'evio-bt-hyundaiblue': { FORA_VAZIO: { energy: 0.169, tar: 0.1192 }, VAZIO: { energy: 0.169, tar: 0.0266 } },
   'evio-mt-hyundaiblue': { FORA_VAZIO: { energy: 0.169, tar: 0.0812 }, VAZIO: { energy: 0.169, tar: 0.0157 } },
-  // miio: energia = final - TAR (TAR universal por tensão/período).
+  // miio: energia = final − TAR.
   'miio-bt-miiobihor': { FORA_VAZIO: { energy: 0.24, tar: 0.1192 }, VAZIO: { energy: 0.24, tar: 0.0266 } },
   'miio-bt-miiobihor-2': { FORA_VAZIO: { energy: 0.24, tar: 0.1192 }, VAZIO: { energy: 0.24, tar: 0.0266 } },
   'miio-bt-miioonebi': { FORA_VAZIO: { energy: 0.17, tar: 0.1192 }, VAZIO: { energy: 0.17, tar: 0.0266 } },
@@ -114,15 +101,10 @@ export const SPLITS = {
   'miio-mt-miioonebi-2': { FORA_VAZIO: { energy: 0.17, tar: 0.0812 }, VAZIO: { energy: 0.17, tar: 0.0157 } },
 };
 
-// Preços por região, POR CIMA dos do Continente (price_component_region):
-// só há entrada onde o CEME cobra diferente nas ilhas — onde não há, o
-// tarifário cota-se com o preço CONT em qualquer região. A forma é a mesma do
-// SPLITS, mas por região; o preço FINAL da ilha é derivado aqui e não
-// transcrito: a Enable publica a energia (0,15 €/kWh nas ilhas vs 0,12 no
-// Continente) e a composição está na própria página — final = energia + TAR.
-// A TAR é a mesma nas três regiões (diretiva ERSE n.º 1/2026: uma tabela
-// para Continente, RAA e RAM — docs/07-ilhas.md). O sumamento arredonda
-// para cima a 4 casas, como os finais transcritos em cima.
+// Preços próprios das ilhas, só para os CEME que cobram diferente lá. Mesma
+// forma que SPLITS, mas com a região à frente. O seed calcula o preço final
+// (energia + TAR, com regionFinal) e grava em `price_component_region`.
+// A TAR é a mesma nas três regiões (docs/07-ilhas.md).
 export const REGION_SPLITS = {
   'enable-bt-tarifasimple': {
     MAD: { VAZIO: { energy: 0.15, tar: 0.0266 }, FORA_VAZIO: { energy: 0.15, tar: 0.1192 } },
@@ -134,15 +116,37 @@ export const REGION_SPLITS = {
   },
 };
 
-// O final das linhas de REGION_SPLITS (energia + TAR arredondado para cima
-// a 4 casas). Exportado para o seed.postgres.js — os dois seeds têm de
-// derivar EXACTAMENTE o mesmo valor.
+// Preço final de uma linha de REGION_SPLITS: energia + TAR, arredondado
+// para cima a 4 casas. O seed.postgres.js usa esta mesma função.
 export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1e-9) / 10000;
 
+// Cada linha de TARIFFS é um tarifário, com os campos por esta ordem:
+//    0 id          identificador único (ceme-tensão-nome)
+//    1 ceme        id do CEME (vê CEMES)
+//    2 name        o nome que o CEME publica
+//    3 kind        FIXED (preço fixo) ou INDEXED (segue o OMIE)
+//    4 voltage     BT (baixa tensão) ou MT (média tensão)
+//    5 schedule    SIMPLES (um preço) ou BI_HORARIA (vazio / fora de vazio)
+//    6 cycle       DIARIO, SEMANAL ou SIMPLES (vê engine/regions.js)
+//    7 green       1 se a energia é 100 % renovável
+//    8 access      como se paga: CARTAO (só cartão) ou AMBOS (cartão e app)
+//    9 popular     1 se é um dos mais usados (filtro "populares")
+//   10 bundle      1 se o preço exige outra relação com o CEME (ser cliente
+//                  de casa, sócio, colaborador…): o filtro "com condições"
+//   11 regions     onde é vendido (CONT,MAD,AZO); só informação
+//   12 prices      { VAZIO, FORA_VAZIO } ou { UNICO } em €/kWh FINAL, com a
+//                  TAR e sem IVA; null nos indexados (calculados na hora)
+//   13 act         taxa de activação por carregamento, em €, tal como o CEME
+//                  a publica (vê "activation_stale" em docs/04)
+//   14 support     apoio por carregamento, em €
+//   15 iec         imposto especial sobre a electricidade, €/kWh
+//   16 est         1 se o preço de vazio é estimado e não publicado pelo
+//                  CEME: o nome ganha um " ~" no fim
+//   17 url         a página do CEME onde o preço está publicado
+// Os preços finais têm no máximo 4 casas decimais, arredondados para cima
+// quando a fonte tem mais (nunca subestimar o custo).
 export const TARIFFS = [
-  // (AC) = carregamento em corrente alternada. A Atlante tem um preço
-  // promocional flat nos postos DC, com CEME + OPC included — por isso o
-  // nome leva (AC). As duas tensões existem.
+  // (AC) = corrente alternada. Vê AC_DC_FLAT em NOTES.
   ["atlante-bt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", { "VAZIO": 0.1466, "FORA_VAZIO": 0.2392 }, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ["atlante-mt-myatlanteac", "atlante", "myAtlante (AC)", "FIXED", "MT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 1, 0, "CONT", { "VAZIO": 0.1357, "FORA_VAZIO": 0.2012 }, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
   ["atlante-bt-myatlantebus", "atlante", "myAtlante Business (AC)", "FIXED", "BT", "BI_HORARIA", "SEMANAL", 1, "AMBOS", 0, 1, "CONT", { "VAZIO": 0.1066, "FORA_VAZIO": 0.1992 }, 0.11, 0.0, 0.001, 0, "https://atlante.energy/pt-pt/tarifas-de-energia/"],
@@ -273,9 +277,10 @@ export const TARIFFS = [
   ["meo-dinamica-mt", "meo", "Mobilidade Elétrica com Tarifa Dinâmica Exclusivo Clientes MEO *e* MEO Energia", "INDEXED", "MT", "BI_HORARIA", "DIARIO", 1, "CARTAO", 0, 1, "CONT", null, 0.1088, 0.0, 0.001, 0, "https://www.meoenergia.pt/mobilidade-eletrica"],
 ];
 
-// Notas que a folha CEME nao traz, porem o nome do tarifario sugere. Sao
-// CODIGOS, nao texto: o cliente traduz (mesmo padrao de OMIE_CONT_REF), para
-// nao meter portugues na interface english.
+// Notas por tarifário. São CÓDIGOS, não texto: o frontend traduz cada um
+// para PT ou EN (vê NOTE_KEY em frontend/index.html).
+//   AC_DC_FLAT: o preço é para postos AC; nos postos DC o CEME tem outro
+//   preço, com a tarifa do posto incluída, que o simulador não calcula.
 export const NOTES = {
   'atlante-bt-myatlanteac': 'AC_DC_FLAT',
   'atlante-mt-myatlanteac': 'AC_DC_FLAT',
@@ -283,13 +288,17 @@ export const NOTES = {
   'atlante-mt-myatlantebus': 'AC_DC_FLAT',
 };
 
-// Data em que a folha CEME (e portanto o simulador original) reflecte a ERSE.
-// E o que sabemos com certeza. O que NAO sabemos, e nunca vamos saber sem ir a
-// cada comercializador, e a data em que cada tarifario comecou a vigorar — a
-// folha nao tem coluna de datas. Por isso `valid_from` = data de captura, e a
-// UI diz "precos verificados em" e nao "em vigor desde".
+// A data em que os preços do seed foram verificados. Usa-se como
+// `valid_from` de todas as versões e a interface mostra-a como "preços
+// verificados em". Não é a data em que cada tarifário começou: essa não se
+// sabe sem perguntar a cada CEME.
 export const SHEET_SNAPSHOT = '2026-10-15';
 
+// Parâmetros dos indexados, por tarifário (vê engine/indexed.js):
+//   k:       margem do CEME, €/kWh
+//   cgs:     custos de gestão do sistema, €/kWh
+//   loss:    perdas fixas a usar só se não houver perfil por quarto de hora
+//   formula: 'ynerluz' para a fórmula alternativa; sem isto, 'standard'.
 export const VERSIONS = {
   "ynerluz-bt": { k: 0.02, cgs: 0.025, loss: 0.1531275537, formula: "ynerluz" },
   "ynerluz-mt": { k: 0.02, cgs: 0.025, loss: 0.07127022935, formula: "ynerluz" },
@@ -303,33 +312,24 @@ export const VERSIONS = {
   "meo-dinamica-mt": { k: 0.065, cgs: 0.0 },
 };
 
-// Campanhas com fim à data (DIA INCLUÍDO a terminar, tal como no site
-// EZU): valid_to em passado esconde o tarifário do simulador — server.js
-// filtra `valid_to IS NULL OR valid_to > CURRENT_DATE` — e campaign=1
-// documenta porque é que acabou (o status fica EXPIRED: uma versão
-// ACTIVE não pode ter valid_to, invariante do golden.test.js). Fica o
-// UPDATE e não o INSERT: valid_from é a chave do conflito, logo
-// re-correr o seed nunca reabre uma campanha fechada.
+// Campanhas que já acabaram: { id do tarifário: último dia, inclusive }.
+// O seed põe esse dia em `valid_to`, `campaign = 1` e `status = 'EXPIRED'`,
+// e o simulador deixa de mostrar o tarifário no dia seguinte. Como o
+// UPDATE corre depois do upsert, voltar a correr o seed nunca reabre uma
+// campanha fechada.
 export const CAMPAIGN_END = {
-  // EZU "AB Energia": elétrico a 0,099 €/kWh + TAR — promo terminada a
-  // 30/09/2026 (página ezu.pt/ceme, verificada 2026-10-22).
+  // EZU "AB Energia" (página ezu.pt/ceme).
   'ezu-bt-abenergia': '2026-09-30',
   'ezu-mt-abenergia': '2026-09-30',
 };
 
 export function seed(db) {
-  // seed() corre em cada arranque do servidor, nao so na base nova. E
-  // tariff_version nao tinha chave unica nenhuma, por isso cada arranque
-  // inseria OUTRA versao com os mesmos dados — 128 duplicados por arranque
-  // (nao se via porque o ORDER BY valid_from DESC LIMIT 1 parte num empate e
-  // os precos sao iguais, mas "qual e a versao actual" deixava de ter
-  // resposta). A correcao e uma chave unica (tariff_id, valid_from) — que e o
-  // que ja queremos para o versionamento: uma versao por tarifario e data.
-  // A limpeza vai primeiro, senao o CREATE INDEX rebenta com os duplicados.
+  // Garante uma só versão por (tarifário, data): apaga duplicados e cria o
+  // índice único que o upsert de baixo usa como alvo. Numa BD saudável não
+  // apaga nada.
   db.exec(`DELETE FROM price_component WHERE tariff_version_id IN
     (SELECT id FROM tariff_version WHERE id NOT IN
       (SELECT MAX(id) FROM tariff_version GROUP BY tariff_id, valid_from))`);
-  // Linhas por região acompanham: nenhuma versão órfã (mesma razão de cima).
   db.exec(`DELETE FROM price_component_region WHERE tariff_version_id IN
     (SELECT id FROM tariff_version WHERE id NOT IN
       (SELECT MAX(id) FROM tariff_version GROUP BY tariff_id, valid_from))`);
@@ -337,11 +337,7 @@ export function seed(db) {
     (SELECT MAX(id) FROM tariff_version GROUP BY tariff_id, valid_from)`);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_tariff_version ON tariff_version(tariff_id, valid_from)');
 
-  // Idempotente E convergente (igual ao seed.postgres.js): as linhas
-  // existentes são atualizadas para o que está no código. Antes era
-  // INSERT OR IGNORE — um no-op em BD já povoada, portanto corrigir um preço
-  // não chegava a produção no redeploy seguinte. As chaves mantêm-se, logo
-  // re-correr o seed nunca duplica linhas.
+  // Upserts: insere ou actualiza, nunca duplica.
   const insCeme = db.prepare(`INSERT INTO ceme (id,name,brand_color,website) VALUES (?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name, brand_color=excluded.brand_color, website=excluded.website`);
   for (const c of CEMES) insCeme.run(...c);
@@ -353,15 +349,9 @@ export function seed(db) {
       voltage=excluded.voltage, schedule=excluded.schedule, cycle=excluded.cycle,
       green=excluded.green, access=excluded.access, popular=excluded.popular,
       bundle=excluded.bundle, regions=excluded.regions, source_url=excluded.source_url`);
-  // notes = NULL por omissao (a procedencia esta em `origin`); so lleva codigo
-  // onde ha mesmo algo a dizer — ver NOTES.
-  // valid_to fica de fora do UPDATE: é NULL no seed mas pode ter sido
-  // fechado por um operador, e sobrepô-lo reabriria tarifários expirados.
-  // omie_aggregation = SPLIT_VAZIO_FORA para todos: só importa nos indexados,
-  // e os indexados do seed são todos bi-horários (Ynerluz e MEO no ciclo
-  // diário, LuziGas no semanal) — o OMIE de cada período é a média desse
-  // período no ciclo do próprio tarifário (server.js). UNICA (um só OMIE)
-  // fica para um indexado simples, que hoje não existe.
+  // `valid_to` não entra no UPDATE: se alguém fechou uma versão à mão, o
+  // seed não a reabre. `omie_aggregation` é SPLIT_VAZIO_FORA em todos, porque
+  // os indexados do seed são todos bi-horários (vê docs/02).
   const insV = db.prepare(`INSERT INTO tariff_version
     (id,tariff_id,valid_from,valid_to,campaign,status,origin,k_index_eur_mwh,cgs_eur_mwh,omie_aggregation,notes)
     VALUES (NULL,?, ?, NULL, 0,'ACTIVE','SEED_' || ?,?,?, 'SPLIT_VAZIO_FORA',?)
@@ -382,6 +372,7 @@ export function seed(db) {
       energy_eur_kwh=excluded.energy_eur_kwh, activation_eur=excluded.activation_eur,
       support_eur=excluded.support_eur, iec_eur_kwh=excluded.iec_eur_kwh,
       energy_only_eur_kwh=excluded.energy_only_eur_kwh, tar_eur_kwh=excluded.tar_eur_kwh`);
+  // Colunas que BDs locais antigas podem não ter (o erro "já existe" ignora-se).
   try { db.exec('ALTER TABLE tariff ADD COLUMN bundle INTEGER DEFAULT 0'); } catch { /* já existe */ }
   try { db.exec('ALTER TABLE tariff ADD COLUMN regions TEXT DEFAULT \'CONT\''); } catch { /* já existe */ }
   try { db.exec('ALTER TABLE price_component ADD COLUMN energy_only_eur_kwh REAL'); } catch { /* já existe */ }
@@ -397,12 +388,11 @@ export function seed(db) {
       const sp = split[per] || null;
       insP.run(vid, per, val, act, support, iec, sp ? sp.energy : null, sp ? sp.tar : null);
     }
-    // INDEXED: o €/kWh é calculado em runtime, mas a ativação (EGME),
-    // o apoio e o IEC são os mesmos — têm de vir da linha do sheet.
+    // Indexados: o €/kWh calcula-se na hora, mas a activação, o apoio e o
+    // IEC guardam-se numa linha VAZIO sem preço.
     else insP.run(vid, 'VAZIO', null, act, support, iec, null, null);
-    // Linhas por região (só onde o CEME cobra diferente nas ilhas): mesmo act,
-    // apoio e IEC do Continente — pickComponents rebenta no teste se uma
-    // versão divergir entre regiões.
+    // Linhas das ilhas (só onde há REGION_SPLITS), com a mesma activação,
+    // apoio e IEC do Continente.
     const regs = REGION_SPLITS[id] || {};
     for (const [region, perSplit] of Object.entries(regs)) {
       for (const [per, s] of Object.entries(perSplit)) {
@@ -415,6 +405,7 @@ export function seed(db) {
   }
 }
 
+// `node src/db/seed.js` corre o seed à mão contra ./data/ceme.db (ou DB_PATH).
 if (process.argv[1] && process.argv[1].endsWith('seed.js')) {
   const { mkdirSync } = await import('node:fs');
   const { readFileSync } = await import('node:fs');

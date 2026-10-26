@@ -1,33 +1,42 @@
-// Comparacao indexado vs fixo, quarto a quarto.
+// Indexado vs fixo, quarto de hora a quarto de hora.
 //
-// Fica aqui, e nao na rota, por duas razoes:
-//   - e' logica de negocio pura e testavel sem rede nem base de dados;
-//   - o endpoint so recebe o fixo que o utilizador escolheu, e um "vencedor"
-//     inventado com o tarifario errado e' pior do que nenhuma comparacao.
+// Contexto rápido: um tarifário FIXO cobra sempre o mesmo €/kWh (às vezes um
+// valor de dia e outro de noite). Um INDEXADO segue o preço do mercado
+// grossista (o OMIE), que muda a cada 15 minutos. Esta função pega nos 96
+// quartos de hora de um dia, já com o preço do indexado calculado, e diz-te
+// em cada um quem sai mais barato.
 //
-// Regra: energia a energia, no MESMO instante. Cada tarifario e' cotado no
-// SEU periodo: um indexado DIARIO e um fixo SEMANAL nao partilham as
-// fronteiras, e usar o periodo de um para cotar o outro daria um preco
-// fixo errado (e um "vencedor" errado). A tarifa de activacao fica de fora
-// de proposito — e' um valor unico e nao se repete por quarto de hora, e
-// compara-lo assim daria a impressao falsa de que o indexado ganha sempre
-// (ou perde sempre) por causa de 11 centimos.
+// Está aqui, e não na rota HTTP, porque é lógica pura: testas sem rede nem BD.
+//
+// Regras que convém teres presentes:
+//   - Compara-se energia com energia, no MESMO instante, mas cada tarifário
+//     no SEU período (vazio/fora de vazio). Um indexado de ciclo diário e um
+//     fixo de ciclo semanal não mudam de período às mesmas horas.
+//   - A taxa de activação (cobrada uma vez por carregamento) fica de fora: não
+//     se repete a cada quarto de hora, e somá-la aqui enviesava o resultado.
+//   - Sem fixo escolhido não há vencedor. Um vencedor calculado contra o
+//     tarifário errado engana mais do que não dizer nada.
 
 const r4 = (x) => Math.round(x * 10000) / 10000;
 
 /**
- * @param {Array} quarters  [{ start, period, price, ... }]
- * @param {Object|null} fixPrice  { VAZIO, FORA_VAZIO, UNICO } ou null
+ * @param {Array} quarters  [{ start, period, price, fixPeriod?, ... }]
+ * @param {Object|null} fixPrice  { VAZIO, FORA_VAZIO, UNICO } (€/kWh) ou null
  * @returns {Array} os mesmos quartos + { fixed, winner }
- *   winner: 'IDX' | 'FIX' | 'EQ' | null (sem preco de referencia)
+ *   winner: 'IDX' (ganha o indexado) | 'FIX' (ganha o fixo) | 'EQ' (empate)
+ *           | null (não há preço do fixo para comparar)
  *
- * `q.fixPeriod` e' o periodo do tarifario FIXO nesse instante (quando ha
- * fixo escolhido). Sem ele, cai no `q.period` — que e' o do indexado.
+ * `q.fixPeriod` é o período do FIXO nesse instante. Se não vier, usa-se
+ * `q.period`, que é o do indexado.
+ *
+ * Os dois lados arredondam a 4 casas antes de comparar: sem isso, ruído de
+ * vírgula flutuante (0.1 + 0.2 = 0.30000000000000004) estragava os empates.
  */
 export function compareWithFixed(quarters, fixPrice) {
   return quarters.map((q) => {
     if (!fixPrice) return { ...q, fixed: null, winner: null };
-    // Um fixo SIMPLES so tem UNICO: aplica-se a todos os periodos.
+    // Um fixo SIMPLES só tem UNICO, que vale para qualquer período.
+    // Período sem preço dá null, nunca 0 (0 mostrava o fixo como grátis).
     const key = q.fixPeriod ?? q.period;
     const raw = fixPrice[key] ?? fixPrice.UNICO ?? null;
     if (raw == null) return { ...q, fixed: null, winner: null };
@@ -37,7 +46,7 @@ export function compareWithFixed(quarters, fixPrice) {
   });
 }
 
-/** Contagens para o resumo da tabela. */
+/** Conta quantos quartos ganhou cada lado (para o resumo por baixo da tabela). */
 export function tallyWinners(quarters) {
   const t = { idx: 0, fix: 0, eq: 0, na: 0, total: quarters.length };
   for (const q of quarters) {
