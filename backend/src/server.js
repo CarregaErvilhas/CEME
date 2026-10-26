@@ -608,6 +608,11 @@ async function handle(req, res) {
       return res.end(css);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/pages.css em falta' } }); }
   }
+  // robots.txt: sem auth. A /tabela é só para debug — fora dos motores de busca.
+  if (readStatic(req.method) && url.pathname === '/robots.txt') {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' });
+    return res.end('User-agent: *\nDisallow: /tabela\nDisallow: /v1/\n');
+  }
   // PWA: manifest, service worker e gatilho de instalação. Servidos sem auth,
   // como os outros ficheiros estáticos (strings.js, pages.css).
   if (readStatic(req.method) && (url.pathname === '/manifest.webmanifest' || url.pathname === '/manifest.json')) {

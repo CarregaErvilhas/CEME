@@ -365,6 +365,13 @@ it('HTML também leva nosniff', async () => {
       assert.ok(!/href=["'][^"']*\/tabela/.test(html), 'não devia haver nenhum link para /tabela');
     });
 
+    it('/robots.txt é público e esconde a /tabela dos motores de busca', async () => {
+      const { status, html } = await abrir('/robots.txt');
+      assert.equal(status, 200);
+      assert.match(html, /User-agent: \*/);
+      assert.match(html, /Disallow: \/tabela/);
+    });
+
     it('/v1/tabela exige auth', async () => {
       assert.equal((await fetch(`${BASE}/v1/tabela`)).status, 401);
     });
