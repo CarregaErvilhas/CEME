@@ -187,7 +187,7 @@ diários e mensais, e é o que o utilizador vê.
 Cada linha que `stats.js` recebe (montada em `rebuildDerived`) traz:
 
 - `dn`/`mk` — o **dia e o mês de Lisboa**, por onde se agrupa;
-- `lisbonDn`/`lisbonMin` — o dia e os minutos de Lisboa, para mostrar;
+- `min` — os minutos desde a meia-noite de Lisboa, para mostrar;
 - `utc` — o instante, que é o que alinha as duas fontes.
 
 ## Frescura

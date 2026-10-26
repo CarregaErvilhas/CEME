@@ -22,12 +22,12 @@ const dir = mkdtempSync(path.join(tmpdir(), 'ceme-migrate-'));
 process.env.DB_PATH = path.join(dir, 'migrate.db');
 
 const { query, run } = await import('../src/db.js');
-const { migrateAddedColumns, migrateOmieTables, ADDED_COLUMNS } = await import('../src/db/migrate.js');
+const { migrateAddedColumns, ADDED_COLUMNS } = await import('../src/db/migrate.js');
 
 const colsOf = async (table) => (await query(`PRAGMA table_info(${table})`)).map(r => r.name);
 
 // Uma `price_component` sem as colunas da separação energia + TAR.
-const PRICE_COMPONENT_ANTIGO = `CREATE TABLE price_component (
+const PRICE_COMPONENT_SEM_COLUNAS = `CREATE TABLE price_component (
   tariff_version_id INTEGER NOT NULL,
   period TEXT NOT NULL,
   energy_eur_kwh REAL, activation_eur REAL DEFAULT 0,
@@ -36,8 +36,8 @@ const PRICE_COMPONENT_ANTIGO = `CREATE TABLE price_component (
 )`;
 
 describe('migração: colunas novas em tabelas que já existem', () => {
-  it('acrescenta a coluna em falta à tabela com a forma antiga', async () => {
-    await run(PRICE_COMPONENT_ANTIGO);
+  it('acrescenta a coluna em falta a uma tabela que não a tem', async () => {
+    await run(PRICE_COMPONENT_SEM_COLUNAS);
     assert.deepEqual(
       (await colsOf('price_component')).includes('energy_only_eur_kwh'),
       false,
@@ -69,7 +69,7 @@ describe('migração: colunas novas em tabelas que já existem', () => {
   });
 
   it('a coluna nova nasce nula — não inventa valores para as linhas que já lá estão', async () => {
-    await run(PRICE_COMPONENT_ANTIGO);
+    await run(PRICE_COMPONENT_SEM_COLUNAS);
     await run(`INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh)
                VALUES (1, 'VAZIO', 0.12)`);
     await migrateAddedColumns();
@@ -129,45 +129,5 @@ describe('migração: a lista bate certo com o schema', () => {
         }
       }
     }
-  });
-});
-
-describe('migração: as tabelas do OMIE com a forma antiga', () => {
-  it('a forma antiga (hora local) é deitada fora', async () => {
-    await run(`CREATE TABLE omie_spot (
-      ts_lisbon TEXT PRIMARY KEY, market_day TEXT, market_period INTEGER,
-      price_pt_eur_mwh REAL NOT NULL, source TEXT NOT NULL)`);
-    const notes = await migrateOmieTables();
-    assert.ok(notes.some(n => n.includes('omie_spot')), `notas: ${notes.join(', ')}`);
-    const tables = (await query(`SELECT name FROM sqlite_master WHERE type='table'`)).map(r => r.name);
-    assert.ok(!tables.includes('omie_spot'), 'a tabela antiga tem de ir embora');
-  });
-
-  it('uma forma inesperada COM dados não é apagada (ex. um rollback) — fica a nota', async () => {
-    await run('DROP TABLE IF EXISTS omie_spot');
-    await run(`CREATE TABLE omie_spot (ts_lisbon TEXT PRIMARY KEY, price_pt_eur_mwh REAL NOT NULL, source TEXT NOT NULL)`);
-    await run(`INSERT INTO omie_spot VALUES ('2026-07-02T00:00', 80, 'OMIE_ES')`);
-    const notes = await migrateOmieTables();
-    assert.ok(notes.some(n => /NÃO apagada/.test(n)), `notas: ${notes.join(', ')}`);
-    assert.equal((await query('SELECT COUNT(*) AS n FROM omie_spot'))[0].n, 1, 'a linha continua lá');
-  });
-
-  it('day_utc/min_utc (nomes antigos, valores de Lisboa) são renomeadas sem perder linhas', async () => {
-    await run('DROP TABLE IF EXISTS omie_spot');
-    await run(`CREATE TABLE omie_spot (
-      ts_utc TEXT NOT NULL, day_utc TEXT NOT NULL, min_utc INTEGER NOT NULL,
-      price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL, bd TEXT, bs TEXT,
-      source TEXT NOT NULL, flags TEXT, ingested_at TEXT,
-      PRIMARY KEY (ts_utc, source))`);
-    await run(`INSERT INTO omie_spot (ts_utc, day_utc, min_utc, price_pt_eur_mwh, source)
-               VALUES ('2026-07-01T23:00:00.000Z', '2026-07-02', 0, 80, 'OMIE_ES')`);
-    const notes = await migrateOmieTables();
-    assert.ok(notes.some(n => n.includes('day_lisbon')), `notas: ${notes.join(', ')}`);
-    const cols = await colsOf('omie_spot');
-    assert.ok(cols.includes('day_lisbon') && cols.includes('min_lisbon'));
-    assert.ok(!cols.includes('day_utc') && !cols.includes('min_utc'));
-    const rows = await query('SELECT day_lisbon, min_lisbon FROM omie_spot');
-    assert.deepEqual(rows.map(r => [r.day_lisbon, r.min_lisbon]), [['2026-07-02', 0]], 'a linha sobrevive');
-    assert.deepEqual(await migrateOmieTables(), [], 'segunda passagem: nada a fazer');
   });
 });

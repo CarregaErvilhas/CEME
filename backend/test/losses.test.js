@@ -16,7 +16,7 @@ describe('perdas E-REDES por quarto de hora', () => {
     assert.ok(lossAt('MT', t) < lossAt('BT', t));
     assert.ok(Math.abs(lossAt('MT', t) - 0.0708569) < 1e-7);
   });
-  it('a média anual bate com o antigo placeholder (0,1531 / 0,0713)', () => {
+  it('a média anual bate com o LOSS_PLACEHOLDER (0,1531 / 0,0713)', () => {
     for (const [v, ref] of [['BT', 0.1531], ['MT', 0.0713]]) {
       let s = 0, n = 0;
       for (let t = Date.UTC(2026, 0, 1); t < Date.UTC(2027, 0, 1); t += 900000) { s += lossAt(v, new Date(t)); n++; }

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { periodFor } from '../src/engine/periods.js';
+import { periodForRegion as periodFor } from '../src/engine/regions.js';
 import { quoteFixed } from '../src/engine/quote.js';
 import { indexedPrice } from '../src/engine/indexed.js';
 

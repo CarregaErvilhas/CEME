@@ -9,7 +9,7 @@
 //     pessoais e expira ao fim de 24 h.
 //   - API key: uma chave para apps de terceiros. Na BD só fica o hash
 //     sha256 da chave, nunca a chave em claro.
-import { createHmac, randomBytes, createHash } from 'node:crypto';
+import { createHmac, randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
 const unb64url = (s) => Buffer.from(s, 'base64url').toString('utf8');
@@ -22,16 +22,34 @@ export function signJwt(payload, secret, ttlSec = 86400) {
   return `${header}.${body}.${sig}`;
 }
 
-// Valida um JWT: forma, assinatura e validade.
-// Devolve { ok: true, payload } ou { ok: false, error }.
+// Valida um JWT: forma, algoritmo, assinatura e validade.
+// Devolve { ok: true, payload } ou { ok: false, error }. Nunca lança: um
+// token estragado é só um token inválido.
+//
+// Duas protecções que vale a pena perceberes:
+//   - o cabeçalho tem de dizer `alg: HS256`. Há ataques conhecidos em que o
+//     token diz `alg: none` (sem assinatura) e uma validação descuidada
+//     aceita-o;
+//   - a assinatura compara-se com `timingSafeEqual`, que demora sempre o
+//     mesmo tempo. Uma comparação normal (`===`) pára no primeiro carácter
+//     diferente, e medindo esse tempo dava, em teoria, para adivinhar a
+//     assinatura aos bocadinhos.
 export function verifyJwt(token, secret) {
-  const [h, b, s] = String(token || '').split('.');
-  if (!h || !b || !s) return { ok: false, error: 'malformed' };
-  const expect = createHmac('sha256', secret).update(`${h}.${b}`).digest('base64url');
-  if (expect !== s) return { ok: false, error: 'bad_signature' };
-  const payload = JSON.parse(unb64url(b));
+  const [h, b, s, extra] = String(token || '').split('.');
+  if (!h || !b || !s || extra !== undefined) return { ok: false, error: 'malformed' };
+  const header = parseJson(unb64url(h));
+  if (header?.alg !== 'HS256') return { ok: false, error: 'malformed' };
+  const expect = Buffer.from(createHmac('sha256', secret).update(`${h}.${b}`).digest('base64url'));
+  const got = Buffer.from(s);
+  if (got.length !== expect.length || !timingSafeEqual(got, expect)) return { ok: false, error: 'bad_signature' };
+  const payload = parseJson(unb64url(b));
+  if (!payload || typeof payload !== 'object') return { ok: false, error: 'malformed' };
   if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return { ok: false, error: 'expired' };
   return { ok: true, payload };
+}
+
+function parseJson(text) {
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 // Gera uma API key nova, no formato `<prefixo>.<segredo>`. O prefixo (8

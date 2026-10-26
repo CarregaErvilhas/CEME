@@ -81,7 +81,8 @@ Quando um CEME cobra diferente nas ilhas, as linhas dessa região ficam em
 `price_component_region` e sobrepõem-se às do Continente
 (`price_component`). Só existem onde há diferença publicada: sem elas, o
 preço é o do Continente em qualquer região. No seed, estes preços estão em
-`REGION_SPLITS`; na leitura, em `comps(vid, region)` (`server.js`).
+`REGION_SPLITS` (`seed-data.js`); na leitura, em `loadPricing(region)`
+(`tariffs.js`).
 
 ## TAR nas ilhas
 
@@ -90,9 +91,9 @@ Continente, os Açores e a Madeira («Tarifas de Acesso às Redes da
 Mobilidade Elétrica em Portugal continental, RAA e RAM», Diretiva
 n.º 1/2026, art. 23.º). Os valores são os mesmos nas três regiões.
 
-Mesmo assim, cada região tem as suas linhas na tabela `tar` (`TAR_2026` em
-`server.js`), porque a TAR procura-se sempre pela região do carregamento:
-uma região sem TAR é um erro (quarentena), nunca um zero.
+Mesmo assim, cada região tem as suas linhas na tabela `tar` (`TAR` em
+`backend/src/db/tar.js`), porque a TAR procura-se sempre pela região do
+carregamento: uma região sem TAR é um erro (quarentena), nunca um zero.
 
 A ERSE publica à parte, para as ilhas, a **TE/Com** (tarifa de energia e
 comercialização que a EDA e a EEM cobram aos CEME). Não é TAR, não entra na

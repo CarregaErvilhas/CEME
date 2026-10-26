@@ -20,21 +20,14 @@
 // A hora de Verão (DST) no Continente vai do último domingo de Março ao
 // último domingo de Outubro. Nas ilhas a época de Verão do sábado é por
 // mês (Junho a Outubro), não por DST.
+import { euDstRange, zonedParts } from '../time.js';
 
-function lastSundayOfMonth(y, m) {
-  const d = new Date(Date.UTC(y, m + 1, 0)); // último dia do mês
-  const dow = d.getUTCDay(); // 0=dom
-  d.setUTCDate(d.getUTCDate() - dow);
-  return d;
-}
-// true se o instante `date` estiver na hora de Verão de Lisboa.
+// true se o instante `date` estiver na hora de Verão de Lisboa (a UE muda
+// sempre às 01:00 UTC: em Março 00:59 → 02:00, em Outubro 01:59 → 01:00).
 export function isDstLisbon(date) {
-  const y = date.getUTCFullYear();
-  const start = lastSundayOfMonth(y, 2); // março
-  start.setUTCHours(1, 0, 0, 0); // a UE muda sempre às 01:00 UTC (00:59 → 02:00 em Lisboa)
-  const end = lastSundayOfMonth(y, 9); // outubro
-  end.setUTCHours(1, 0, 0, 0);   // 01:59 WEST → 01:00 WET em Lisboa
-  return date >= start && date < end;
+  const { start, end } = euDstRange(date.getUTCFullYear());
+  const t = date.getTime();
+  return t >= start && t < end;
 }
 // O mesmo, para um dia de calendário (ao meio-dia UTC, longe das mudanças).
 export function isDstLisbonYMD(Y, M, D) {
@@ -71,18 +64,8 @@ function islandSaturdayRanges(region, month) {
 // Lê um instante no relógio da região: dia da semana ('Mon'..'Sun'),
 // minutos desde a meia-noite e mês (1..12).
 export function regionParts(region, date) {
-  const tz = (REGIONS[region] || REGIONS.CONT).tz;
-  const dtf = new Intl.DateTimeFormat('en-GB', {
-    timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-  });
-  const p = Object.fromEntries(dtf.formatToParts(date).map(x => [x.type, x.value]));
-  return {
-    weekday: p.weekday,
-    // `% 24`: alguns motores JS devolvem "24" à meia-noite.
-    minutes: (parseInt(p.hour, 10) % 24) * 60 + parseInt(p.minute, 10),
-    month: parseInt(p.month, 10),
-  };
+  const { weekday, minutes, month } = zonedParts(date, (REGIONS[region] || REGIONS.CONT).tz);
+  return { weekday, minutes, month };
 }
 
 // As regras propriamente ditas. Recebem a hora já lida no relógio da região,
@@ -113,7 +96,7 @@ function core({ region, schedule, cycle, weekday, minutes, month, isSummer }) {
 export function periodForWall({ region = 'CONT', schedule, cycle, ymd, minutes }) {
   const [Y, M, D] = ymd.split('-').map(Number);
   const tz = (REGIONS[region] || REGIONS.CONT).tz;
-  const weekday = new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short' }).format(new Date(Date.UTC(Y, M - 1, D, 12, 0)));
+  const { weekday } = zonedParts(new Date(Date.UTC(Y, M - 1, D, 12, 0)), tz);
   const isSummer = region === 'CONT' ? isDstLisbonYMD(Y, M, D) : (M >= 6 && M <= 10);
   return core({ region, schedule, cycle, weekday, minutes, month: M, isSummer });
 }

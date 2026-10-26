@@ -102,7 +102,7 @@ function q(day, min, bd, bs, price) {
   // O agrupamento é por dia civil de LISBOA: a hora local e a hora de Lisboa
   // são a mesma coisa (o dia de mercado de Madrid é que está uma hora à
   // frente).
-  return { dn, day, mk: `${y}-${String(m).padStart(2, '0')}`, min, lisbonDn: dn, lisbonMin: min, bd, bs, price };
+  return { dn, day, mk: `${y}-${String(m).padStart(2, '0')}`, min, bd, bs, price };
 }
 
 describe('estatísticas OMIE — agregação', () => {
@@ -300,15 +300,14 @@ describe('estatísticas OMIE — o preço à hora actual é vivo', () => {
     for (let min = 0; min < 96 * 15; min += 15) {
       out.push({
         dn: dnOf(day),
-        lisbonDn: dnOf(day),
-        lisbonMin: min,
+        min,
         price: 10 + out.length,
       });
     }
     return out;
   };
   const payload = { cutoff: '2026-10-21', recent: tail('2026-10-21') };
-  const priceAt = (min) => payload.recent.find(r => r.lisbonDn === dnOf('2026-10-21') && r.lisbonMin === min).price;
+  const priceAt = (min) => payload.recent.find(r => r.dn === dnOf('2026-10-21') && r.min === min).price;
 
   it('acompanha o relógio: cada 15 minutos muda o quarter', () => {
     const c = currentPrice(payload, NOW);
@@ -319,7 +318,7 @@ describe('estatísticas OMIE — o preço à hora actual é vivo', () => {
 
   it('quando o quarter em curso ainda não saiu, fica o último e diz que não é "live"', () => {
     // cauda truncada às 11:45: o quarter das 12:00 ainda não foi publicado
-    const curto = { ...payload, recent: payload.recent.filter(r => r.lisbonMin <= 11 * 60 + 45) };
+    const curto = { ...payload, recent: payload.recent.filter(r => r.min <= 11 * 60 + 45) };
     const c = currentPrice(curto, new Date('2026-10-21T11:05:00Z')); // 12:05 em Lisboa
     assert.equal(c.at, '2026-10-21T11:45');
     assert.equal(c.live, false);
@@ -328,7 +327,7 @@ describe('estatísticas OMIE — o preço à hora actual é vivo', () => {
   it('o quarter futuro (estimativa) nunca alimenta o preço actual', () => {
     const comFuturo = {
       cutoff: '2026-10-21',
-      recent: [...payload.recent, { dn: dnOf('2026-10-22'), lisbonDn: dnOf('2026-10-22'), lisbonMin: 0, price: 99 }],
+      recent: [...payload.recent, { dn: dnOf('2026-10-22'), min: 0, price: 99 }],
     };
     const c = currentPrice(comFuturo, new Date('2026-10-22T00:05:00Z')); // 01:05 em Lisboa
     assert.equal(c.at, '2026-10-21T23:45', 'fica o último quarter publicado');

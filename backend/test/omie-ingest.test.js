@@ -11,7 +11,7 @@ import path from 'node:path';
 const dir = mkdtempSync(path.join(tmpdir(), 'ceme-omie-test-'));
 process.env.DB_PATH = path.join(dir, 'omie.db');
 
-const { run, query } = await import('../src/db.js');
+const { run, query, exec } = await import('../src/db.js');
 const { readFileSync } = await import('node:fs');
 const { reconcile, upsertSpot, spotForDay, upsertDaily, dailyRows } = await import('../src/omie/store.js');
 const { lisbonMidnightUtc, expectedQuartersForLisbonDay } = await import('../src/omie/convert.js');
@@ -101,7 +101,7 @@ describe('ingestão OMIE — instante e mudança de hora', () => {
 
 describe('ingestão OMIE — a BD', () => {
   before(async () => {
-    await run(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
+    await exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
   });
   after(() => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* já foi */ } });
 
@@ -199,30 +199,6 @@ describe('TF — hora de relógio → instante, nos dias de mudança de hora', (
     const { parseTfQuarters } = await import('../src/omie/tf.js');
     const text = [HEAD, ...csvDay('29/03/2026', [['23:59', '[23:45-00:00[']])].join('\n');
     assert.deepEqual(parseTfQuarters(text).days.get('2026-03-29').map(r => r.utc), ['2026-03-29T22:45:00.000Z']);
-  });
-});
-
-describe('TF — reparação dos dias de Março já gravados', () => {
-  it('apaga as linhas TF dos dias de 92 quartos uma vez (e só essas)', async () => {
-    const { upsertSpot, getMeta } = await import('../src/omie/store.js');
-    const { refreshAll } = await import('../src/omie/pipeline.js');
-    await run(`DELETE FROM omie_meta WHERE key = 'fix_tf_spring_dst_v1'`);
-    await upsertSpot([
-      { utc: '2026-03-29T05:00:00.000Z', day: '2026-03-29', min: 360, pt: 98765.4 },
-      { utc: '2026-03-28T05:00:00.000Z', day: '2026-03-28', min: 300, pt: 98765.5 },
-    ], 'TF', { fromDay: '2026-03-28', toDay: '2026-03-29' });
-    // Sem rede: as fontes falham e ficam no log; a reparação corre antes.
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = async () => { throw new Error('sem rede no teste'); };
-    try { await refreshAll(); } finally { globalThis.fetch = realFetch; }
-    // As linhas-marca (preços impossíveis): a do dia de Março tem de ter ido embora
-    // (o dia pode voltar a entrar, se houver cache do TF em disco — mas já
-    // com o parser novo, e sem a marca); a do dia anterior fica.
-    const left = (await query(`SELECT day_lisbon d, price_pt_eur_mwh p FROM omie_spot WHERE source = 'TF' AND day_lisbon IN ('2026-03-28','2026-03-29')`))
-      .map(r => `${String(r.d).slice(0, 10)}:${r.p}`);
-    assert.ok(!left.includes('2026-03-29:98765.4'), 'a linha antiga do dia de Março foi limpa');
-    assert.ok(left.includes('2026-03-28:98765.5'), 'os outros dias ficam como estavam');
-    assert.ok(JSON.parse(await getMeta('fix_tf_spring_dst_v1')).days.includes('2026-03-29'));
   });
 });
 

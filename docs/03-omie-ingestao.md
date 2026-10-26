@@ -205,8 +205,9 @@ motivo), e o resto segue.
   `suspect_range`; uma diferença grande entre PT e ES leva
   `suspect_pt_es_split` (pode ser legítima). As flags ficam na linha e não
   apagam nada.
-- **Rede:** timeout de 25 a 60 s, até 3 tentativas com espera crescente,
-  pedido condicional.
+- **Rede:** timeout de 25 a 60 s (incluindo ler o corpo), até 3
+  tentativas com espera crescente (`omie/fetch.js`), pedido condicional ao
+  omie.es.
 
 O preço do TF não é comparado com o do omie.es: quando o omie.es tem o
 instante, o do TF simplesmente não se usa. Medir essas diferenças está no

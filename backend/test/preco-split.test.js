@@ -3,20 +3,13 @@
 // preço final — senão é aritmética inventada.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
-import { seed } from '../src/db/seed.js';
+import { seededDb } from './seeded-db.js';
 
-const fresh = () => {
-  const db = new DatabaseSync(':memory:');
-  db.exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
-  seed(db);
-  return db;
-};
+const fresh = seededDb;
 
 describe('preço: energia + TAR', () => {
-  it('quando há decomposição, energia + TAR = preço final', () => {
-    const db = fresh();
+  it('quando há decomposição, energia + TAR = preço final', async () => {
+    const db = await fresh();
     const rows = db.prepare(`
       SELECT t.id, pc.period, pc.energy_eur_kwh AS final,
              pc.energy_only_eur_kwh AS energy, pc.tar_eur_kwh AS tar
@@ -31,8 +24,8 @@ describe('preço: energia + TAR', () => {
     }
   });
 
-  it('os tarifários sem decomposição ficam com o preço final e nada mais', () => {
-    const db = fresh();
+  it('os tarifários sem decomposição ficam com o preço final e nada mais', async () => {
+    const db = await fresh();
     // A EDP publica o preço final: não há energia separada, e não se inventa.
     const edp = db.prepare(`
       SELECT pc.energy_eur_kwh AS final, pc.energy_only_eur_kwh AS energy, pc.tar_eur_kwh AS tar
@@ -45,8 +38,8 @@ describe('preço: energia + TAR', () => {
     assert.equal(edp.tar, null, 'sem TAR inventada');
   });
 
-  it('a decomposição do Atlante é a publicada (0,12 + a TAR desde 2026-10-22)', () => {
-    const db = fresh();
+  it('a decomposição do Atlante é a publicada (0,12 + a TAR desde 2026-10-22)', async () => {
+    const db = await fresh();
     const row = db.prepare(`
       SELECT pc.energy_only_eur_kwh AS energy, pc.tar_eur_kwh AS tar
         FROM price_component pc

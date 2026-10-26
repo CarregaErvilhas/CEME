@@ -11,6 +11,7 @@
 //
 // O ficheiro vem em latin1, com `;` e vírgula decimal. A leitura das linhas
 // está em parse.js e as contas de fuso em convert.js.
+import { fetchWithRetry } from './fetch.js';
 import { parseOmieTxt, assessDays } from './parse.js';
 import { marketPeriodToLisbon, lisbonWallClock, expectedQuartersForLisbonDay } from './convert.js';
 
@@ -24,8 +25,6 @@ const TIMEOUT_MS = 60000;
 // servida com 200).
 const MIN_BYTES = 100000;
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
 // Descarrega o ficheiro, até 3 tentativas. `state` traz o etag/lastModified
 // da última vez. Devolve { changed: false } se não mudou, ou
 // { changed: true, text, bytes, etag, lastModified }.
@@ -34,13 +33,10 @@ export async function fetchOmieDump(state = {}) {
   if (state.etag) headers['if-none-match'] = state.etag;
   if (state.lastModified) headers['if-modified-since'] = state.lastModified;
 
-  let lastErr = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-      const res = await fetch(OMIE_URL, { signal: ctl.signal, headers });
-      clearTimeout(timer);
+  return fetchWithRetry(OMIE_URL, {
+    headers,
+    timeoutMs: TIMEOUT_MS,
+    read: async (res) => {
       if (res.status === 304) return { changed: false, etag: state.etag || null, lastModified: state.lastModified || null };
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const buf = Buffer.from(await res.arrayBuffer());
@@ -53,12 +49,8 @@ export async function fetchOmieDump(state = {}) {
         etag: res.headers.get('etag'),
         lastModified: res.headers.get('last-modified'),
       };
-    } catch (e) {
-      lastErr = e;
-      if (attempt < 3) await sleep(1000 * attempt);
-    }
-  }
-  throw lastErr || new Error('falha desconhecida ao ir buscar o omie.es');
+    },
+  });
 }
 
 // Lê a linha "Fecha Emisión :21/10/2026 - 13:57" (quando a OMIE gerou o

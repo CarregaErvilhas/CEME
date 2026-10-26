@@ -17,9 +17,14 @@
 // (ver losses.js). BT = baixa tensão, MT = média tensão.
 export const LOSS_PLACEHOLDER = { BT: 0.1531, MT: 0.0713 };
 
-// Perdas a usar: o valor que te passarem (`override`) ou o placeholder anual.
+// Perdas a usar: o valor que te passarem (`override`) ou o placeholder anual
+// da tensão. Uma tensão sem placeholder é erro: quem cota põe o tarifário de
+// quarentena em vez de inventar um valor.
 export function lossFor(voltage, override) {
-  return override != null ? override : (LOSS_PLACEHOLDER[voltage] ?? 0.08);
+  if (override != null) return override;
+  const loss = LOSS_PLACEHOLDER[voltage];
+  if (loss == null) throw new Error(`sem perdas para a tensão ${voltage}`);
+  return loss;
 }
 
 export function indexedPrice({ omieEurKwh, kIndex, cgs, voltage, tarEurKwh, loss, formula }) {

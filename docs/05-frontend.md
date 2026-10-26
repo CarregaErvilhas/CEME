@@ -1,8 +1,8 @@
 # 05 — Frontend
 
 Tudo o que corre no browser está em `frontend/`: HTML, CSS e JavaScript
-simples, sem framework e sem build. O `server.js` serve os ficheiros tal
-como estão. Para mudares uma página, editas o ficheiro e recarregas.
+simples, sem framework e sem build. O servidor (`backend/src/http/pages.js`) serve os
+ficheiros tal como estão. Para mudares uma página, editas o ficheiro e recarregas.
 
 Há duas interfaces para a mesma API:
 

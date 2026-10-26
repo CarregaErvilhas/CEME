@@ -1,8 +1,8 @@
 // Ligação ao PostgreSQL (biblioteca `pg`), usada só quando há DATABASE_URL.
 //
-// É o único sítio do processo com um pool de ligações (db.js e
-// seed.postgres.js importam daqui). O pool só nasce na primeira query: este
-// ficheiro é importado mesmo quando corres em SQLite, e assim não abre nada.
+// É o único sítio do processo com um pool de ligações (só o db.js importa
+// daqui). O pool só nasce na primeira query: importar este ficheiro (os
+// testes fazem-no, em SQLite) não abre ligação nenhuma.
 // Os parâmetros escrevem-se $1, $2…
 import { Pool, types } from 'pg';
 

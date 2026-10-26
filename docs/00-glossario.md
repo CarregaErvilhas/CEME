@@ -156,7 +156,8 @@ O resumo:
 ## Termos do código
 
 **Seed** — os dados de arranque (CEME, tarifários, preços), escritos à mão
-em `backend/src/db/seed.js`. Corre em cada arranque do servidor.
+em `backend/src/db/seed-data.js`. O `seed.js` grava-os na BD em cada
+arranque do servidor.
 
 **Upsert** — "insere, ou actualiza se já existir". Em SQL:
 `INSERT … ON CONFLICT … DO UPDATE`.

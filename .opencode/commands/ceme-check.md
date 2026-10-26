@@ -7,8 +7,8 @@ Verificar as tarifas CEME deste repositório.
 **Antes de avançar, lê o guia em `.memories/ceme-tarifas-verificacao.md`**
 (relativo à raiz do repo): tem o método por CEME (curl/imagens/PDF/browser),
 onde estão os valores de referência (TAR/EGME), os cuidados na extracção e o
-fluxo de actualização (backup → seed.js → seed.postgres.js → BD → testes).
-A última verificação está no histórico do git do `backend/src/db/seed.js`.
+fluxo de actualização (backup → seed-data.js → BD → testes).
+A última verificação está no histórico do git do `backend/src/db/seed-data.js`.
 
 Âmbito para esta corrida: $ARGUMENTS
 
@@ -19,7 +19,7 @@ Regras:
 - Actualizações de valores **só** depois de eu autorizar — com a tabela de drift
   proposta, valor antigo → novo, e a fonte (página/PDF + data de vigência).
 - Corrigir URLs para apontarem à página certa do tarifário pode fazer-se sem
-  pedir (seed.js + seed.postgres.js + BD).
+  pedir (seed-data.js + BD).
 - No fim: `npm test` em `backend/` e re-congelar âncoras de testes com o motor
   (não à mão) se houver valores alterados; relatório em tabela com ✓/⚠️/❌ e backup do
   ceme.db antes de qualquer UPDATE.

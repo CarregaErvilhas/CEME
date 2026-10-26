@@ -9,9 +9,9 @@ estão comentadas nos schemas, `backend/src/db/schema.sql` (SQLite) e
 
 | dados | origem | como entram |
 |---|---|---|
-| CEME, tarifários, preços | páginas públicas de cada CEME | escritos à mão no seed (`backend/src/db/seed.js`) |
-| TAR | ERSE | escrita à mão em `server.js` (`TAR_2026`) |
-| taxa de activação legal | ERSE | constante `EGME_LEGAL` em `server.js` |
+| CEME, tarifários, preços | páginas públicas de cada CEME | escritos à mão em `backend/src/db/seed-data.js` |
+| TAR | ERSE | escrita à mão em `backend/src/db/tar.js` (`TAR`) |
+| taxa de activação legal | ERSE | constante `EGME_LEGAL` em `backend/src/tariffs.js` |
 | IVA por região | Código do IVA | `REGIONS` em `engine/regions.js` |
 | perdas na rede | E-REDES | `engine/losses-<ano>.json`, gerado por `scripts/etl-perdas.py` |
 | preços OMIE | omie.es e dados.tiagofelicia.pt | ingestão automática ([03](03-omie-ingestao.md)) |
@@ -70,11 +70,11 @@ na região do carregamento, calculado pelo código (`civilDay()`), nunca o
 `CURRENT_DATE` da BD (que dá o dia em UTC).
 
 Uma **campanha** é uma versão com fim marcado (`campaign = 1`). As que já
-acabaram estão em `CAMPAIGN_END` no seed, ficam com `status = 'EXPIRED'` e
+acabaram estão em `CAMPAIGN_END` (`seed-data.js`), ficam com `status = 'EXPIRED'` e
 desaparecem do simulador no dia a seguir ao fim.
 
 Hoje todas as versões do seed têm o mesmo `valid_from`: a data em que os
-preços foram verificados (`SHEET_SNAPSHOT`). Não sabemos quando cada
+preços foram verificados (`PRICES_VERIFIED_ON`). Não sabemos quando cada
 contrato começou, e a interface mostra "preços verificados em", não "em
 vigor desde".
 
@@ -108,8 +108,8 @@ linha `VAZIO` com a taxa de activação, o apoio e o IEC.
 
 Quando um CEME cobra diferente na Madeira ou nos Açores, as linhas dessa
 região ficam em `price_component_region`, com as mesmas colunas. Na
-leitura, sobrepõem-se às do Continente (`comps(vid, region)` em
-`server.js`). Um tarifário sem linhas aqui usa o preço do Continente em
+leitura, sobrepõem-se às do Continente (`loadPricing(region)` e
+`comps(vid, region)` em `tariffs.js`). Um tarifário sem linhas aqui usa o preço do Continente em
 qualquer região.
 
 ## Regiões
@@ -121,11 +121,16 @@ qualquer região e o cartão mostra onde cada um é vendido.
 
 ## O seed
 
-`backend/src/db/seed.js` (e o gémeo `seed.postgres.js`) corre em cada
-arranque e é **convergente**: insere o que falta e actualiza o que mudou.
-Não mexe em `valid_to`, para não reabrir uma versão que alguém fechou à mão.
+Os dados estão em `backend/src/db/seed-data.js`: os CEME e os tarifários
+como objectos com campos nomeados (a legenda de cada campo está por cima de
+`TARIFFS`). Quem os grava é `backend/src/db/seed.js`, o mesmo código para
+SQLite e PostgreSQL. Corre em cada arranque e é **convergente**: insere o
+que falta e actualiza o que mudou. Não mexe em `valid_to`, para não reabrir
+uma versão que alguém fechou à mão.
+
+A TAR tem o seu próprio ficheiro, `backend/src/db/tar.js`, com uma entrada
+por ano; o arranque também a grava por upsert.
 
 Se apagares `backend/data/` e arrancares o servidor, a BD local é recriada
 do zero. As contagens esperadas de CEME e tarifários estão no
-`golden.test.js` («cobertura do seed»), e o `seed-parity.test.js` garante
-que os dois seeds têm os mesmos dados.
+`golden.test.js` («cobertura do seed»).

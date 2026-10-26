@@ -14,6 +14,8 @@ import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'no
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lisbonDayQuarters } from './convert.js';
+import { dmyToIso } from '../time.js';
+import { fetchWithRetry } from './fetch.js';
 
 // Pasta da cache em disco (backend/data/). Podes apagá-la: volta a encher-se.
 const DATA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
@@ -22,7 +24,6 @@ export const TF_BASE = 'https://dados.tiagofelicia.pt/data';
 export const TF_CURRENT_URL = `${TF_BASE}/omie/omie_dados_atuais.csv`;
 export const TF_HISTORY_URL = (year) => `${TF_BASE}/omie/historico/omie_historico_${year}.csv`;
 export const TF_FUTURES_URL = `${TF_BASE}/omie/futuros_omip.csv`;
-export const TF_DAILY_URL = `${TF_BASE}/agregados/omie_diario.csv`;
 export const TF_SOURCE = 'dados.tiagofelicia.pt (CC BY 4.0)';
 
 // Ao fim de quanto tempo cada ficheiro em cache é considerado velho (TTL).
@@ -30,26 +31,19 @@ export const TTL_DAILY = 24 * 3600 * 1000;   // ano corrente
 export const TTL_HISTORY = 30 * 24 * 3600 * 1000; // ano anterior (quase não muda)
 export const TTL_FUTURES = 6 * 3600 * 1000;  // futuros (mudam com o mercado)
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-// Descarrega um URL como texto, até 3 tentativas.
-export async function fetchText(url) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 25000);
-      const r = await fetch(url, { signal: ctl.signal, headers: { 'user-agent': 'ceme-v2' } });
-      clearTimeout(t);
+// Descarrega um URL do TF como texto (vê fetch.js).
+export function fetchText(url) {
+  return fetchWithRetry(url, {
+    headers: { 'user-agent': 'ceme-v2' },
+    timeoutMs: 25000,
+    read: async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const txt = await r.text();
       if (txt.includes('Page not found')) throw new Error('404 upstream');
       if (txt.length < 1000) throw new Error('corpo suspeito (<1KB)');
       return txt;
-    } catch (e) {
-      if (attempt === 3) throw e;
-      await sleep(1000 * attempt);
-    }
-  }
+    },
+  });
 }
 
 // Devolve o ficheiro `name` da cache se tiver menos de `ttlMs`; senão
@@ -80,7 +74,7 @@ export async function fetchCachedFile(name, url, ttlMs) {
 //   bd, bs: 'V' (vazio) ou 'F' (fora de vazio) nos ciclos diário e semanal.
 export function parseTfQuarters(text) {
   const lines = String(text || '').replace(/^\uFEFF/, '').split('\n');
-  const head = (lines.shift() || '').split(',').map(h => h.trim());
+  const head = csvFields(lines.shift() || '').map(h => h.trim());
   const ix = (n) => head.indexOf(n);
   if (ix('dia') < 0 || ix('preco_pt') < 0) throw new Error('schema inesperado no CSV de quartos do TF');
   const days = new Map();
@@ -90,13 +84,12 @@ export function parseTfQuarters(text) {
   for (const line of lines) {
     if (!line.trim()) continue;
     if (line.startsWith('TABELA_')) break; // a partir daqui são tabelas de futuros
-    const c = line.split(',');
+    const c = csvFields(line);
     if (c.length < 9) { quarantined.push({ reason: 'few_columns', text: line.slice(0, 140) }); continue; }
-    const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((c[ix('dia')] || '').trim());
-    if (!dm) { quarantined.push({ reason: 'bad_day', text: line.slice(0, 140) }); continue; }
+    const day = dmyToIso(c[ix('dia')]);
+    if (!day) { quarantined.push({ reason: 'bad_day', text: line.slice(0, 140) }); continue; }
     const pt = Number(c[ix('preco_pt')]);
     if (!Number.isFinite(pt)) { quarantined.push({ reason: 'bad_price', text: line.slice(0, 140) }); continue; }
-    const day = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
 
     const list = days.get(day) || [];
     // Como chegar ao instante UTC de cada linha:
@@ -161,28 +154,8 @@ function quarterStart(intervalo, hora) {
 // Lê "Data_Valores_OMIE" do ficheiro de futuros: o último dia com preços
 // reais do mercado. Os dias a seguir no CSV do TF são estimativas.
 export function parseOmieCutoff(text) {
-  const m = /Data_Valores_OMIE,(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(text || ''));
-  if (!m) return null;
-  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-}
-
-// Lê o CSV de médias diárias do TF (bd_v/bd_f/bs_v/bs_f) e devolve os
-// últimos `days` dias.
-export function parseTfDaily(text, days = 60) {
-  const lines = String(text || '').replace(/^\uFEFF/, '').split('\n');
-  const head = (lines.shift() || '').split(',');
-  const ix = (n) => head.indexOf(n);
-  const need = ['data_iso', 'bd_v', 'bd_f', 'bs_v', 'bs_f'];
-  if (need.some(n => ix(n) < 0)) throw new Error('schema inesperado no omie_diario.csv');
-  const num = (v) => { const s = String(v ?? '').trim(); if (s === '') return null; const n = Number(s); return Number.isFinite(n) ? n : null; };
-  const rows = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const c = line.split(',');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(c[ix('data_iso')])) continue;
-    rows.push({ date: c[ix('data_iso')], bd_v: num(c[ix('bd_v')]), bd_f: num(c[ix('bd_f')]), bs_v: num(c[ix('bs_v')]), bs_f: num(c[ix('bs_f')]) });
-  }
-  return rows.slice(-days);
+  const m = /Data_Valores_OMIE,(\d{1,2}\/\d{1,2}\/\d{4})/.exec(String(text || ''));
+  return m ? dmyToIso(m[1]) : null;
 }
 
 // Lê todas as tabelas TABELA_FUTUROS_<zona> do ficheiro de futuros do OMIP.
@@ -232,9 +205,9 @@ export function parseTfDailyFutures(text, zona = 'PT') {
   const rows = parseTfFutures(text).filter(r => r.zona === zona && /^FPB D\b/.test(r.contrato));
   const out = [];
   for (const r of rows) {
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(r.descricao || '').trim());
-    if (!m || r.valor == null) continue;
-    out.push({ date: `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`, value: r.valor });
+    const date = dmyToIso(r.descricao);
+    if (!date || r.valor == null) continue;
+    out.push({ date, value: r.valor });
   }
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
