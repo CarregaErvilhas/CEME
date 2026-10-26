@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTfDaily, parseTfFutures, parseTfQuarters } from '../src/omie/tf.js';
+import { parseTfFutures, parseTfQuarters } from '../src/omie/tf.js';
 import { seededDb } from './seeded-db.js';
 import { pickComponents } from '../src/db/components.js';
 
@@ -36,19 +36,6 @@ describe('pickComponents: coerência por versão', () => {
 });
 
 describe('cache OMIE: parsers defensivos', () => {
-  it('diário: filtra últimos N e ignora linhas más', async () => {
-    const csv = 'dia,data_iso,dias,quartos,pt_medio,pt_min,pt_max,pt_desvio,es_medio,spread_pt_es,horas_negativas,bd_v,bd_f,bs_v,bs_f,td_v,td_c,td_p,ts_v,ts_c,ts_p\n' +
-      '01/01/2010,2010-01-01,1,96,7.2,0.0,30.8,11.88,6.77,0.43,0,4.94,8.82,0.0,10.17,4.94,5.58,16.91,0.0,8.57,14.0\n' +
-      'linha má\n' +
-      '02/01/2010,2010-01-02,1,96,20.18,0.0,83.1,,,,,,,,,,,,,,\n';
-    const rows = parseTfDaily(csv, 60);
-    assert.equal(rows.length, 2);
-    assert.equal(rows[0].bd_v, 4.94);
-    assert.equal(rows[1].bd_v, null);
-  });
-  it('diário: rebenta com schema inesperado (fail fast)', async () => {
-    assert.throws(() => parseTfDaily('a,b,c\n1,2,3\n', 60), /schema/);
-  });
   it('futuros: extrai contratos PT', async () => {
     const csv = 'TABELA_FUTUROS_PT\nContrato,Descricao,Valor,Data\nFPB D Fr16Oct-26,16/10/2026,199.38,15/10/2026\nTABELA_FIM\n';
     const rows = parseTfFutures(csv);

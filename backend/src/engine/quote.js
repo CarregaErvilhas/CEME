@@ -1,5 +1,4 @@
-import { periodFor } from './periods.js';
-import { REGIONS } from './regions.js';
+import { REGIONS, periodForRegion } from './regions.js';
 
 // Arredonda para cima ao cêntimo. O `- 1e-9` evita que 0.30000000000000004
 // (ruído de vírgula flutuante) suba para 0.31.
@@ -35,7 +34,7 @@ const up2 = (v) => Math.ceil(v * 100 - 1e-9) / 100;
 //   base       = soma das anteriores (sem IVA)
 //   vatEur     = total − base
 export function quoteFixed({ schedule, cycle, at, kwh, price, activation = 0, support = 0, iec = 0, region = 'CONT', vatRate, split }) {
-  const period = periodFor({ schedule, cycle, at, region });
+  const period = periodForRegion({ schedule, cycle, at, region });
   const key = period === 'UNICO' ? 'UNICO' : period;
   const final = price[key];
   if (final == null) throw new Error(`sem preço final para ${key}`);
