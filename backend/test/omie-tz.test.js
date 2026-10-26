@@ -41,7 +41,7 @@ describe('OMIE — fuso horário (guarda de regressão)', () => {
       for (const r of list) {
         rows.push({
           dn, day, mk: `${y}-${String(m).padStart(2, '0')}`,
-          min: r.min, lisbonDn: dn, lisbonMin: r.min,
+          min: r.min,
           bd: r.bd, bs: r.bs, price: r.pt, est: false,
           utc: new Date(Date.UTC(y, m - 1, d, 0, 0) + r.min * 60000).toISOString(),
         });

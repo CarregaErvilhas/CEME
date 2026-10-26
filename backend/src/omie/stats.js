@@ -89,7 +89,7 @@ function partialOf(mk, b) {
 }
 
 // Monta o payload da página.
-//   rows:     [{ dn, mk, min, lisbonDn, lisbonMin, bd, bs, price, est, utc }]
+//   rows:     [{ dn, mk, min, bd, bs, price, est, utc }]
 //             (vê rebuildDerived em pipeline.js)
 //   cutoff:   último dia com preço real ('AAAA-MM-DD')
 //   fpbDaily: futuros diários { 'AAAA-MM-DD': €/MWh }
@@ -190,14 +190,14 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
   const recent = rows
     .filter(r => r.dn <= lastDn + 1)
     .slice(-TAIL_ROWS)
-    .map(r => ({ dn: r.dn, lisbonDn: r.lisbonDn, lisbonMin: r.lisbonMin, price: r.price, utc: r.utc }));
+    .map(r => ({ dn: r.dn, min: r.min, price: r.price, utc: r.utc }));
   const cutoffIso = cutoff || isoOf(lastDn);
 
   return {
     generatedAt: now.toISOString(),
     cutoff: cutoffIso,
-    dataThrough: stamp(anchor.lisbonDn, anchor.lisbonMin),
-    dataThroughUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
+    dataThrough: stamp(anchor.dn, anchor.min),
+    dataThroughUtc: anchor.utc || stampUtc(anchor.dn, anchor.min),
     window: { from: isoOf(fromDn), to: isoOf(lastDn) },
     today: lis.day,
     current: currentPrice({ recent, cutoff: cutoffIso }, now),
@@ -232,8 +232,8 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
       last30: {
         from: (() => { const s = dayStart(anchor.dn - 30); return stamp(s.dn, s.min); })(),
         fromUtc: (() => { const s = dayStart(anchor.dn - 30); return stampUtc(s.dn, s.min); })(),
-        to: stamp(anchor.lisbonDn, anchor.lisbonMin),
-        toUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
+        to: stamp(anchor.dn, anchor.min),
+        toUtc: anchor.utc || stampUtc(anchor.dn, anchor.min),
         value: round2(avg(last30.all)),
         quarters: last30.all.length,
         estQuarters: last30.est,
@@ -262,8 +262,8 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
           const s = dayStart(dayNumOf(`${monthKeyNow}-01`));
           return stampUtc(s.dn, s.min);
         })(),
-        to: stamp(anchor.lisbonDn, anchor.lisbonMin),
-        toUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
+        to: stamp(anchor.dn, anchor.min),
+        toUtc: anchor.utc || stampUtc(anchor.dn, anchor.min),
         value: round2(avg(monthB.all)),
         quarters: monthB.all.length,
         estQuarters: monthB.est,
@@ -288,7 +288,7 @@ export function currentPrice(payload, now = new Date()) {
   const pool = (payload.recent || []).filter(r => r.dn <= cut);
   // O instante de cada linha: `utc` se existir; senão, calcula-se a partir
   // do dia e minutos de Lisboa.
-  const rowMs = (r) => r.utc ? new Date(r.utc).getTime() : (lisbonMidnightUtc(isoOf(r.lisbonDn)) + (r.lisbonMin || 0) * 60000);
+  const rowMs = (r) => r.utc ? new Date(r.utc).getTime() : (lisbonMidnightUtc(isoOf(r.dn)) + (r.min || 0) * 60000);
   const sorted = [...pool].sort((a, b) => rowMs(a) - rowMs(b));
   let best = null;
   for (const r of sorted) {
@@ -296,9 +296,9 @@ export function currentPrice(payload, now = new Date()) {
     best = r;
   }
   if (!best) return { at: null, price: null, live: false, estimated: false };
-  const iso = best.utc ? best.utc : new Date(lisbonMidnightUtc(isoOf(best.lisbonDn)) + best.lisbonMin * 60000).toISOString();
+  const iso = best.utc ? best.utc : new Date(lisbonMidnightUtc(isoOf(best.dn)) + best.min * 60000).toISOString();
   return {
-    at: `${isoOf(best.lisbonDn)}T${pad2(Math.floor(best.lisbonMin / 60))}:${pad2(best.lisbonMin % 60)}`,
+    at: `${isoOf(best.dn)}T${pad2(Math.floor(best.min / 60))}:${pad2(best.min % 60)}`,
     atUtc: iso,
     price: round2(best.price),
     live: rowMs(best) === (nowMs - (nowMs % (15 * 60000))),

@@ -2,13 +2,13 @@
 // vez, a partir de server.js.
 //
 // A ordem importa:
-//   1. migrações do OMIE (antes do schema; vê db/migrate.js);
-//   2. o schema do dialecto em uso (seguro de repetir);
-//   3. colunas novas em tabelas que já existiam (antes do seed, que as usa);
-//   4. a chave da API de terceiros (CEME_API_KEY);
-//   5. a TAR (db/tar.js);
-//   6. o seed (CEMEs, tarifários, preços);
-//   7. os resumos do OMIE, recalculados a partir do que já está na BD.
+//   1. o schema do dialecto em uso (seguro de repetir);
+//   2. colunas novas em tabelas que já existiam (antes do seed, que as usa;
+//      vê db/migrate.js);
+//   3. a chave da API de terceiros (CEME_API_KEY);
+//   4. a TAR (db/tar.js);
+//   5. o seed (CEMEs, tarifários, preços);
+//   6. os resumos do OMIE, recalculados a partir do que já está na BD.
 //
 // Variáveis de ambiente opcionais (úteis em previews, docs/preview-envs.md):
 //   CEME_READONLY=1  não escreve nada na BD: salta tudo isto menos a leitura,
@@ -20,7 +20,7 @@ import { readFile } from 'node:fs/promises';
 import { query, run, exec, READONLY, USE_PG } from './db.js';
 import { hashKey } from './auth/tokens.js';
 import { rebuildDerived } from './omie/pipeline.js';
-import { migrateOmieTables, migrateAddedColumns } from './db/migrate.js';
+import { migrateAddedColumns } from './db/migrate.js';
 import { syncTar } from './db/tar.js';
 import { seed } from './db/seed.js';
 
@@ -31,7 +31,6 @@ export async function boot() {
   if (READONLY) log('modo READONLY: bootstrap de escrita desactivado.');
 
   if (!READONLY) {
-    for (const n of await migrateOmieTables()) log(`migração: ${n}`);
     const schemaFile = new URL(USE_PG ? './db/schema.postgres.sql' : './db/schema.sql', import.meta.url);
     await exec(await readFile(schemaFile, 'utf8'));
     for (const n of await migrateAddedColumns()) log(`migração: ${n}`);

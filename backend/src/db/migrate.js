@@ -2,18 +2,13 @@
 //
 // O schema (schema.sql / schema.postgres.sql) corre em cada arranque com
 // `CREATE TABLE IF NOT EXISTS`. Isso cria tabelas que faltam, mas não mexe em
-// tabelas que já existem. Este ficheiro trata desses casos, nos dois
-// dialectos (SQLite e Postgres):
+// tabelas que já existem: uma coluna nova numa tabela que já existe nunca
+// apareceria.
 //
-// 1. migrateOmieTables() — corre ANTES do schema. Garante que as tabelas do
-//    OMIE têm as colunas esperadas: renomeia colunas com nome antigo e, se
-//    uma tabela vazia tiver uma forma que não reconhece, apaga-a para o
-//    schema a recriar. Uma tabela com dados nunca é apagada.
-//
-// 2. migrateAddedColumns() — corre DEPOIS do schema e ANTES do seed.
-//    Acrescenta as colunas de ADDED_COLUMNS que faltem em tabelas existentes.
-//    Sem isto, o seed escrevia numa coluna que não existe e o arranque
-//    falhava.
+// migrateAddedColumns() corre DEPOIS do schema e ANTES do seed, nos dois
+// dialectos (SQLite e Postgres), e acrescenta as colunas de ADDED_COLUMNS
+// que faltem. Sem isto, o seed escrevia numa coluna que não existe e o
+// arranque falhava.
 import { query, run } from '../db.js';
 
 const USE_PG = !!process.env.DATABASE_URL;
@@ -46,66 +41,6 @@ async function tableExists(table) {
   }
   const rows = await query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = $1`, [table]);
   return rows.length > 0;
-}
-
-const hasRows = async (table) => (await query(`SELECT 1 FROM ${table} LIMIT 1`)).length > 0;
-
-// Colunas que o omie_spot e o omie_daily têm de ter (vê o schema).
-const SPOT_COLS = ['ts_utc', 'day_lisbon', 'min_lisbon', 'price_pt_eur_mwh', 'source'];
-const DAILY_COLS = ['date', 'bd_v', 'bd_f', 'bs_v', 'bs_f'];
-
-// Renomeações [nome antigo, nome actual]. RENAME mantém os dados, e corre
-// antes da verificação de forma para uma tabela com dados não parecer
-// estranha.
-const SPOT_RENAMES = [['day_utc', 'day_lisbon'], ['min_utc', 'min_lisbon']];
-
-// Depois de apagar uma tabela do OMIE, o `omie_meta` ainda diz que os dados
-// estão frescos e ninguém os ia buscar outra vez. Limpar `last_refresh` e
-// `stats` obriga a nova ingestão no pedido seguinte.
-async function forgetOmieFreshness(notes) {
-  if (!(await tableExists('omie_meta'))) return;
-  await run(`DELETE FROM omie_meta WHERE key IN ('last_refresh', 'stats')`);
-  notes.push('omie_meta: last_refresh e stats limpos (forçam reingestão)');
-}
-
-export async function migrateOmieTables() {
-  const notes = [];
-
-  if (await tableExists('omie_spot')) {
-    let cols = await columns('omie_spot');
-    for (const [from, to] of SPOT_RENAMES) {
-      if (cols.includes(from) && !cols.includes(to)) {
-        await run(`ALTER TABLE omie_spot RENAME COLUMN ${from} TO ${to}`);
-        notes.push(`omie_spot.${from} renomeada para ${to}`);
-      }
-    }
-    cols = await columns('omie_spot');
-    if (cols.length && !SPOT_COLS.every(c => cols.includes(c))) {
-      // Só se apaga uma tabela VAZIA. Com dados, uma forma inesperada pede
-      // olhos humanos (pode ser um rollback de código): fica um aviso no log,
-      // a tabela fica como está e o arranque continua.
-      if (await hasRows('omie_spot')) {
-        notes.push(`omie_spot: forma inesperada COM dados (colunas: ${cols.join(', ')}) — NÃO apagada; resolver à mão`);
-      } else {
-        await query('DROP TABLE omie_spot');
-        notes.push('omie_spot: forma antiga (hora local) deitada fora');
-        await forgetOmieFreshness(notes);
-      }
-    }
-  }
-  if (await tableExists('omie_daily')) {
-    const cols = await columns('omie_daily');
-    if (cols.length && !DAILY_COLS.every(c => cols.includes(c))) {
-      if (await hasRows('omie_daily')) {
-        notes.push(`omie_daily: forma inesperada COM dados (colunas: ${cols.join(', ')}) — NÃO apagada; resolver à mão`);
-      } else {
-        await query('DROP TABLE omie_daily');
-        notes.push('omie_daily: forma antiga deitada fora');
-        await forgetOmieFreshness(notes);
-      }
-    }
-  }
-  return notes;
 }
 
 // Colunas acrescentadas a tabelas que já existem: [tabela, coluna, tipo].

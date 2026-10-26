@@ -109,18 +109,6 @@ export async function refreshAll({ now = new Date() } = {}) {
     log.push(`omie.es falhou: ${e.message}`);
   }
 
-  // 1b. Reparação que corre uma só vez por BD (marcada em omie_meta): apaga
-  // as linhas do TF dos dias de mudança de hora de Março, para o passo 2 as
-  // voltar a escrever com o parser actual.
-  if (!(await getMeta('fix_tf_spring_dst_v1'))) {
-    const spring = await springDstDaysInStore();
-    if (spring.length) {
-      await run(`DELETE FROM omie_spot WHERE source = 'TF' AND day_lisbon IN (${spring.map((_, i) => `$${i + 1}`).join(',')})`, spring);
-    }
-    await setMeta('fix_tf_spring_dst_v1', JSON.stringify({ at: nowIso(), days: spring }));
-    log.push(`TF: reparados os dias de Março ${spring.join(', ') || '(nenhum)'}`);
-  }
-
   // 2. TF. Reescreve-se de 10 dias atrás a 45 dias à frente de hoje (Lisboa),
   // que é onde o TF troca estimativas por valores reais e revê estimativas.
   try {
@@ -223,8 +211,7 @@ export async function rebuildDerived({ now = new Date(), persist = !READONLY } =
   if (persist) await upsertDaily(daily);
 
   // As linhas no formato que stats.js espera:
-  //   dn: dia de Lisboa como número; mk: mês 'AAAA-MM'; min: minutos do dia;
-  //   lisbonDn/lisbonMin: o mesmo que dn/min.
+  //   dn: dia de Lisboa como número; mk: mês 'AAAA-MM'; min: minutos do dia.
   // Agrupa-se por dia de Lisboa, como o TF faz nos resumos dele, para os
   // números baterem com os publicados.
   const statsRows = rows.map(r => {
@@ -234,8 +221,6 @@ export async function rebuildDerived({ now = new Date(), persist = !READONLY } =
       day: r.day,
       mk: r.day.slice(0, 7),
       min: r.min,
-      lisbonDn: dn,
-      lisbonMin: r.min,
       bd: r.bd || 'V',
       bs: r.bs || 'V',
       price: r.pt,
@@ -275,20 +260,6 @@ export async function rebuildDerived({ now = new Date(), persist = !READONLY } =
   };
   if (persist) await setMetaJson('stats', payload);
   return { daily: daily.length, stats: payload };
-}
-
-// Os dias de mudança de hora de Março dentro do intervalo que há na BD.
-async function springDstDaysInStore() {
-  const range = await spotRange();
-  if (!range.from || !range.to) return [];
-  const out = [];
-  for (let y = Number(range.from.slice(0, 4)); y <= Number(range.to.slice(0, 4)); y++) {
-    for (let d = 25; d <= 31; d++) {
-      const iso = `${y}-03-${d}`;
-      if (expectedQuartersForLisbonDay(iso) === 92) out.push(iso);
-    }
-  }
-  return out;
 }
 
 // ------------------------------------------------------------- freshness

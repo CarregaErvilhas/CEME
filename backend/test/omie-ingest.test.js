@@ -202,30 +202,6 @@ describe('TF — hora de relógio → instante, nos dias de mudança de hora', (
   });
 });
 
-describe('TF — reparação dos dias de Março já gravados', () => {
-  it('apaga as linhas TF dos dias de 92 quartos uma vez (e só essas)', async () => {
-    const { upsertSpot, getMeta } = await import('../src/omie/store.js');
-    const { refreshAll } = await import('../src/omie/pipeline.js');
-    await run(`DELETE FROM omie_meta WHERE key = 'fix_tf_spring_dst_v1'`);
-    await upsertSpot([
-      { utc: '2026-03-29T05:00:00.000Z', day: '2026-03-29', min: 360, pt: 98765.4 },
-      { utc: '2026-03-28T05:00:00.000Z', day: '2026-03-28', min: 300, pt: 98765.5 },
-    ], 'TF', { fromDay: '2026-03-28', toDay: '2026-03-29' });
-    // Sem rede: as fontes falham e ficam no log; a reparação corre antes.
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = async () => { throw new Error('sem rede no teste'); };
-    try { await refreshAll(); } finally { globalThis.fetch = realFetch; }
-    // As linhas-marca (preços impossíveis): a do dia de Março tem de ter ido embora
-    // (o dia pode voltar a entrar, se houver cache do TF em disco — mas já
-    // com o parser novo, e sem a marca); a do dia anterior fica.
-    const left = (await query(`SELECT day_lisbon d, price_pt_eur_mwh p FROM omie_spot WHERE source = 'TF' AND day_lisbon IN ('2026-03-28','2026-03-29')`))
-      .map(r => `${String(r.d).slice(0, 10)}:${r.p}`);
-    assert.ok(!left.includes('2026-03-29:98765.4'), 'a linha antiga do dia de Março foi limpa');
-    assert.ok(left.includes('2026-03-28:98765.5'), 'os outros dias ficam como estavam');
-    assert.ok(JSON.parse(await getMeta('fix_tf_spring_dst_v1')).days.includes('2026-03-29'));
-  });
-});
-
 describe('TF — linha repetida', () => {
   it('vai para a quarentena e não desloca as seguintes', async () => {
     const { parseTfQuarters } = await import('../src/omie/tf.js');
