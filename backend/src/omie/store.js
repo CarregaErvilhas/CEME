@@ -16,9 +16,21 @@ import { shiftDays } from '../time.js';
 // o OMIE ainda pode corrigir valores).
 const RECENT_DAYS = 3;
 
-// Linhas por INSERT. Cada linha usa 9 parâmetros e o Postgres aceita no
-// máximo 65535 por query.
+// Linhas por INSERT. Cada linha usa até 10 parâmetros e o Postgres aceita
+// no máximo 65535 por query.
 const BATCH = 400;
+
+// Monta o VALUES de um INSERT com várias linhas: para [[a, b], [c, d]] dá
+// tuples = '($1,$2),($3,$4)' e values = [a, b, c, d].
+function multiValues(rows) {
+  const values = [];
+  const tuples = rows.map(row => {
+    const first = values.length + 1;
+    values.push(...row);
+    return `(${row.map((_, j) => `$${first + j}`).join(',')})`;
+  }).join(',');
+  return { tuples, values };
+}
 
 // ------------------------------------------------------------------ meta
 // omie_meta é uma tabela chave → valor (texto). As versões *Json fazem o
@@ -83,16 +95,12 @@ export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDa
     const list = byDay.get(day);
     for (let i = 0; i < list.length; i += BATCH) {
       const chunk = list.slice(i, i + BATCH);
-      const values = [];
-      const tuples = chunk.map(r => {
-        const p = values.length;
-        values.push(r.utc, r.day, r.min, r.pt, r.es ?? null, r.bd ?? null, r.bs ?? null, source, r.flags ? JSON.stringify(r.flags) : null);
-        return `($${p + 1},$${p + 2},$${p + 3},$${p + 4},$${p + 5},$${p + 6},$${p + 7},$${p + 8},$${p + 9})`;
-      });
+      const { tuples, values } = multiValues(chunk.map(r =>
+        [r.utc, r.day, r.min, r.pt, r.es ?? null, r.bd ?? null, r.bs ?? null, source, r.flags ? JSON.stringify(r.flags) : null]));
       await run(
         `INSERT INTO omie_spot
            (ts_utc, day_lisbon, min_lisbon, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags)
-         VALUES ${tuples.join(',')}
+         VALUES ${tuples}
          ON CONFLICT (ts_utc, source) DO UPDATE SET
            day_lisbon = EXCLUDED.day_lisbon,
            min_lisbon = EXCLUDED.min_lisbon,
@@ -193,20 +201,22 @@ export function reconcile(rows, opts = {}) {
 
 // ---------------------------------------------------------------- daily
 
-// Grava os resumos diários (um upsert por dia).
+// Grava os resumos diários (um upsert por dia, BATCH dias por INSERT).
 export async function upsertDaily(rows) {
-  for (const r of rows) {
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const { tuples, values } = multiValues(rows.slice(i, i + BATCH).map(r =>
+      [r.date, r.avg_pt ?? null, r.min_pt ?? null, r.max_pt ?? null,
+       r.bd_v ?? null, r.bd_f ?? null, r.bs_v ?? null, r.bs_f ?? null,
+       r.quarters ?? null, r.source ?? null]));
     await run(
       `INSERT INTO omie_daily (date, avg_pt, min_pt, max_pt, bd_v, bd_f, bs_v, bs_f, quarters, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       VALUES ${tuples}
        ON CONFLICT (date) DO UPDATE SET
          avg_pt = EXCLUDED.avg_pt, min_pt = EXCLUDED.min_pt, max_pt = EXCLUDED.max_pt,
          bd_v = EXCLUDED.bd_v, bd_f = EXCLUDED.bd_f,
          bs_v = EXCLUDED.bs_v, bs_f = EXCLUDED.bs_f,
          quarters = EXCLUDED.quarters, source = EXCLUDED.source`,
-      [r.date, r.avg_pt ?? null, r.min_pt ?? null, r.max_pt ?? null,
-       r.bd_v ?? null, r.bd_f ?? null, r.bs_v ?? null, r.bs_f ?? null,
-       r.quarters ?? null, r.source ?? null]
+      values
     );
   }
   return rows.length;

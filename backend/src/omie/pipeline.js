@@ -126,15 +126,10 @@ export async function refreshAll({ now = new Date() } = {}) {
 
   // 3. Os futuros do OMIP (e o último dia de mercado segundo o TF).
   try {
-    const got = await fetchCachedFile('tf-futuros.csv', TF_FUTURES_URL, TTL_FUTURES);
-    const cutoff = parseOmieCutoff(got.text);
+    const { text, payload } = await fetchFutures();
+    const cutoff = parseOmieCutoff(text);
     if (cutoff) await setMeta('omie_cutoff', cutoff);
-    await setMetaJson('futures', {
-      fetchedAt: Date.now(),
-      source: `OMIP via ${TF_SOURCE}`,
-      rows: parseTfFutures(got.text),
-      daily: parseTfDailyFutures(got.text),
-    });
+    await setMetaJson('futures', payload);
   } catch (e) {
     log.push(`futuros falharam: ${e.message}`);
   }
@@ -237,13 +232,7 @@ export async function rebuildDerived({ now = new Date(), persist = !READONLY } =
   let fut = await getMetaJson('futures');
   if (!fut || !Array.isArray(fut.daily)) {
     try {
-      const got = await fetchCachedFile('tf-futuros.csv', TF_FUTURES_URL, TTL_FUTURES);
-      fut = {
-        fetchedAt: Date.now(),
-        source: `OMIP via ${TF_SOURCE}`,
-        rows: parseTfFutures(got.text),
-        daily: parseTfDailyFutures(got.text),
-      };
+      fut = (await fetchFutures()).payload;
       if (persist) await setMetaJson('futures', fut);
     } catch (e) {
       fut = null;
@@ -297,15 +286,15 @@ export async function ensureFresh({ wait = false } = {}) {
     return { fresh: false, locked: true };
   }
 
-  const run = refreshAll()
+  const refresh = refreshAll()
     .catch(e => ({ ok: false, error: e.message }))
     .finally(() => releaseLock(token));
 
   if (wait || empty) {
-    await run;
+    await refresh;
     return { fresh: true, waited: true };
   }
-  run.catch(() => {});
+  refresh.catch(() => {});
   return { fresh: false, started: true };
 }
 
@@ -379,17 +368,27 @@ export async function getStats({ now = new Date() } = {}) {
   };
 }
 
+// Vai buscar o ficheiro de futuros do TF (com a cache em disco de tf.js) e
+// monta o payload de /v1/omie/futures. Devolve também o texto, de onde a
+// actualização tira o último dia de mercado.
+async function fetchFutures() {
+  const { text } = await fetchCachedFile('tf-futuros.csv', TF_FUTURES_URL, TTL_FUTURES);
+  return {
+    text,
+    payload: {
+      fetchedAt: Date.now(),
+      source: `OMIP via ${TF_SOURCE}`,
+      rows: parseTfFutures(text),
+      daily: parseTfDailyFutures(text),
+    },
+  };
+}
+
 // GET /v1/omie/futures: os contratos de futuros do OMIP.
 export async function getFutures() {
   const cached = await getMetaJson('futures');
   if (cached && Date.now() - (cached.fetchedAt || 0) < TTL_FUTURES) return cached;
-  const got = await fetchCachedFile('tf-futuros.csv', TF_FUTURES_URL, TTL_FUTURES);
-  const payload = {
-    fetchedAt: Date.now(),
-    source: `OMIP via ${TF_SOURCE}`,
-    rows: parseTfFutures(got.text),
-    daily: parseTfDailyFutures(got.text),
-  };
+  const { payload } = await fetchFutures();
   if (!READONLY) await setMetaJson('futures', payload);
   return payload;
 }
