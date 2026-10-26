@@ -15,7 +15,7 @@ import { REGIONS, periodForRegion } from '../engine/regions.js';
 import { compareWithFixed, tallyWinners } from '../engine/compare.js';
 import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from '../omie/pipeline.js';
 import { civilDay } from '../omie/convert.js';
-import { allTariffs, comps, compRows, tarFor, quoteOne, today, vmeta } from '../tariffs.js';
+import { allTariffs, comps, compRows, loadPricing, tarFor, quoteOne, today, vmeta } from '../tariffs.js';
 import { json, fail, clientIp } from './respond.js';
 import { rateBucket, rlHeaders, rateLimited, RATE_DEFAULT } from './ratelimit.js';
 import { auth, issueSession } from './auth.js';
@@ -74,16 +74,22 @@ async function tar({ res, headers }) {
 // Dados da página /tabela: os tarifários em vigor com os preços, sem
 // cálculo nenhum.
 async function tabela({ res, headers }) {
+  const pricing = await loadPricing('CONT');
+  // Preços próprios das ilhas, à parte, por versão: vid → linhas.
+  const islandRows = new Map();
+  for (const r of await query(
+    `SELECT tariff_version_id, region, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh,
+            energy_only_eur_kwh, tar_eur_kwh
+     FROM price_component_region`)) {
+    if (!islandRows.has(r.tariff_version_id)) islandRows.set(r.tariff_version_id, []);
+    islandRows.get(r.tariff_version_id).push(r);
+  }
   const out = [];
   for (const t of await allTariffs()) {
     if (t.vid == null) continue; // sem versão em vigor (ex.: campanha acabada)
-    const cp = await comps(t.vid);
-    // Preços próprios das ilhas, à parte: { MAD: { prices, split }, … }.
-    // Só aparece para quem cobra diferente lá.
-    const regRows = await query(
-      `SELECT region, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh,
-              energy_only_eur_kwh, tar_eur_kwh
-       FROM price_component_region WHERE tariff_version_id = $1`, [t.vid]);
+    const cp = pricing.comps(t.vid);
+    // { MAD: { prices, split }, … }. Só aparece para quem cobra diferente lá.
+    const regRows = islandRows.get(t.vid) ?? [];
     const regionPrices = {};
     for (const region of [...new Set(regRows.map(r => r.region))].sort()) {
       const rp = compRows(regRows.filter(r => r.region === region), t.vid);
@@ -289,22 +295,15 @@ async function simulate({ req, res, headers }) {
     const spot = useSpot ? await spotAt(now) : null;
     // Cota cada tarifário. Se um falhar (dados errados, falta de TAR), fica
     // de fora com um aviso no log e os outros seguem ("quarentena").
-    // Correm 8 de cada vez: cada cotação faz várias queries, e 8 fica abaixo
-    // das 10 ligações do pool para sobrar para outros pedidos.
-    const CONCURRENCY = 8;
-    const results = new Array(list.length);
-    let next = 0;
-    const worker = async () => {
-      for (let i = next++; i < list.length; i = next++) {
-        const t = list[i];
-        try {
-          results[i] = await quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) } });
-        } catch (e) {
-          console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
-        }
+    const pricing = await loadPricing(region);
+    const results = list.map(t => {
+      try {
+        return quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) } }, pricing);
+      } catch (e) {
+        console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
+        return null;
       }
-    };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, list.length) }, worker));
+    });
     const data = results.filter(Boolean).sort((x, y) => x.totalEur - y.totalEur);
     const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
     json(res, 200, { at: now.toISOString(), kwh, region, omieRef: spot ? spot.omieKwh : omie, omieSpot: spot ? { utc: spot.utc, eurKwh: spot.omieKwh } : null, avg: Math.round(avg * 100) / 100, data }, headers);

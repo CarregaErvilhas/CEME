@@ -5,8 +5,9 @@
 //   - allTariffs(): todos os tarifários, com a versão em vigor num dia;
 //   - comps(): os preços de uma versão numa região;
 //   - tarFor(): a TAR em vigor;
+//   - loadPricing(): tudo isto de uma vez, para cotar muitos tarifários;
 //   - quoteOne(): junta tudo e devolve o cartão de um tarifário, com o total.
-import { query, get } from './db.js';
+import { query } from './db.js';
 import { quoteFixed } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { lossByPeriod } from './engine/losses.js';
@@ -48,13 +49,12 @@ export async function allTariffs(day = today()) {
 }
 
 // Os preços de uma versão numa região: { price, act, iec, sup, split }.
+// Para um pedido só (a página do indexado). Para muitos tarifários de uma
+// vez usa loadPricing(), que não faz uma query por tarifário.
 export async function comps(vid, region = 'CONT') {
   let rows = await query('SELECT * FROM price_component WHERE tariff_version_id = $1', [vid]);
-  // Nas ilhas, as linhas de price_component_region vêm DEPOIS das do
-  // Continente; como "a última vence", substituem-nas onde existirem.
   if (region && region !== 'CONT') {
-    const reg = await query('SELECT * FROM price_component_region WHERE tariff_version_id = $1 AND region = $2', [vid, region]);
-    rows = [...rows, ...reg];
+    rows = [...rows, ...await query('SELECT * FROM price_component_region WHERE tariff_version_id = $1 AND region = $2', [vid, region])];
   }
   return compRows(rows, vid);
 }
@@ -86,22 +86,63 @@ export const EGME_LEGAL = 0.1088; // €/carregamento, Regul. ERSE 7/2026 (em vi
 const EGME_PREVIOUS = 0.1572; // o valor legal de 2025
 export const egmeFlags = (act) => ({ egme_legal: EGME_LEGAL, activation_stale: Math.abs(act - EGME_PREVIOUS) < 1e-9 });
 
-// A TAR em vigor num dia para (região, tensão, período), ou null se não
-// houver. Para um dia anterior à primeira TAR conhecida, usa a mais antiga.
+// Escolhe, de entre as linhas da tabela `tar` de uma região, a TAR em vigor
+// num dia para (tensão, período), ou null se não houver. Para um dia
+// anterior à primeira TAR conhecida, usa a mais antiga.
+function pickTar(rows, voltage, period, day) {
+  let current = null, first = null;
+  for (const r of rows) {
+    if (r.voltage !== voltage || r.period !== period) continue;
+    if (r.valid_from <= day && (r.valid_to == null || r.valid_to > day)) {
+      if (!current || r.valid_from > current.valid_from) current = r;
+    } else if (r.valid_from > day && (!first || r.valid_from < first.valid_from)) {
+      first = r;
+    }
+  }
+  return (current || first)?.price_eur_kwh ?? null;
+}
+
+const tarRows = (region) => query('SELECT * FROM tar WHERE region = $1', [region]);
+
+// A TAR em vigor num dia para (região, tensão, período), ou null.
 export async function tarFor(region, voltage, period, day = today()) {
-  const row = await get(
-    `SELECT price_eur_kwh FROM tar
-      WHERE region = $1 AND voltage = $2 AND period = $3
-        AND valid_from <= $4 AND (valid_to IS NULL OR valid_to > $4)
-      ORDER BY valid_from DESC LIMIT 1`,
-    [region, voltage, period, day]
-  ) || await get(
-    `SELECT price_eur_kwh FROM tar
-      WHERE region = $1 AND voltage = $2 AND period = $3 AND valid_from > $4
-      ORDER BY valid_from ASC LIMIT 1`,
-    [region, voltage, period, day]
-  );
-  return row?.price_eur_kwh ?? null;
+  return pickTar(await tarRows(region), voltage, period, day);
+}
+
+// Carrega de uma vez tudo o que é preciso para cotar os tarifários numa
+// região: versões, preços (do Continente e, nas ilhas, os próprios da
+// região), cores das marcas e TAR. São 5 queries por pedido, em vez de
+// várias por tarifário.
+//
+// Devolve um objecto com funções que já não vão à BD:
+//   version(vid) → a linha de tariff_version
+//   comps(vid)   → { price, act, iec, sup, split } (vê compRows)
+//   brand(cemeId), tar(voltage, period, day)
+export async function loadPricing(region = 'CONT') {
+  const island = region && region !== 'CONT';
+  const [versions, rows, regRows, cemes, tars] = await Promise.all([
+    query('SELECT * FROM tariff_version'),
+    query('SELECT * FROM price_component'),
+    island ? query('SELECT * FROM price_component_region WHERE region = $1', [region]) : [],
+    query('SELECT id, brand_color FROM ceme'),
+    tarRows(region),
+  ]);
+  const byVersion = new Map();
+  // Nas ilhas, as linhas de price_component_region vêm DEPOIS das do
+  // Continente; como "a última vence" (em compRows), substituem-nas onde
+  // existirem.
+  for (const r of [...rows, ...regRows]) {
+    if (!byVersion.has(r.tariff_version_id)) byVersion.set(r.tariff_version_id, []);
+    byVersion.get(r.tariff_version_id).push(r);
+  }
+  const versionById = new Map(versions.map(v => [v.id, v]));
+  const brandById = new Map(cemes.map(c => [c.id, c.brand_color]));
+  return {
+    version: (vid) => versionById.get(vid) ?? null,
+    comps: (vid) => compRows(byVersion.get(vid) ?? [], vid),
+    brand: (cemeId) => brandById.get(cemeId) || '#666',
+    tar: (voltage, period, day) => pickTar(tars, voltage, period, day),
+  };
 }
 
 // Cota UM tarifário: devolve os dados para o cartão dele, com o total em €
@@ -112,16 +153,17 @@ export async function tarFor(region, voltage, period, day = today()) {
 //   kwh, region
 //   omie, omieVazio, omieFora, omieCycles: o OMIE de referência (€/kWh)
 //   spot:  { omieKwh, loss } do quarto de hora do carregamento, se houver
-export async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot }) {
-  const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
-  const { price, act, iec, sup, split } = await comps(t.vid, region);
+//   pricing: o resultado de loadPricing(region)
+export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot }, pricing) {
+  const ver = pricing.version(t.vid);
+  const { price, act, iec, sup, split } = pricing.comps(t.vid);
   const meta = {
     id: t.id, ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
     schedule: t.schedule, cycle: t.cycle, green: !!t.green, access: t.access,
     bundle: !!t.bundle, popular: !!t.popular, estimated: /~$/.test(t.name),
     source_url: t.source_url, valid_from: ver?.valid_from || null,
     notes: ver?.notes || null,
-    brand: (await get('SELECT brand_color FROM ceme WHERE id = $1', [t.ceme_id]))?.brand_color || '#666',
+    brand: pricing.brand(t.ceme_id),
   };
   if (t.kind === 'FIXED') {
     const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region, split });
@@ -131,12 +173,10 @@ export async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieF
   // fixos. Nas ilhas o mercado ibérico não chega; usa-se o OMIE do
   // Continente e o cartão leva o aviso OMIE_CONT_REF.
   const here = REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF';
-  // A TAR é a da região do carregamento. Sem TAR, erro (quarentena).
-  const tarOf = async (per) => {
-    const tar = await tarFor(region, t.voltage, per, day);
-    if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${day}`);
-    return tar;
-  };
+  // Um indexado SIMPLES (preço único) precisava de uma regra para a TAR,
+  // que é bi-horária. Não há nenhum no seed; se aparecer, fica de quarentena
+  // em vez de sair com um preço inventado.
+  if (t.schedule === 'SIMPLES') throw new Error('indexado SIMPLES não suportado');
   const vm = vmeta(t.id);
   // Perdas médias de cada período nesse dia (vê engine/losses.js).
   const lossPer = lossByPeriod(t.voltage, at, d => periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at: d }), `${region}|${t.schedule}|${t.cycle}`);
@@ -159,20 +199,14 @@ export async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieF
   // Aqui a separação energia + TAR é exacta: a TAR é uma parcela da fórmula.
   const splitIdx = {};
   for (const per of ['VAZIO', 'FORA_VAZIO']) {
-    const oref = spotKwh ?? omieForPeriod(per);
-    const tar = await tarOf(per);
-    const tarEurKwh = tar ?? 0;
-    const price = indexedPrice({ omieEurKwh: oref, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: spot?.loss ?? lossPer?.[per] ?? vm.loss, formula: vm.formula }).price;
+    // A TAR é a da região do carregamento. Sem TAR, erro (quarentena).
+    const tar = pricing.tar(t.voltage, per, day);
+    if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${day}`);
+    const price = indexedPrice({ omieEurKwh: spotKwh ?? omieForPeriod(per), kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tar, loss: spot?.loss ?? lossPer?.[per] ?? vm.loss, formula: vm.formula }).price;
     out[per] = price;
-    splitIdx[per] = tar == null ? null : { energy: price - tar, tar };
+    splitIdx[per] = { energy: price - tar, tar };
   }
   const omieRef = spotKwh ?? ((agg === 'SPLIT_VAZIO_FORA') ? (pair.vazio ?? omie) : omie);
-  // Um indexado SIMPLES precisaria de um preço UNICO, que este código não
-  // calcula. Não há nenhum no seed; se aparecer, usa-se o de fora de vazio
-  // como aproximação (vê docs/06).
-  if (t.schedule === 'SIMPLES' && out.UNICO == null) {
-    out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
-  }
   const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region, split: splitIdx });
   return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: spot?.loss ?? lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], omieSpot: spotKwh != null, lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }

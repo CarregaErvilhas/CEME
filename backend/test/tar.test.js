@@ -12,6 +12,7 @@ process.env.DB_PATH = path.join(mkdtempSync(path.join(tmpdir(), 'ceme-tar-test-'
 const { exec, run, get, query } = await import('../src/db.js');
 const { TAR, syncTar } = await import('../src/db/tar.js');
 const { REGIONS } = await import('../src/engine/regions.js');
+const { tarFor, loadPricing } = await import('../src/tariffs.js');
 await exec(readFileSync(new URL('../src/db/schema.sql', import.meta.url), 'utf8'));
 
 describe('TAR no arranque', () => {
@@ -28,5 +29,16 @@ describe('TAR no arranque', () => {
     await syncTar();
     const row = await get(`SELECT price_eur_kwh FROM tar WHERE valid_from = $1 AND region = 'MAD' AND voltage = 'BT' AND period = 'VAZIO'`, [valid_from]);
     assert.equal(row.price_eur_kwh, prices.BT.VAZIO);
+  });
+
+  it('escolhe a TAR em vigor no dia; antes da primeira, usa a mais antiga', async () => {
+    const { valid_from, prices } = TAR[0];
+    await run(`INSERT INTO tar (valid_from, region, voltage, period, price_eur_kwh) VALUES ('2099-01-01', 'CONT', 'BT', 'VAZIO', 1)`);
+    assert.equal(await tarFor('CONT', 'BT', 'VAZIO', '2098-12-31'), prices.BT.VAZIO);
+    assert.equal(await tarFor('CONT', 'BT', 'VAZIO', '2099-01-01'), 1);
+    assert.equal(await tarFor('CONT', 'BT', 'VAZIO', '1999-01-01'), prices.BT.VAZIO, `antes de ${valid_from}`);
+    const pricing = await loadPricing('CONT');
+    assert.equal(pricing.tar('BT', 'VAZIO', '2099-06-01'), 1);
+    assert.equal(pricing.tar('BT', 'UNICO', '2099-06-01'), null);
   });
 });
