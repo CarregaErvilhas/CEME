@@ -5,7 +5,7 @@
 // devolve '2026-10-15'. Estes testes garantem que os dois devolvem o mesmo.
 //
 // Um teste end-to-end contra um Postgres real continua a faltar (ver
-// docs/08, Passo 6): aqui só se garante o que se consegue garantir sem
+// docs/06): aqui só se garante o que se consegue garantir sem
 // servidor — o comportamento do cliente (parsers de tipo) e a paridade da
 // semântica SQL entre os dois dialetos.
 import test from 'node:test';

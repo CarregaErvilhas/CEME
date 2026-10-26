@@ -1,53 +1,54 @@
 # Preview environments por PR (manual, opcional)
 
-Ambientes efémeros para **ver o conteúdo de uma PR a correr** sem tocar em
-produção. Trigger manual, destruição manual. Pensado para review de PRs de
-novos frontends.
+Ambientes temporários para **veres uma PR a correr** sem tocar em
+produção. Crias e destróis à mão. Dá jeito para rever PRs que mexem no
+frontend.
+
+> Os scripts `scripts/preview-create.sh` e `preview-destroy.sh` ainda têm os
+> comandos comentados (falta validar a versão do `zcli`). Hoje, correr o
+> script só imprime os passos: segue-os à mão.
 
 ## Princípios
 
-- **Produção não é tocada.** O preview tem o seu próprio projeto Zerops
+- **Produção não é tocada.** O preview tem o seu próprio projecto Zerops
   (`ceme-v2-pr-<N>`), com `api` + `db` próprios.
-- **DB por snapshot, não por seed**, quando se quer paridade com a produção
-  (edições manuais via MCP). Alternativa: seed bootstrap (mais simples, sem
-  dados sensíveis). Escolher com o flag `USE_SNAPSHOT`.
-- **Modo readonly opcional** (`CEME_READONLY=1`) para apontar o preview a uma
-  DB de produção readonly — só para PRs do próprio mantenedor, nunca para
-  contribuidores externos (risco de exfiltração).
-- **Destruição obrigatória** ao fechar/merge a PR.
+- **BD a partir de uma cópia da produção** quando queres os mesmos dados
+  (incluindo edições feitas à mão), ou **a partir do seed**, que é mais
+  simples e não leva dados sensíveis. Escolhes com `USE_SNAPSHOT`.
+- **Modo readonly opcional** (`CEME_READONLY=1`) para o preview ler
+  directamente a BD de produção, sem escrever. Só para PRs do próprio
+  mantenedor, nunca de contribuidores externos (podiam tirar dados).
+- **Destrói sempre** o preview quando a PR fecha ou entra no `main`.
 
-## Porque existe `CEME_SKIP_SEED` (o seed não é "ignore")
+## Porque existe `CEME_SKIP_SEED`
 
 O seed (`backend/src/db/seed.postgres.js` e `seed.js`) é **convergente**:
-faz `INSERT ... ON CONFLICT (...) DO UPDATE SET ...` — re-aplica os valores do
-seed sobre as linhas existentes. Não é "só insere se não existir". Correr o
-seed contra uma DB com snapshot (ou com edições manuais via MCP)
-**sobrescreve** os tarifários com os valores do seed, apagando as edições.
+faz `INSERT ... ON CONFLICT (...) DO UPDATE SET ...`, ou seja, volta a
+escrever os valores do seed por cima das linhas que já existem. Se o
+correres contra uma cópia da produção, **apaga** as edições feitas à mão.
 
-Daí:
+Por isso:
 - Preview por seed → deixa o seed correr (comportamento por defeito).
 - Preview por snapshot → `CEME_SKIP_SEED=1` (salta o seed, mantém schema +
   tar; o snapshot preserva-se).
 - Preview readonly em prod → `CEME_READONLY=1` (salta tudo que escreve).
 
-## Zerops backup vs. dump manual (net fraca)
+## Copiar dados da produção
 
-O Zerops tem backups nativos por serviço (UI + `zcli backup create`), mas:
-- A chave de encriptação é **por projecto** (X25519). Quando o projecto é
-  apagado, a chave é destruída após 7 dias → backups do projecto prod não
-  são restauráveis noutro projecto.
-- O restore é "download + ferramentas do serviço" (pg_restore), via VPN ou
-  durante deploy. Não há restore cross-project automático.
+Os backups do Zerops não servem para isto: a chave de encriptação é **por
+projecto**, por isso um backup da produção não se restaura noutro projecto,
+e o restore é manual (descarregar + `pg_restore`). Faz antes um dump
+selectivo.
 
-**Não** faças dump da DB inteira. Exclui:
+**Não** copies a BD inteira. Deixa de fora:
 
-- as tabelas do OMIE (`omie_spot`, `omie_daily`, `omie_meta`) — o backend
-  re-ingere-as **a pedido**, no primeiro pedido OMIE (docs/03). O
-  `omie_meta` tem mesmo de ficar de fora: leva o `last_refresh` e o ETag da
-  produção, e o preview achava-se "fresco" com as tabelas vazias (e o omie.es
-  respondia 304 sem dados);
+- as tabelas do OMIE (`omie_spot`, `omie_daily`, `omie_meta`): o backend
+  volta a enchê-las no primeiro pedido ([03](03-omie-ingestao.md)). O
+  `omie_meta` tem mesmo de ficar de fora: leva a hora da última
+  actualização e o ETag da produção, e o preview achava que os dados
+  estavam frescos com as tabelas vazias;
 - as tabelas de credenciais e de utilizadores (`api_key`, `api_client`,
-  `audit_log`, `suggestion`) — um preview não leva hashes de chaves da
+  `audit_log`, `suggestion`): um preview não leva hashes de chaves da
   produção.
 
 Só precisas das tabelas de referência (ceme, tariff, tariff_version,
@@ -62,15 +63,15 @@ pg_dump "$PROD_DB_URL" --no-owner --no-acl --format=custom --compress=9 \
   -f /tmp/ceme-prod.dump
 ```
 
-Se a net for mesmo fraca, podes restaurar via **VPN do Zerops** (acesso
-directo ao db do preview) em vez de download/upload de ficheiros.
+Com a rede fraca, podes restaurar através da **VPN do Zerops** (acesso
+directo à BD do preview) em vez de descarregar e enviar ficheiros.
 
 ## Pré-requisitos
 
 - `zcli` instalado e autenticado (`zcli login`).
 - `psql`/`pg_dump`/`pg_restore` no PATH (para snapshot).
 - Acesso readonly à DB de produção (opcional, só para snapshot/readonly).
-- Token Zerops com escopo ao projecto de previews (ou usar a conta pessoal).
+- Token Zerops com acesso ao projecto de previews (ou a conta pessoal).
 - IPv6 do projecto de produção **não** é necessário para previews.
 
 ## Variáveis de ambiente (shell)
@@ -156,9 +157,9 @@ Se preferires não copiar dados (só leitura da BD de produção):
 - Nada é escrito na BD: o bootstrap salta schema/seed/TAR/chave, o OMIE não
   ingere nem grava derivados (as estatísticas calculam-se em memória), e o
   `run()` do `db.js` recusa qualquer escrita que escape (docs/03).
-- `zerops.yml` define `DATABASE_URL: ${db_connectionString}`; confirmar que o
-  valor do preview se sobrepõe (precedência das envs do Zerops — não
-  verificado).
+- `zerops.yml` define `DATABASE_URL: ${db_connectionString}`; confirma que o
+  valor do preview se sobrepõe (a ordem de precedência das variáveis no
+  Zerops ainda não foi testada).
 - **Atenção:** o preview passa a ler dados de produção. Só para PRs do
   próprio mantenedor, nunca para contribuidores externos.
 
@@ -205,22 +206,20 @@ rm -f /tmp/ceme-prod.dump /tmp/preview-import.yaml
 Se o projecto não for destruído, continua a consumir recursos (e a custar
 dinheiro) enquanto existir.
 
-## Automação futura
+## Automatizar
 
-Este roteiro é manual. Se o volume de PRs justificar, automatizar via
-GitHub Actions (`workflow_dispatch` ou `pull_request`) com um token Zerops
-de escopo mínimo guardado como secret do repositório — contraria o princípio
-"sem credencial Zerops no GitHub" (infra.md §4.2), por isso só vale a pena
-com volume alto.
+Este procedimento é manual. Automatizá-lo no GitHub Actions obrigava a
+guardar um token do Zerops no GitHub, que hoje não tem nenhum
+(`infra.md` §4.2). Só compensa com muitas PRs.
 
-## Como o agent (OpenCode) deve executar
+## Como um agente (OpenCode, Claude Code) deve executar isto
 
 Quando o utilizador pedir "criar preview da PR #N":
 
 1. Ler este documento e `infra.md` §2-3.
 2. Perguntar ao utilizador: snapshot ou seed? readonly prod ou não? domínio custom ou URL default do Zerops?
 3. Recolher variáveis em falta (PR_NUMBER, PROD_DB_URL se snapshot) **sem** as escrever em ficheiros do repo.
-4. Executar os passos de `scripts/preview-create.sh` um a um, parando em cada comando destrutivo/externo para confirmação. **Atenção:** os scripts são **esqueletos** — os comandos `zcli`/`pg_dump`/`pg_restore`/`gh` estão comentados (falta validar a versão do `zcli`); correr o script tal como está só imprime os passos.
+4. Executar os passos de `scripts/preview-create.sh` um a um, parando em cada comando destrutivo ou externo para confirmação (os comandos estão comentados no script; vê a nota no topo).
 5. Nunca executar `zcli project delete` ou alterações de DNS sem confirmação explícita.
 6. Após criação, comentar a PR com o URL (via `gh pr comment` ou instruir o utilizador).
 7. Registar o `ZEROPS_PROJECT_ID` devolvido para posterior destruição (guardar fora do repo, ex: `~/.ceme-previews`).
@@ -228,7 +227,7 @@ Quando o utilizador pedir "criar preview da PR #N":
 Quando o utilizador pedir "destruir preview da PR #N":
 
 1. Confirmar o `ZEROPS_PROJECT_ID`.
-2. Executar os passos de `scripts/preview-destroy.sh` (também um esqueleto — ver acima).
+2. Executar os passos de `scripts/preview-destroy.sh` (também com os comandos comentados).
 3. Confirmar destruição (listar projectos Zerops).
 
 ## Checklist de segurança

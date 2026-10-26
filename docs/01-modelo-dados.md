@@ -1,82 +1,131 @@
 # 01 — Modelo de dados
 
-## Fontes
+Aqui tens as tabelas da base de dados e o que cada uma guarda. As colunas
+estão comentadas nos schemas, `backend/src/db/schema.sql` (SQLite) e
+`schema.postgres.sql` (PostgreSQL). Se algum termo te soar estranho, vê o
+[glossário](00-glossario.md).
 
-- **Sheet** `1WMaiaShTwp1-QzWXi-SlcB3uTigp5nfYO-v3veCcn84` (34 tabs) — export
-  integral em `ceme-v2-deep/fonte/simulador-original.xlsx` + dumps TSV.
-- **ERSE** — diretivas de TAR/EGME/IEC/IVA (introduzidas manualmente 1×/ano).
-- **OMIE / REN / tiagofelicia.pt** — séries de preço (ver `03`).
+## De onde vêm os dados
 
-## Tabelas
-
-| tabela | conteúdo |
-|---|---|
-| `ceme` | 24 comercializadores (nome, cor, site) |
-| `tariff` | os tarifários (CEME, nome, fixo/indexado, tensão, ciclo, verde, bundle, regiões, URL fonte) |
-| `tariff_version` | versão com `valid_from`/`valid_to`, `k_index_eur_mwh`, `cgs_eur_mwh`, `omie_aggregation`, estado. Chave única `(tariff_id, valid_from)`: uma versão por tarifário e data. `valid_from` no seed é a **data de captura** (`SHEET_SNAPSHOT`), não a data de início do contrato — a folha CEME não tem coluna de datas |
-| `price_component` | preço €/kWh por período + `activation_eur` (EGME) + `support_eur` + `iec_eur_kwh`. `energy_eur_kwh` é o preço **final** que o CEME publica (já com a TAR dentro); `energy_only_eur_kwh` + `tar_eur_kwh` são a decomposição **quando a folha a tinha** (o CEME publicava a energia à parte) — NULL quando não a temos, porque não se inventa. Estas são as linhas de omissão = Continente |
-| `price_component_region` | os mesmos componentes, mas POR REGIÃO (`MAD`/`AZO`): só as linhas onde o CEME cobra diferente nas ilhas (ex.: a Enable, energia 0,15 vs 0,12). Sobrepondo-se às de omissão na leitura (`comps(vid, region)`); um tarifário sem linhas aqui cota-se com o preço do Continente em qualquer região |
-| `tar` | TAR por região/tensão/período, versionada |
-| `omie_daily` | agregados diários materializados a partir de `omie_spot`: `avg_pt`, `min_pt`, `max_pt` e as quatro médias por ciclo (`bd_v`/`bd_f`/`bs_v`/`bs_f`) — é o que serve `/v1/omie/daily` |
-| `omie_spot` | quartos-horários, um por linha, indexados pelo **instante UTC** (`ts_utc`) e pela fonte (`source`: `OMIE_ES` ou `TF`) |
-| `omie_meta` | estado da ingestion: quando foi o último refresh, o ETag do ficheiro oficial (para o pedido condicional), o payload das estatísticas e o lock entre réplicas |
-
-`omie_spot`, `omie_daily` e `omie_meta` são o **store** do OMIE: o backend
-busca o omie.es (primária) e o TF (secundária), reconcilia por instante e
-guarda aqui — ver `03-omie-ingestao.md`.
-
-Criadas no schema mas ainda sem uso (fase 2):
-
-| tabela | para quê | em uso? |
+| dados | origem | como entram |
 |---|---|---|
-| `loss_profile` | perdas E-REDES por DSO, tensão e quarto de hora | não (roadmap) |
-| `suggestion` | sugestões da comunidade / portal CEME (fila de moderação) | não (fase 2) |
-| `api_client`, `api_key` | chaves para terceiros (só o hash fica na BD) | **sim** — a chave da env (docs/04) |
-| `audit_log` | quem mudou o quê, e quando | não (fase 2) |
+| CEME, tarifários, preços | páginas públicas de cada CEME | escritos à mão no seed (`backend/src/db/seed.js`) |
+| TAR | ERSE | escrita à mão em `server.js` (`TAR_2026`) |
+| taxa de activação legal | ERSE | constante `EGME_LEGAL` em `server.js` |
+| IVA por região | Código do IVA | `REGIONS` em `engine/regions.js` |
+| perdas na rede | E-REDES | `engine/losses-<ano>.json`, gerado por `scripts/etl-perdas.py` |
+| preços OMIE | omie.es e dados.tiagofelicia.pt | ingestão automática ([03](03-omie-ingestao.md)) |
 
-Nota: `omie_quarter` nunca existiu no schema — o nome certo é `omie_spot`.
-## Decisões
+## As tabelas
 
-1. **Versionamento temporal.** Um tarifário é um conjunto de versões com
-   validade; passado, presente e futuro resolvem-se com a mesma query. A
-   versão em vigor é a de `valid_from <= dia < valid_to` (ou `valid_to`
-   nulo), com o dia civil em Portugal (nunca `CURRENT_DATE` da BD). Uma
-   campanha é uma versão com `valid_to`: as que acabaram estão em
-   `CAMPAIGN_END` (seed), com `campaign = 1` e `status = 'EXPIRED'` — e
-   saem do simulador no dia seguinte ao fim.
-2. **`omie_aggregation` é dado, não constante.** Ver `02-motor-calculo.md`:
-   `SPLIT_VAZIO_FORA` (média por banda, no ciclo do tarifário) ou `UNICA`
-   (média única).
-3. **A EGME (`activation_eur`) é o que o CEME publica**, à data da
-   verificação — um único significado, sem substituição no código. O valor
-   legal em vigor fica como referência (`EGME_LEGAL` em `server.js`); quando
-   o publicado é ainda o valor legal anterior (`EGME_PREVIOUS`), a API
-   devolve `activation_stale: true` e `egme_legal`, e o cartão mostra o
-   aviso. Valores próprios acima do legal são legítimos e não se marcam. Quem cobra o quê está no seed
-   (`TARIFFS`), não aqui. Auditado por teste — ver `backend/test/poc.test.js`.
+### Tarifários
 
-   Correcções de valores: hoje são feitas **na versão existente** (o seed é
-   convergente — ver abaixo), com a razão no histórico do git do seed. Uma
-   nova `tariff_version` só quando interessa guardar o preço antigo com a sua
-   validade (ex. campanhas).
-4. **Fixos incluem a TAR.** O `energy_eur_kwh` do sheet é o preço final
-   (energia + TAR), pelo que a tabela `tar` **não** se soma aos fixos; serve
-   para auditoria e para os indexados. Só o indexado compõe
-   `(OMIE + K + CGS) × (1 + perdas) + TAR`.
-5. **Ativação = EGME, e é o valor do sheet.** O seed tinha um bug que zerava
-   `act`/`support`/`iec` nos indexados — corrigido em 2026-10-18, com teste de
-   auditoria.
-6. **Regiões como dimensão de primeira classe** (`region` na API e na tabela
-   `tar`): IVA, fuso e janelas próprias; a TAR procura-se pela região (os
-   valores da ERSE são os mesmos nas três — docs/07). O `regions` do
-   tarifário é informação ("comercializado em"), não filtro.
+| tabela | o que guarda |
+|---|---|
+| `ceme` | os comercializadores: nome, cor da marca, site |
+| `tariff` | os tarifários: CEME, nome, fixo/indexado, tensão, ciclo, as etiquetas (verde, com condições, popular), as regiões onde é vendido e o URL onde o preço está publicado |
+| `tariff_version` | as versões de cada tarifário no tempo (vê abaixo), com os parâmetros dos indexados (K, CGS) |
+| `price_component` | os preços de cada versão, uma linha por período, para o Continente |
+| `price_component_region` | preços próprios das ilhas, só para os CEME que cobram diferente lá |
+| `tar` | a TAR por região, tensão e período, com validade |
 
-## Migração do sheet
+### OMIE
 
-`backend/src/db/seed.js` é **convergente**: um upsert
-(`ON CONFLICT … DO UPDATE`) que actualiza os valores que mudaram em cada
-arranque — e que deixa `valid_to` em paz, para não reabrir o que um operador
-fechou. `rm -rf backend/data` e arrancar o servidor recria a BD do zero. As
-contagens esperadas de CEME e tarifários estão congeladas no
-`golden.test.js` («cobertura do seed»); o `seed-parity.test.js` garante que
-o seed do Postgres tem os mesmos dados.
+| tabela | o que guarda |
+|---|---|
+| `omie_spot` | um preço por quarto de hora e por fonte, com a chave no instante UTC |
+| `omie_daily` | resumo de cada dia: média, mínimo, máximo e as médias de vazio e fora de vazio em cada ciclo (é o que `/v1/omie/daily` devolve) |
+| `omie_meta` | pares chave/valor com o estado da ingestão: hora da última actualização, ETag do ficheiro oficial, estatísticas já calculadas, futuros, o lock entre instâncias |
+
+### API
+
+| tabela | o que guarda |
+|---|---|
+| `api_client` | clientes da API (apps de terceiros), com o rate limit de cada um |
+| `api_key` | as chaves de cada cliente; só o hash sha256, nunca a chave |
+
+### Por usar
+
+Estas tabelas existem no schema mas o código ainda não as usa. Estão aqui
+para funcionalidades do [roadmap](06-roadmap.md):
+
+| tabela | para quê |
+|---|---|
+| `loss_profile` | perfis de perdas na BD (hoje vêm de um ficheiro JSON) |
+| `suggestion` | sugestões de correcção enviadas pela comunidade |
+| `audit_log` | registo de quem mudou o quê |
+
+## Como funcionam as versões
+
+Um tarifário pode mudar de preço. Em vez de apagares o preço antigo, crias
+uma versão nova com datas:
+
+- `valid_from`: o primeiro dia em que a versão vale;
+- `valid_to`: o dia em que deixa de valer (exclusivo), ou vazio se ainda
+  vale.
+
+A versão em vigor num dia é a que tem `valid_from <= dia` e
+(`valid_to` vazio ou `dia < valid_to`). "Dia" é sempre o dia de calendário
+na região do carregamento, calculado pelo código (`civilDay()`), nunca o
+`CURRENT_DATE` da BD (que dá o dia em UTC).
+
+Uma **campanha** é uma versão com fim marcado (`campaign = 1`). As que já
+acabaram estão em `CAMPAIGN_END` no seed, ficam com `status = 'EXPIRED'` e
+desaparecem do simulador no dia a seguir ao fim.
+
+Hoje todas as versões do seed têm o mesmo `valid_from`: a data em que os
+preços foram verificados (`SHEET_SNAPSHOT`). Não sabemos quando cada
+contrato começou, e a interface mostra "preços verificados em", não "em
+vigor desde".
+
+Para corrigires um valor, mudas o seed e o próximo arranque actualiza a
+versão existente. Só crias uma versão nova quando interessa guardar o preço
+antigo com a sua validade (por exemplo, uma campanha).
+
+## Os preços (`price_component`)
+
+Cada versão tem uma linha por período: `VAZIO` e `FORA_VAZIO` nos
+bi-horários, `UNICO` nos simples.
+
+- **`energy_eur_kwh`** é o preço **final** que o CEME publica, já com a TAR
+  dentro e sem IVA. É o que entra na conta dos fixos.
+- **`energy_only_eur_kwh`** e **`tar_eur_kwh`** são o mesmo preço partido
+  em energia + TAR. Só existem quando o CEME publica a separação; senão
+  ficam NULL. Não inventamos a separação, porque a diferença seria uma
+  conta nossa e o CEME pode ter usado uma TAR diferente da actual.
+- **`activation_eur`** é a taxa de activação por carregamento, tal como o
+  CEME a publica.
+- **`support_eur`** e **`iec_eur_kwh`**: o apoio por carregamento e o IEC.
+
+A taxa de activação, o apoio e o IEC são do tarifário, não do período, mas
+repetem-se em todas as linhas. Se divergirem entre linhas, os dados estão
+errados e o tarifário vai para a quarentena (`db/components.js`).
+
+Os indexados não têm preço guardado (é calculado na hora), mas têm uma
+linha `VAZIO` com a taxa de activação, o apoio e o IEC.
+
+## Preços das ilhas (`price_component_region`)
+
+Quando um CEME cobra diferente na Madeira ou nos Açores, as linhas dessa
+região ficam em `price_component_region`, com as mesmas colunas. Na
+leitura, sobrepõem-se às do Continente (`comps(vid, region)` em
+`server.js`). Um tarifário sem linhas aqui usa o preço do Continente em
+qualquer região.
+
+## Regiões
+
+As três regiões (`CONT`, `MAD`, `AZO`) têm IVA, fuso e horários próprios
+([07](07-ilhas.md)). A coluna `tariff.regions` diz onde o tarifário é
+**vendido**, mas é só informação: o simulador cota todos os tarifários em
+qualquer região e o cartão mostra onde cada um é vendido.
+
+## O seed
+
+`backend/src/db/seed.js` (e o gémeo `seed.postgres.js`) corre em cada
+arranque e é **convergente**: insere o que falta e actualiza o que mudou.
+Não mexe em `valid_to`, para não reabrir uma versão que alguém fechou à mão.
+
+Se apagares `backend/data/` e arrancares o servidor, a BD local é recriada
+do zero. As contagens esperadas de CEME e tarifários estão no
+`golden.test.js` («cobertura do seed»), e o `seed-parity.test.js` garante
+que os dois seeds têm os mesmos dados.

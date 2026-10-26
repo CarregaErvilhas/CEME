@@ -1,23 +1,27 @@
-# Memória: verificação de tarifas CEME publicadas vs seed/DB (ceme-v2)
+# Verificar as tarifas publicadas pelos CEME contra o seed
 
-Projecto: `/Users/fernando.pereira/tmp/opencode/ceme-v2/`. Ficheiros-chave:
+Guia para um agente (ou para ti) confirmar que os preços do seed batem com o
+que cada CEME publica. Usado pelo comando `/ceme-check`
+(`.opencode/commands/ceme-check.md`). Caminhos relativos à raiz do repo.
+
+Ficheiros-chave:
 - `backend/src/db/seed.js` — CEMES, SPLITS (energia+TAR), TARIFFS (finais c/ TAR, act), @@@ act.
 - `backend/src/db/seed.postgres.js` — duplicado de TARIFFS; **SPLITS é importado do seed.js** (`import { SPLITS } from './seed.js'`) — só editar TARIFFS aqui.
 - `backend/data/ceme.db` — SQLite: `ceme(id, website)`, `tariff(id, ceme_id, kind, voltage, source_url)`, `tariff_version(id, tariff_id→tariff.id, k_index_eur_mwh, cgs_eur_mwh)`, `price_component(tariff_version_id, period, energy_eur_kwh=final c/ TAR, activation_eur, energy_only_eur_kwh, tar_eur_kwh)`.
-- Última verificação completa: **2026-10-22** (ver o histórico do git do seed.js: `git log -p backend/src/db/seed.js`).
+- Quando foi a última verificação e o que mudou: `git log -p backend/src/db/seed.js`.
 
 ## Comando
 Existe o comando `/ceme-check` (`.opencode/commands/ceme-check.md`) que carrega esta memória. Argumentos opcionais: `/ceme-check galp` (só um CEME) ou `/ceme-check update` (aplicar updates autorizadas).
 
-## Filosofia do seed
+## Regras do seed
 - `energy_eur_kwh` = preço **final** (energia + TAR, s/ IVA). `energy_only`/`tar` só quando o CEME/sheet separava; "não se inventa" decomposição.
-- `act` = taxa por carregamento **publicada pelo CEME** (às vezes ≥ legal 0.1088 → flag `activation_stale` na API; intencional, não "corrigir" por razões regulatórias — só actualizar se a página do CEME passar a publicar outro valor).
-- Página ≠ sheet: quando drift confirmado E o utilizador autoriza, actualiza-se seed+DB e comenta-se no cabeçalho do seed.js a data/fonte.
+- `act` = taxa por carregamento **publicada pelo CEME**. Pode estar acima do valor legal (`EGME_LEGAL` em `server.js`); não se "corrige" por razões regulatórias. Só muda se a página do CEME passar a publicar outro valor.
+- Quando a página diverge do seed E o utilizador autoriza, actualiza-se o seed (os dois ficheiros) e a BD. A fonte e a data ficam na mensagem do commit.
 
-## Valores de referência (2026)
-- TAR mobilidade (cõ TAR por kWh): BT Vazio **0.0266** / Fora **0.1192**; MT V **0.0157** / F **0.0812**; AT 0.0140/0.0692; MAT 0.0134/0.0664.
-- EGME legal: **0.1088 €/carregamento** (Regul. ERSE 7/2026, 2026-01-01). Valor 2025 antigo: 0.1572.
-- IVA 23% (CONT).
+## Valores de referência
+- TAR da mobilidade: `TAR_2026` em `backend/src/server.js`.
+- Taxa de activação legal: `EGME_LEGAL` em `backend/src/server.js`.
+- IVA por região: `REGIONS` em `backend/src/engine/regions.js`.
 
 ## Dump de expectativas da DB (primeiro passo)
 ```sh
@@ -29,16 +33,16 @@ LEFT JOIN tariff_version tv ON tv.tariff_id = t.id
 LEFT JOIN price_component p ON p.tariff_version_id = tv.id
 ORDER BY t.ceme_id, t.id, p.period COLLATE NOCASE;"
 ```
-(⚠️ usar caminho absoluto ou cd correcto — já falhou por cwd.)
+(Corre a partir da raiz do repo, ou usa o caminho absoluto da BD.)
 
-## Classificação dos CEMEs (método × CEME, verificado 2026-10-22)
-curl estático (valores no HTML): edp(nov 2026? valores só via JS — usar browser), enable (página /condutores, 2026-10-24: publica ENERGIA — 0,12 €/kWh no Continente e 0,15 €/kWh na Madeira/Açores, "exclui tarifa OPC, taxas e impostos (TAR, EGME, IEC e IVA)"; ciclo bi-horário semanal; o final vem do somatório energia+TAR — REGION_SPLITS no seed), evaz (tabela PricesTable no HTML), goldenergy (0,2222/0,2778 em goldenergy.pt/**mobilidade-eletrica/** — não no blog), luzigas (K's: 0.05 ceme / 0.005 casa; CGS), meo (0,2250 M5/M4 + 0,2500 M3/M2; base 0.195=Colaboradores só no sheet/app), repsol (0,2868), viaverde (energia 0,148), bluecharge (home).
+## Como ler os preços de cada CEME
+curl estático (valores no HTML): enable (página /condutores: publica só a ENERGIA, um valor no Continente e outro nas ilhas, e diz que exclui TAR, EGME, IEC e IVA; o final é energia + TAR, com REGION_SPLITS no seed), evaz (tabela PricesTable no HTML), goldenergy (em goldenergy.pt/**mobilidade-eletrica/**, não no blog), luzigas (K e CGS), meo (preços por escalão; o tarifário "Colaboradores" não aparece no site), repsol, viaverde (publica a energia), bluecharge (página inicial).
 
-Imagens PNG de tarifário (download + read da imagem): charge2go (`/tarifarios/` → img desktop `TARIFARIOS-*.png`, energia 0,1697 s/ TAR; ⚠️ há `mobile_image` antigo a par, ignorar), evpower (`/particulares/` → `tarifario_janeiro_2026.png`), acp (página mostra só nota TAR; valores via screenshot do user).
+Imagens PNG de tarifário (download + read da imagem): charge2go (`/tarifarios/` → imagem desktop `TARIFARIOS-*.png`, energia sem TAR; ⚠️ há uma `mobile_image` desactualizada ao lado, ignora-a), evpower (`/particulares/` → imagem `tarifario_*.png`), acp (a página só mostra uma nota sobre a TAR; os valores vêm de um screenshot pedido ao utilizador).
 
 PDFs (pypdf, em subagent se conveniente): galp (`galp-electric-tabela-precos-descontos-MMYY.pdf`, ligado de cartao-galpelectric-info), prio (prio.pt/downloads/file422_pt.pdf), factorenergia (`Tabela-precos-vecard-jan-2026-novo-logo.pdf`, ligado em factorenergia.pt/servicos/cartao-mobilidade-eletrica/), mobismart (`mobismart.pt/precos/EVCE-Tabela-precos-CEME-energia_PT.pdf`).
 
-JS/React (browser `tools.browser.evaluate` + `document.body.innerText`): miio (`/pt/prices/charging`, energia fixa 0,24; miio one = −0,07), atlante (`atlante.energy/pt-pt/tarifas-de-energia/`; Business separada em `/pt-pt/myatlante-business/`), evio (`ceme.go-evio.com/pt/site-ceme`), edp (`edp.pt/particulares/.../carregar-fora-de-casa/`).
+JS/React (browser `tools.browser.evaluate` + `document.body.innerText`): edp (`edp.pt/particulares/.../carregar-fora-de-casa/`), miio (`/pt/prices/charging`; o miio one tem desconto), atlante (`atlante.energy/pt-pt/tarifas-de-energia/`; Business separada em `/pt-pt/myatlante-business/`), evio (`ceme.go-evio.com/pt/site-ceme`).
 
 Sem valores a comparar (app-only/documentos): iberdrola (app), moeve (app GOW), hgp (site sem tarifário), ynerluz (só fórmulas indexadas; preços de referência são de eletricidade doméstica).
 
@@ -85,14 +89,5 @@ Sem valores a comparar (app-only/documentos): iberdrola (app), moeve (app GOW), 
      console.log(id, q.totalEur.toFixed(4), q.eurKwhNoIva.toFixed(4));
    }"
    ```
-   Regras do re-freeze: actualiza só as âncoras dos tarifários cujos valores mudaram; cenário regulatório (EGME) exige `act > 0.1088` no seed — se o CEME passou a publicar 0.1088, sai da lista (ex.: Charge2Go saído a 2026-10-22; Via Verde ainda tinha 0.1572). Sempre atualizar os comentários dos testes.
+   Regras do re-freeze: actualiza só as âncoras dos tarifários cujos valores mudaram; cenário regulatório (EGME) só leva tarifários com `act` acima do legal no seed — se o CEME passou a publicar o valor legal, sai da lista. Sempre atualizar os comentários dos testes.
 7. Relatório final: tabela batem certo / drift aplicado / sem publicação; nunca push (local apenas).
-
-## Estado a 2026-10-22 (âncoras de comparação)
-- Galp: 0.2149/0.2895 (tabela 01/10/2026); -3/-4=×0.82, -5/-6=×0.80 recalculados.
-- Atlante: AC energia 0.12 único; Business 0.08 (página própria myatlante-business).
-- ACP: sócio 0.1506 (0.1315 era erro no gsheets); não-sócio = EVIO 0.169 final 0.1956/0.2882.
-- Bluecharge act 0.2608 (taxa deles, não EGME); Charge2go act 0.1088.
-- eVaz Move HOME: user disse "mantem" (página diz "até 11%"; seed aplica 5%).
-- miio/goldenergy URLs: `/pt/prices/charging` e `/mobilidade-eletrica/`.
-- EVPower, Prio, FactorEnergia, EDP, EVIO, GoCharge, EZU, Repsol, Viaverde, Enable, LUZiGÁS, Mobismart, miio, meo(-2): batem certo.
