@@ -1,15 +1,10 @@
 // As migrações de schema: o que o `CREATE TABLE IF NOT EXISTS` não cobre.
 //
-// Contexto — o que rebentou a produção: a `price_component` da BD já
-// existia (com a forma antiga) e o `CREATE TABLE IF NOT EXISTS` NÃO
-// acrescenta colunas a uma tabela que já existe. O seed foi à vida com
-// `column "energy_only_eur_kwh" of relation "price_component" does not
-// exist`, o serviço entrou em crash loop e o site ficou em 502.
+// O `CREATE TABLE IF NOT EXISTS` não acrescenta colunas a uma tabela que já
+// existe; sem a migração, o seed falhava ao escrever numa coluna em falta.
+// Estes testes garantem que:
 //
-// Estes testes fixam esse contrato:
-//
-//   - a migração acrescenta a coluna em falta a uma tabela com a forma
-//     antiga (é o caso da produção);
+//   - a migração acrescenta a coluna em falta a uma tabela sem ela;
 //   - é idempotente (corre todas as vezes, no arranque);
 //   - não mexe em tabelas que ainda não existem (numa BD nova, o schema
 //     cria-as já com as colunas);
@@ -31,8 +26,7 @@ const { migrateAddedColumns, migrateOmieTables, ADDED_COLUMNS } = await import('
 
 const colsOf = async (table) => (await query(`PRAGMA table_info(${table})`)).map(r => r.name);
 
-// A `price_component` como estava em produção antes da decomposição
-// energia + TAR.
+// Uma `price_component` sem as colunas da separação energia + TAR.
 const PRICE_COMPONENT_ANTIGO = `CREATE TABLE price_component (
   tariff_version_id INTEGER NOT NULL,
   period TEXT NOT NULL,

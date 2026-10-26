@@ -15,9 +15,8 @@
 <link rel="icon" href="/icon-192.png">
 <link rel="stylesheet" href="/pages.css">
 <style>
-/* A página das estatísticas OMIE. Reproduz o painel da folha
- * "Comparador Mobie CEME" (separador "OMIE (via TF)"): os cartões à
- * esquerda e as duas tabelas à direita — uma com a escala de média anual
+/* A página das estatísticas OMIE: os cartões à esquerda e as duas tabelas à
+ * direita — uma com a escala de média anual
  * (verde→amarelo→vermelho sobre toda a tabela) e outra mês-a-mês, em que
  * a coluna Simples usa a escala fixa em 60 €/MWh e as colunas Vazio/Cheia
  * usam uma escala divergente, POR LINHA.
@@ -96,7 +95,7 @@ main.grid {
   border-top: 1px solid #B7B7B7;
 }
 /* as cores dos valores: vermelho no preço vivo, amarelo na média de hoje,
- * laranja nos restantes cartões (folha); em modo daltonismo trocam-se por
+ * laranja nos restantes cartões; em modo daltonismo trocam-se por
  * uma paleta segura para daltonismo (ver html[data-paleta]). */
 .card.now .v { background: var(--card-now); }
 .card.today .v { background: var(--card-today); }
@@ -165,11 +164,10 @@ table.tb tr.total td { font-weight: 700; }
 <script src="/pwa.js"></script>
 <script>
 'use strict';
-/* Estatísticas OMIE — a versão web do painel da folha.
+/* Estatísticas OMIE.
  *
- * Os números vêm de /v1/omie/stats (agregados por mês e por ciclo
- * horário, mais as células de referência). As cores são as mesmas regras
- * de formatação condicional que a folha tinha:
+ * Os números vêm de /v1/omie/stats (médias por mês e por ciclo horário, e
+ * os cartões). As cores das células são a informação, não decoração:
  *   - tabela "média anual": uma escala verde→amarelo→vermelho sobre TODAS
  *     as células da tabela, com o ponto médio no percentil 50;
  *   - tabela "mês-a-mês": a coluna Simples com a escala fixa em 60 €/MWh e
@@ -225,7 +223,7 @@ const mix = (a, b, t) => {
   const A = hex(a), B = hex(b);
   return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('').toUpperCase();
 };
-// Interpolação em três pontos, como o gradiente do Sheets: o valor entra
+// Interpolação em três pontos (mínimo, meio, máximo): o valor entra
 // entre min/mid/max e a cor sai da rampa correspondente. Se o ponto médio
 // cai fora da escala (a escala fixa em 60 quando todos os valores estão
 // acima), o troço antes do meio desaparece em vez de esticar a rampa.
@@ -246,9 +244,9 @@ const median = (vs) => {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
-// Paletas: a da folha (reprodução fiel) e a adaptada a daltonismo
-// (escolhida por medição, ver backend/tools/cores.mjs). A tinta das
-// células segue --ink: #424242 na folha, #1A1A1A em modo daltonismo.
+// Paletas: a normal e a adaptada a daltonismo (escolhida por medição, vê
+// backend/tools/cores.mjs). A cor do texto das células segue --ink:
+// #424242 na normal, #1A1A1A em modo daltonismo.
 const PALETAS = {
   folha: {
     rampa: ['#57BB8A', '#FFD666', '#E67C73'],

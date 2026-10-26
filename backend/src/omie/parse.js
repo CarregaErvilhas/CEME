@@ -1,10 +1,19 @@
-// Parser defensivo do dump oficial omie.es (INT_PBC_EV_H_ACUM.TXT).
-// Nunca lança por linhas más — devolve { rows, quarantined, warnings }.
-// Formato: latin1, ';', Fecha d/m/aaaa, Periodo 1..96, preços com vírgula.
+// Lê o ficheiro oficial de preços do omie.es (INT_PBC_EV_H_ACUM.TXT).
+//
+// É texto separado por ';', com uma linha por quarto de hora:
+//   Fecha (d/m/aaaa) ; Periodo (1..100) ; preço ES ; preço PT ; …
+// Os preços estão em €/MWh e usam vírgula decimal ("219,86").
+//
+// Uma linha má nunca faz o parser falhar: vai para a "quarentena" (uma lista
+// à parte, com o motivo) e o resto do ficheiro segue.
+// Devolve { rows, quarantined, warnings }.
 
+// Gama de preços (€/MWh) considerada normal. Fora dela, a linha entra na
+// mesma mas leva a flag 'suspect_range'.
 export const PLAUSIBLE_MIN = -500;
 export const PLAUSIBLE_MAX = 3000;
 
+// "219,86" → { value: 219.86 }. Vazio, '-' ou texto → { value: null, error }.
 export function parsePrice(raw) {
   if (raw == null) return { value: null, error: 'empty' };
   const s = String(raw).trim().replace(/\u00a0/g, '').replace(',', '.');
@@ -14,6 +23,7 @@ export function parsePrice(raw) {
   return { value: v, error: null };
 }
 
+// "5/3/2026" → { iso: '2026-03-05' }.
 export function parseMarketDay(raw) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(raw || '').trim());
   if (!m) return { iso: null, error: `bad_date:${raw}` };
@@ -28,7 +38,7 @@ export function parseOmieTxt(text) {
   const rows = [];
   const quarantined = [];
   const warnings = [];
-  // Remove BOM, normaliza CRLF
+  // Tira o BOM (marca invisível no início de alguns ficheiros) e os \r do Windows.
   const clean = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   const lines = clean.split('\n');
   const seenPeriods = new Map(); // marketDayIso -> Set(period)
@@ -36,7 +46,7 @@ export function parseOmieTxt(text) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    // cabeçalhos / rodapés conhecidos
+    // Cabeçalhos conhecidos.
     if (/^OMIE\s*-/i.test(line) || /^Fecha\s*;/i.test(line)) continue;
     const cols = line.split(';');
     if (cols.length < 4) {
@@ -52,8 +62,7 @@ export function parseOmieTxt(text) {
       quarantined.push({ line: i + 1, reason: dateErr || 'bad_date', text: line.slice(0, 160) });
       continue;
     }
-    // 96 períodos num dia normal; 92 na manhã e 100 no Outono (os dias de
-    // mudança de hora). O que está fora disso é lixo.
+    // Nenhum dia tem mais de 100 períodos.
     if (!Number.isInteger(period) || period < 1 || period > 100) {
       quarantined.push({ line: i + 1, reason: `bad_period:${periodoRaw}`, text: line.slice(0, 160) });
       continue;
@@ -75,13 +84,16 @@ export function parseOmieTxt(text) {
     }
     const flags = [];
     if (pt.value < PLAUSIBLE_MIN || pt.value > PLAUSIBLE_MAX) flags.push('suspect_range');
+    // PT e ES costumam ter o mesmo preço; uma diferença grande é rara (pode
+    // ser legítima, quando o mercado separa os dois países) e fica marcada.
     if (Math.abs(pt.value - es.value) > 100) flags.push('suspect_pt_es_split');
     rows.push({ marketDay: iso, marketPeriod: period, priceEs: es.value, pricePt: pt.value, flags, srcLine: i + 1 });
   }
   return { rows, quarantined, warnings };
 }
 
-// Agrupa por dia de mercado e avalia integridade (92/96/100 + gaps).
+// Agrupa as linhas por dia de mercado e diz se cada dia está completo.
+// `expectedCountFn(dia)` diz quantos períodos o dia devia ter (92/96/100).
 export function assessDays(rows, expectedCountFn) {
   const byDay = new Map();
   for (const r of rows) {
@@ -93,9 +105,7 @@ export function assessDays(rows, expectedCountFn) {
     list.sort((a, b) => a.marketPeriod - b.marketPeriod);
     const periods = new Set(list.map(r => r.marketPeriod));
     const expected = expectedCountFn ? expectedCountFn(day) : 96;
-    // O dia de mercado tem 1..96 períodos (1..92 na primavera, 1..100 no
-    // Outono): só conta como em falta o que devia existir. Antes comparava-se
-    // sempre com 1..100, por isso TODOS os dias normais saíam PARTIAL.
+    // Só conta como em falta um período que devia existir nesse dia.
     const top = expected >= 100 ? 100 : expected >= 96 ? 96 : 92;
     const missing = [];
     for (let p = 1; p <= top; p++) if (!periods.has(p)) missing.push(p);

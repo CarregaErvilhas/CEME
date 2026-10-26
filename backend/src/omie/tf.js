@@ -1,23 +1,21 @@
-// Fonte SECUNDÁRIA: os ficheiros do Tiago Felícia (CC BY 4.0).
+// Vai buscar dados a dados.tiagofelicia.pt (TF), a fonte SECUNDÁRIA.
 //
-// O TF republica os preços do OMIE/MIBEL e acrescenta duas coisas que o
-// omie.es não dá: a classificação do período horário (BD/BS, as regras da
-// ERSE) e as datas futuras estimadas a partir dos futuros OMIP. Por isso
-// continua a ser lido — mas como COMPLEMENTO do omie.es, e não como fonte
-// primária.
+// O Tiago Felícia republica os preços do OMIE em CSV (licença CC BY 4.0, que
+// obriga a dar o crédito) e junta coisas que o omie.es não tem:
+//   - a classificação de cada quarto em vazio/fora de vazio nos ciclos
+//     diário (BD) e semanal (BS), segundo as regras da ERSE;
+//   - preços estimados para dias que o OMIE ainda não publicou;
+//   - os futuros do OMIP (o mercado onde se compra energia para datas
+//     futuras), incluindo um preço por dia para os próximos dias.
 //
-// A grande diferença em relação ao código anterior é o CACHE EM DISCO dos
-// ficheiros: cada CSV é guardado em `backend/data/` e só é re-baixado quando
-// envelhece. Antes, o ficheiro do ano corrente (1,8 MB) e o do ano anterior
-// (1,9 MB) eram re-baixados de duas em duas horas, só para se extrair a
-// mesma informação — dezenas de MB por dia para dados que mudam uma vez.
+// Os CSV são grandes, por isso ficam guardados em backend/data/ (fora do
+// git) e só se voltam a descarregar quando ficam velhos (vê os TTL).
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lisbonDayQuarters } from './convert.js';
 
-// O cache em disco dos ficheiros grandes. Vive em `backend/data/` (que não
-// é versionado) e é descartável: o que interessa está na BD.
+// Pasta da cache em disco (backend/data/). Podes apagá-la: volta a encher-se.
 const DATA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
 
 export const TF_BASE = 'https://dados.tiagofelicia.pt/data';
@@ -27,14 +25,14 @@ export const TF_FUTURES_URL = `${TF_BASE}/omie/futuros_omip.csv`;
 export const TF_DAILY_URL = `${TF_BASE}/agregados/omie_diario.csv`;
 export const TF_SOURCE = 'dados.tiagofelicia.pt (CC BY 4.0)';
 
-// TTLs: o que muda uma vez por dia não se re-baixam de duas em duas horas.
-export const TTL_DAILY = 24 * 3600 * 1000;   // ficheiros do dia corrente
-export const TTL_HISTORY = 30 * 24 * 3600 * 1000; // histórico: quase não muda; re-baixa-se uma vez por mês
-export const TTL_FUTURES = 6 * 3600 * 1000;  // futuros: mudam com o mercado
+// Ao fim de quanto tempo cada ficheiro em cache é considerado velho (TTL).
+export const TTL_DAILY = 24 * 3600 * 1000;   // ano corrente
+export const TTL_HISTORY = 30 * 24 * 3600 * 1000; // ano anterior (quase não muda)
+export const TTL_FUTURES = 6 * 3600 * 1000;  // futuros (mudam com o mercado)
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// GET com retry — o texto vem em UTF-8.
+// Descarrega um URL como texto, até 3 tentativas.
 export async function fetchText(url) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -54,12 +52,9 @@ export async function fetchText(url) {
   }
 }
 
-// Ficheiro em disco, com a idade a contar. Se ainda estiver fresco, não há
-// rede nenhuma — é isto que corta o re-baixamento constante dos CSVs grandes.
-//
-// Este cache é POR RÉPLICA (é o disco do contentor): cada uma baixa o
-// ficheiro uma vez e usa-o a partir daí. O que fica na BD é o que interessa
-// — e essa é partilhada.
+// Devolve o ficheiro `name` da cache se tiver menos de `ttlMs`; senão
+// descarrega-o de `url` e guarda-o. Cada instância do servidor tem a sua
+// própria cache (é o disco dela); os dados que contam ficam na BD.
 export async function fetchCachedFile(name, url, ttlMs) {
   mkdirSync(DATA_DIR, { recursive: true });
   const file = path.join(DATA_DIR, name);
@@ -74,21 +69,15 @@ export async function fetchCachedFile(name, url, ttlMs) {
   return { text, cached: false, fetchedAt: Date.now(), file };
 }
 
-// Os quartos-horários do TF, em linhas comuns, agrupados por dia de LISBOA.
+// Lê o CSV de quartos de hora do TF e agrupa as linhas por dia de Lisboa.
 //
-// O ficheiro está em HORA DE LISBOA (e não em CET): o dia "20/10/2026" são
-// as 96 quartos de 00:00 a 23:45 *de Lisboa*, e a média desse dia bate
-// com o agregado diário que o TF publica para a mesma data. (O dia de
-// mercado do OMIE é o de Madrid — uma hora à frente — e por isso os dois
-// ficheiros estão desfasados uma hora; alinham-se pelo INSTANTE, não pelo
-// período.)
+// Ao contrário do omie.es, este ficheiro está em HORA DE LISBOA: o dia
+// "20/10/2026" vai das 00:00 às 23:45 de Lisboa. Por isso os dois ficheiros
+// estão desfasados uma hora, e juntam-se pelo instante UTC, nunca pelo número
+// do período.
 //
-// Cada linha:
-//   { utc, day, min, pt, es, bd, bs }
-//  - utc: o instante absoluto — a chave que alinha com o omie.es;
-//  - day/min: o dia civil de Lisboa e os minutos desde a meia-noite local;
-//  - bd/bs: a classificação do período horário (as regras da ERSE), que o
-//    omie.es não traz.
+// Cada linha devolvida: { utc, day, min, pt, es, bd, bs }
+//   bd, bs: 'V' (vazio) ou 'F' (fora de vazio) nos ciclos diário e semanal.
 export function parseTfQuarters(text) {
   const lines = String(text || '').replace(/^\uFEFF/, '').split('\n');
   const head = (lines.shift() || '').split(',').map(h => h.trim());
@@ -96,12 +85,11 @@ export function parseTfQuarters(text) {
   if (ix('dia') < 0 || ix('preco_pt') < 0) throw new Error('schema inesperado no CSV de quartos do TF');
   const days = new Map();
   const quarantined = [];
-  // Estado por dia para a conversão hora→instante (ver abaixo): vai à parte
-  // para não poluir o mapa de dias devolvido.
+  // Por dia: a lista real de quartos de Lisboa e qual é o próximo a preencher.
   const dayState = new Map();
   for (const line of lines) {
     if (!line.trim()) continue;
-    if (line.startsWith('TABELA_')) break; // blocos de futuros no fim do ficheiro
+    if (line.startsWith('TABELA_')) break; // a partir daqui são tabelas de futuros
     const c = line.split(',');
     if (c.length < 9) { quarantined.push({ reason: 'few_columns', text: line.slice(0, 140) }); continue; }
     const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((c[ix('dia')] || '').trim());
@@ -111,39 +99,33 @@ export function parseTfQuarters(text) {
     const day = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
 
     const list = days.get(day) || [];
-    // O instante a partir da HORA DE RELÓGIO do quarto, e não da posição da
-    // linha (se faltar uma linha a meio do dia, a posição deslocava todos os
-    // instantes seguintes em 15 minutos sem ninguém dar por isso).
-    //
-    // A hora de relógio não é tempo decorrido desde a meia-noite: no dia de
-    // Março o relógio salta das 00:59 para as 02:00 (a linha
-    // `02:00,[00:45-02:00[` começou 45 min depois da meia-noite, não 105), e
-    // no de Outubro a hora 01:00–02:00 passa duas vezes. Por isso não se faz
-    // aritmética: procura-se o quarto na lista REAL de quartos desse dia de
-    // Lisboa (`lisbonDayQuarters`), pela hora de início, a seguir ao quarto da
-    // linha anterior (é o que separa a primeira e a segunda passagem de
-    // Outubro). O início lê-se do `intervalo` ("[00:45-02:00[");
-    // sem ele, da `hora` (o FIM do quarto; "23:59" = 24:00).
+    // Como chegar ao instante UTC de cada linha:
+    // não dá para fazer "meia-noite + hora de relógio", porque em Março o
+    // relógio salta das 00:59 para as 02:00 e em Outubro a 01:00–02:00
+    // acontece duas vezes. Em vez disso, gera-se a lista real de quartos do
+    // dia (lisbonDayQuarters) e procura-se o primeiro, A SEGUIR ao da linha
+    // anterior, com a mesma hora de início. É isso que põe a segunda "01:00"
+    // de Outubro na segunda passagem. Também não se usa a posição da linha:
+    // se faltasse uma, todas as seguintes ficavam 15 minutos ao lado.
+    // A hora de início lê-se de `intervalo` ("[00:45-02:00[") ou, se faltar,
+    // de `hora` (que é o FIM do quarto; "23:59" quer dizer 24:00).
     let st = dayState.get(day);
     if (!st) { st = { quarters: lisbonDayQuarters(day), next: 0 }; dayState.set(day, st); }
     const startMin = quarterStart(c[ix('intervalo')], c[ix('hora')]);
     let slot = null;
     if (startMin != null) {
-      // O primeiro quarto com esta hora DEPOIS do anterior: na hora repetida
-      // de Outubro, a segunda linha "01:00" cai na segunda passagem.
+
       const i = st.quarters.findIndex((q, j) => j >= st.next && q.minutes === startMin);
       if (i >= 0) slot = st.quarters[i];
       else if (st.quarters.some(q => q.minutes === startMin)) {
-        // A hora existe nesse dia mas já ficou para trás: linha repetida (ou
-        // fora de ordem). Quarentena — encaixá-la "no quarto a seguir"
-        // deslocava todas as linhas seguintes do dia em 15 minutos.
+        // Essa hora existe mas já ficou para trás: linha repetida ou fora de
+        // ordem. Vai para a quarentena.
         quarantined.push({ reason: 'dup_hour', text: line.slice(0, 140) });
         continue;
       }
     }
-    // Sem hora legível, ou uma hora que não existe nesse dia (só com a
-    // `hora` e sem `intervalo`, o quarto que fecha às 02:00 de Março "começa"
-    // às 01:45): o quarto a seguir ao anterior.
+    // Sem hora legível, ou uma hora que não existe nesse dia: usa-se o quarto
+    // a seguir ao anterior.
     if (!slot) slot = st.quarters[st.next] || null;
     if (!slot) { quarantined.push({ reason: 'bad_hour', text: line.slice(0, 140) }); continue; }
     st.next = st.quarters.indexOf(slot) + 1;
@@ -163,8 +145,8 @@ export function parseTfQuarters(text) {
   return { days, quarantined };
 }
 
-// Minutos de relógio do INÍCIO do quarto: do `intervalo` ("[00:45-02:00[")
-// ou, na falta, da `hora` (o fim; "23:59" é o fim do dia). null se ilegível.
+// Minutos de relógio em que o quarto COMEÇA, lidos de `intervalo`
+// ("[00:45-02:00[") ou, se faltar, de `hora` (o fim). null se ilegível.
 function quarterStart(intervalo, hora) {
   const iv = /^\[(\d{2}):(\d{2})-/.exec(String(intervalo || '').trim());
   if (iv) return Number(iv[1]) * 60 + Number(iv[2]);
@@ -176,16 +158,16 @@ function quarterStart(intervalo, hora) {
   return start >= 0 && start % 15 === 0 ? start : null;
 }
 
-// O "Data_Valores_OMIE" do ficheiro de futuros: o último dia de MERCADO.
-// O que estiver depois são estimativas OMIP.
+// Lê "Data_Valores_OMIE" do ficheiro de futuros: o último dia com preços
+// reais do mercado. Os dias a seguir no CSV do TF são estimativas.
 export function parseOmieCutoff(text) {
   const m = /Data_Valores_OMIE,(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(text || ''));
   if (!m) return null;
   return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
 
-// Os agregados diários que o TF publica (bd_v/bd_f/bs_v/bs_f), do mesmo
-// formato que a API já devolve.
+// Lê o CSV de médias diárias do TF (bd_v/bd_f/bs_v/bs_f) e devolve os
+// últimos `days` dias.
 export function parseTfDaily(text, days = 60) {
   const lines = String(text || '').replace(/^\uFEFF/, '').split('\n');
   const head = (lines.shift() || '').split(',');
@@ -203,8 +185,9 @@ export function parseTfDaily(text, days = 60) {
   return rows.slice(-days);
 }
 
-// Os contratos futuros OMIP (só informativo; o preço de mercado é o que o
-// omie.es dá).
+// Lê todas as tabelas TABELA_FUTUROS_<zona> do ficheiro de futuros do OMIP.
+// Devolve [{ zona, contrato, descricao, valor }]. Só contratos FPB/FBB
+// (carga base).
 export function parseTfFutures(text) {
   const out = [];
   let table = null, cols = [];
@@ -214,15 +197,12 @@ export function parseTfFutures(text) {
     if (line.startsWith('TABELA_')) { table = line; cols = []; continue; }
     if (!table || !table.startsWith('TABELA_FUTUROS_')) continue;
     if (!cols.length) { cols = csvFields(line); continue; }
-    // Campos com aspas: `FPB Wk44-26,"Semana 44, 2026",194.25,...` — com um
-    // split(',') simples o preço caía no campo errado e saía null.
+    // Há campos com vírgulas entre aspas ("Semana 44, 2026"), daí o csvFields.
     const c = csvFields(line);
     if (c.length < 3 || !/^FPB/.test(c[0]) && !/^FBB/.test(c[0])) continue;
     const num = Number(String(c[2]).replace(',', '.'));
     out.push({ zona: table.replace('TABELA_FUTUROS_', ''), contrato: c[0], descricao: c[1], valor: Number.isFinite(num) ? num : null });
   }
-  // Sem tecto: o ficheiro é pequeno, e um corte por número de linhas (havia
-  // um de 40, para todas as zonas) podia deixar de fora futuros diários.
   return out;
 }
 
@@ -243,10 +223,11 @@ function csvFields(line) {
   out.push(cur);
   return out;
 }
-// Os futuros DIÁRIOS (FPB D ...) da zona PT: um número publicado por dia
-// (ex. `FPB D Sa24Oct-26,24/10/2026,132.31,...`). É a única fonte de futuro
-// admitida na página — e usa-se o número tal como vem, sem médias nossas.
-// Devolve [{ date: 'YYYY-MM-DD', value }] por ordem de data.
+
+// Os futuros DIÁRIOS da zona PT (contratos "FPB D …", ex.
+// `FPB D Sa24Oct-26,24/10/2026,132.31,…`): um preço esperado (€/MWh) para
+// cada um dos próximos dias. A página de estatísticas usa-os tal como vêm.
+// Devolve [{ date: 'AAAA-MM-DD', value }] por ordem de data.
 export function parseTfDailyFutures(text, zona = 'PT') {
   const rows = parseTfFutures(text).filter(r => r.zona === zona && /^FPB D\b/.test(r.contrato));
   const out = [];

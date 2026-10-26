@@ -1,24 +1,20 @@
-// Helper de ligação a PostgreSQL (node-postgres / pg).
-// Único ponto de pool do processo: db.js re-exporta daqui em modo pg e o
-// seed.postgres.js também importa daqui — nunca dois pools na mesma
-// instância. O pool é criado de forma LAZY: o import deste módulo (estático,
-// pelo server.js via seed.postgres.js, mesmo em modo SQLite) não cria nem
-// abre ligações; só a primeira query fá-lo, e nessa altura DATABASE_URL
-// tem de estar definida.
-// As queries usam placeholders $1, $2 ... em vez de ?.
+// Ligação ao PostgreSQL (biblioteca `pg`), usada só quando há DATABASE_URL.
+//
+// É o único sítio do processo com um pool de ligações (db.js e
+// seed.postgres.js importam daqui). O pool só nasce na primeira query: este
+// ficheiro é importado mesmo quando corres em SQLite, e assim não abre nada.
+// Os parâmetros escrevem-se $1, $2…
 import { Pool, types } from 'pg';
 
-// Colunas DATE/TIMESTAMP guardam datas civis (início/fim de validade de
-// tarifário), não instantes. Por omissão o pg converte-as em `Date` (meia-
-// noite local), e o JSON.stringify serializa em UTC — '2026-10-15' sairia
-// como '2026-10-14T23:00:00.000Z', ou seja o dia anterior e dependente do
-// fuso do servidor. O SQLite devolvia a string tal como está, por isso
-// repor a string é o que mantém os dois modos equivalentes.
-// OIDs: 1082 = date, 1114 = timestamp without time zone, 1184 = timestamptz.
-//
-// O TIMESTAMPTZ (o instante do OMIE) volta como ISO-8601 UTC ('...Z'),
-// normalizado — para o backend falar uma só língua com o SQLite e nunca
-// depender do fuso da sessão.
+// Conversões de tipos, para o Postgres devolver o mesmo que o SQLite:
+//   - DATE e TIMESTAMP (datas de calendário, como o início de validade de um
+//     tarifário) ficam como texto. Se o pg as passasse a `Date`, o
+//     JSON.stringify escrevia-as em UTC e '2026-10-15' podia sair como o dia
+//     anterior, conforme o fuso do servidor.
+//   - TIMESTAMPTZ (um instante, como o de cada preço OMIE) sai em ISO-8601
+//     UTC, terminado em 'Z'.
+// Os números são os OIDs dos tipos no Postgres: 1082 = date,
+// 1114 = timestamp without time zone, 1184 = timestamptz.
 types.setTypeParser(1082, (v) => v);
 types.setTypeParser(1114, (v) => v);
 types.setTypeParser(1184, (v) => {
@@ -34,12 +30,12 @@ const getPool = () => {
   if (!pool) {
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      // max de 10 ligações por instância da api (suficiente para pet project)
+      // Até 10 ligações por instância da api.
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
-      // A sessão em UTC: o instante do OMIE é lido e escrito em UTC, sem
-      // depender do fuso do servidor (o que mudaria a chave primária!).
+      // A sessão corre em UTC, para os instantes (chave das tabelas do OMIE)
+      // nunca dependerem do fuso do servidor.
       options: '-c timezone=UTC',
     });
     pool.on('error', (err) => console.error('Erro inesperado no pool pg:', err));

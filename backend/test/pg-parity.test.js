@@ -1,13 +1,11 @@
 // Testes do modo PostgreSQL que NÃO precisam de um servidor a correr.
 //
-// Contexto: a migração SQLite→pg passou 107/107 sem que nada exercitasse o
-// caminho pg, e por isso escapou uma regressão silenciosa — o driver pg
-// convertia colunas DATE em `Date` e o JSON saía como
-// '2026-10-14T23:00:00.000Z' (dia anterior, dependente do fuso) onde o
-// SQLite devolvia '2026-10-15'. Estes testes fixam esse contrato.
+// Por omissão o driver pg converte colunas DATE em `Date`, e o JSON sairia
+// '2026-10-14T23:00:00.000Z' (dia anterior, conforme o fuso) onde o SQLite
+// devolve '2026-10-15'. Estes testes garantem que os dois devolvem o mesmo.
 //
 // Um teste end-to-end contra um Postgres real continua a faltar (ver
-// docs/08, Passo 6): aqui só se garante o que se consegue garantir sem
+// docs/06): aqui só se garante o que se consegue garantir sem
 // servidor — o comportamento do cliente (parsers de tipo) e a paridade da
 // semântica SQL entre os dois dialetos.
 import test from 'node:test';
@@ -22,7 +20,7 @@ test('pg: DATE não passa a Date/ISO (equivalência com o texto do SQLite)', () 
   const out = parseDate('2026-10-15');
   assert.equal(out, '2026-10-15', 'DATE tem de manter a forma YYYY-MM-DD');
 
-  // O que a regressão produzia: dia anterior, em UTC.
+  // Passado por JSON, continua a ser o mesmo dia.
   const viaJson = JSON.parse(JSON.stringify({ valid_from: out }));
   assert.equal(viaJson.valid_from, '2026-10-15');
   assert.ok(!viaJson.valid_from.includes('T'), 'não pode ter componente de tempo');
@@ -42,8 +40,8 @@ test('pg: a parser de DATE é a mesma em todos os casos-limite', () => {
 });
 
 test('pg: CURRENT_TIMESTAMP existe em ambos os dialetos (expires_at)', async () => {
-  // A semântica de expiração passou a usar CURRENT_TIMESTAMP (instante) em
-  // vez de CURRENT_DATE (dia inteiro). Verifica-se no motor que temos
+  // A expiração das chaves compara com CURRENT_TIMESTAMP (um instante), não
+  // com CURRENT_DATE (um dia inteiro). Verifica-se no motor que temos
   // disponível que a chave expirada sai e a válida fica; o SQL é comum aos
   // dois dialetos, portanto o mesmo predicado aplica-se ao pg.
   const { DatabaseSync } = await import('node:sqlite');

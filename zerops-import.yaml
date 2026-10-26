@@ -37,8 +37,7 @@ services:
     #
     # maxContainers: 2 dá a sala de sobreposição que o deploy precisa: no
     # rolling deploy o pod novo nasce ao lado do velho (que só sai depois
-    # de o novo passar o readinessCheck). Com maxContainers: 1 o Zerops
-    # não tinha onde meter o pod novo e o corte era a correr.
+    # de o novo passar o readinessCheck).
     minContainers: 1
     maxContainers: 2
     verticalAutoscaling:

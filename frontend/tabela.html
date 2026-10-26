@@ -84,11 +84,10 @@
   <script src="/pwa.js"></script>
   <script>
     'use strict';
-    /* Página "Tabela": os tarifários em vigor, directamente da BD, no formato da
-     * folha de origem — uma linha por tarifário, sem filtros nem gráficos. Os
+    /* Página "Tabela": os tarifários em vigor, directamente da BD — uma linha por tarifário, sem filtros nem gráficos. Os
      * dados vêm de /v1/tabela (os mesmos allTariffs + comps que a API usa, com
      * a mesma janela de validade: o que expirou não aparece). Sem link no site:
-     * rota subterrânea, para quem sabe que ela existe. */
+     * só para quem souber o endereço. */
     const STR = CEME_STR('tabela');
     // Mesma precedência do resto do site: bandeira > Accept-Language > PT.
     let LANG = (function () {

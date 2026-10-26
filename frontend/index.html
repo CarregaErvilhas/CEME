@@ -238,6 +238,20 @@
 <script src="/tz.js"></script>
 <script src="/pwa.js"></script>
 <script>
+/* O simulador completo. Tudo vive neste ficheiro: CSS em cima, HTML mínimo
+ * e este script, que desenha a página com template strings (sem framework).
+ *
+ * Como está organizado:
+ *   i18n     textos PT/EN (vêm de strings.js) e tradução dos nomes;
+ *   estado   `S`, as escolhas do utilizador, guardadas em localStorage;
+ *   api()    fala com o backend (/v1/*), com o token de sessão;
+ *   SIMULAR  o ranking: cartões, detalhe da conta, aviso de âmbito, favoritos;
+ *   COMPARAR o comparador indexado vs fixo (#/comparar);
+ *   boot     route() decide o que desenhar a partir do hash do URL (#/…),
+ *            init() arranca tudo.
+ * Os testes backend/test/frontend-smoke.test.js correm este script sem
+ * browser: se renomeares uma função usada lá, actualiza o teste. */
+
 /* ================= i18n ================= */
 /* PT por omissão. A língua vem do cabeçalho Accept-Language (injectada pelo
  * servidor em window.__LANG__), pode ser sobrescrita pela bandeira e persiste
@@ -362,17 +376,15 @@ const API = location.origin;
 let token = sessionStorage.getItem('ceme:jwt');
 let LAST = [], AVG = null, AT = null, OMIE = 0.20;
 const favs = () => {
-  // localStorage pode ter lixo (versão antiga, edição à mão): JSON.parse
-  // solto rebentava em quem chama favs() — favoritos, favoritos só, rota.
+  // localStorage pode ter lixo (dados antigos, edição à mão): se não ler,
+  // começa vazio.
   try { const v = JSON.parse(localStorage.getItem('ceme:favs') || '[]'); return Array.isArray(v) ? v.filter(x => typeof x === 'string') : []; } catch (e) { return []; }
 };
 function loadS() {
-  // localStorage pode ter lixo (versão antiga, edição à mão): validar e coagir
-  // no único ponto de entrada, em vez de espalhar defesas por cada render.
-  // Sem isto, um `S.batMin = '<img src=x onerror=1>'` chega ao HTML como
-  // string e o esc() só limpa a saída, não o valor — que depois vai para
-  // Number(), effKwh(), kwhTxt() e vira NaN. A coagão aqui é a defesa de 1.ª
-  // linha; o esc() nos templates mantém-se como 2.ª.
+  // Lê o estado guardado e valida cada campo aqui, à entrada: números passam
+  // a número, valores desconhecidos voltam ao defeito. Assim o resto do
+  // código pode confiar em `S`. (O esc() nos templates é a segunda defesa
+  // contra HTML injectado.)
   try {
     const r = localStorage.getItem('ceme:S');
     if (!r) return;
@@ -416,7 +428,6 @@ async function sess() {
   const r = await fetch(API + '/v1/session', { method: 'POST' });
   if (!r.ok) throw new Error('sessão indisponível (erro ' + r.status + ')');
   const tk = (await r.json()).token;
-  // Sem token guardado, os pedidos iam com "Bearer undefined" e tudo era 401
   if (!tk) throw new Error('sessão sem token');
   token = tk;
   try { sessionStorage.setItem('ceme:jwt', token); } catch (e) {} // modo privado pode recusar
@@ -430,26 +441,22 @@ const BROWSER_TZ = (() => {
 async function api(path, opts = {}) {
   let tk = await sess();
   let r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
-  // Token de 24h expira: sem isto, o 401 vinha como JSON de erro, `j.data`
-  // ficava undefined e a página dizia "sem resultados" para sempre — o token
-  // morto continuava guardado em sessionStorage. Uma vez (linear, sem
-  // recursão): limpa, manda nova sessão, repete o pedido.
+  // O token expira ao fim de 24 h. Num 401, pede um token novo e repete o
+  // pedido uma vez.
   if (r.status === 401) {
     token = null;
     try { sessionStorage.removeItem('ceme:jwt'); } catch (e) {}
     tk = await sess();
     r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
   }
-  // 400/405/429/502 não são dados: sem check, o corpo de erro era tratado
-  // como resposta boa (j.data undefined, "sem resultados" sem pista) e a
-  // falha da taxa (429) parecia lista vazia. Lança com a mensagem do server.
+  // Qualquer outro erro HTTP vira uma excepção com a mensagem do servidor,
+  // para não ser confundido com uma lista vazia.
   if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j?.error?.message || ('erro ' + r.status)); }
   return r.json();
 }
-// escapa HTML para inputs que refletem texto do utilizador (a pesquisa fica
-// em localStorage e volta para o value= do input). Escapar só aspas
-// protege dentro do atributo, mas o escape completo vale por si: um
-// render futuro fora de atributos não reabre a porta ao XSS.
+// Escapa texto antes de o meter no HTML (evita que alguém injecte HTML ou
+// scripts, o chamado XSS). Usa-o sempre que mostrares texto vindo do
+// utilizador ou da API.
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -462,8 +469,8 @@ const effKwh = () => S.energyMode === 'bat' ? Math.max(0.1, S.batCap * Math.max(
 // para os cálculos — nunca para o ecrã.
 const kwhTxt = () => fmtNum(effKwh().toFixed(1));
 // A hora do carregamento escreve-se e lê-se no relógio da REGIÃO, não no do
-// browser (ver frontend/tz.js): `new Date(y, m, d, h, mi)` usava o fuso do
-// browser, e quem simulava os Açores a partir de Lisboa ficava uma hora ao lado.
+// browser (vê frontend/tz.js): quem simula os Açores a partir de Lisboa está
+// a falar das horas dos Açores.
 // "neste momento" só quando se simula agora; com hora fixa diz-se qual (no
 // relógio da região, a partir do instante que o servidor usou).
 function perWhen() {
@@ -478,9 +485,8 @@ function fromIsoDisplay(v) {
 }
 
 /* ================= SIMULAR ================= */
-// Notas do tarifario chegam como CODIGO (o servidor nao mete texto na UI, para
-// nao aparecer portugues em modo english). Codigo desconhecido mostra-se tal e
-// qual, para nao esconder informacao.
+// As notas dos tarifários chegam como CÓDIGO (ex.: AC_DC_FLAT) e traduzem-se
+// aqui. Um código desconhecido mostra-se tal e qual.
 const NOTE_KEY = { AC_DC_FLAT: 'noteACDC' };
 function noteText(code) { return i18n(NOTE_KEY[code] || code); }
 
@@ -492,9 +498,8 @@ function badges(q) {
   if (q.popular) b += `<span class="badge">${i18n('tagPopular')}</span>`;
   if (q.bundle) b += `<span class="badge bnd" title="${i18n('bundleTip')}">${i18n('needsHome')}</span>`;
   if (q.notes) b += `<span class="badge ac" title="${noteText(q.notes)}">${i18n('acOnly')}</span>`;
-  // Activ. > EGME legal (publicado ≠ regulamentar): avisa, não substitui —
-  // o CEME pode estar a cobrar o valor de 2025 ou um valor próprio acima
-  // do legal. O aviso leva os números reais do tarifário.
+  // activation_stale: o CEME ainda publica a taxa de activação legal do ano
+  // anterior. Mostra-se um aviso, mas a conta usa o valor publicado.
   if (q.activation_stale) b += `<span class="badge wr" title="${i18n('egmeStaleTip', { act: fmtNum(q.activation), legal: fmtNum(q.egme_legal) })}">${i18n('egmeStale')}</span>`;
   if (q.warning) b += `<span class="badge wr">${i18n(q.warning === 'OMIE_CONT_REF' ? 'warnOmieCont' : q.warning)}</span>`;
   if (!((',' + (q.avail || 'CONT') + ',').includes(',' + S.region + ','))) b += `<span class="badge">${i18n('soldIn', { r: esc(q.avail) })}</span>`;
@@ -544,9 +549,9 @@ function detail(q) {
     ${/^https?:\/\//i.test(q.source_url || '') ? `<a class="src" href="${esc(q.source_url)}" target="_blank" rel="noopener">${i18n('confirmSrc')}</a>` : ''}</details>`;
 }
 // Rampa de calor do preço: verde nos baratos, vermelho nos caros.
-// A escala e logarítmica entre o mais barato e o mais caro de toda a lista —
-// com linear quase tudo ficava verde, porque há tarifários 5x mais caros
-// que a mediana.
+// A escala é logarítmica entre o mais barato e o mais caro de toda a lista:
+// com uma escala linear quase tudo ficava verde, porque os mais caros estão
+// muito acima da mediana.
 const HEAT = [
   [0.00, [21, 128, 61]],    // verde
   [0.28, [77, 124, 15]],    // verde-oliva
@@ -586,14 +591,12 @@ function card(q, i, max, lo, hi) {
     </div>
     <div class="bar"><i style="width:${Math.max(4, Math.round(100 * q.totalEur / max))}%;background:${heatColor(heatOf(q.totalEur, lo, hi))}"></i></div>${detail(q)}</div>`;
 }
-// Um tarifário é o mesmo para BT e MT (só a TAR muda). Mostra-se uma única
-// entrada por (CEME, nome); o preço usa a variante da tensão seleccionada
-// (S.ramal), ou a variante BT/MT se não houver exacta.
+// O tarifário serve a tensão (BT/MT) escolhida no "ramal"?
 function supportsRamal(q) { return q.voltage === S.ramal || q.voltage === 'BT/MT' || String(q.voltage).includes(S.ramal); }
-// Um tarifário é um só para BT e MT (só a TAR muda), por isso a lista tem de
-// ser deduplicada por (CEME, nome), escolhendo a variante da tensão
-// seleccionada. Sem isto, o ranking e o comparador mostravam cada tarifário
-// duas vezes.
+// Cada tarifário existe no seed em duas variantes, BT e MT (só a TAR muda).
+// Aqui fica uma entrada por (CEME, nome), escolhendo a variante da tensão
+// seleccionada (S.ramal). O ranking, os favoritos e o comparador usam todos
+// esta função, para mostrarem a mesma lista.
 const tariffKey = (tf) => tf.ceme + '|' + tf.name;
 function dedupByRamal(rows) {
   const byKey = new Map();
@@ -707,8 +710,7 @@ function renderFavModal() {
   if (!box) return;
   const fav = favs();
   const q = deaccent(FM.q).toLowerCase();
-  // O mesmo dedup do ranking e do comparador (dedupByRamal): uma cópia local
-  // sem o filtro do ramal listava aqui tarifários que o ranking esconde.
+  // A mesma lista do ranking e do comparador (dedupByRamal).
   const items = dedupByRamal(LAST).filter(tf =>
     (!FM.pop || tf.popular) &&
     (!FM.bundle || tf.bundle) &&
@@ -744,8 +746,7 @@ function opt(list, sel) {
 function vCmp() {
   document.getElementById('hero').innerHTML = `<h1>${i18n('cmpH1a')}<span>${i18n('cmpH1b')}</span></h1><p>${i18n('cmpSub', { r: R().nome, v: R().iva })}</p>`;
   // O comparador é uma ferramenta de comparação, não uma vista filtrada: ignora
-  // pesquisa, verde, bundle e favoritos, mas respeita a tensão do ramal e
-  // deduplica — senão o dropdown mostrava cada tarifário duas vezes (BT e MT).
+  // pesquisa, verde, bundle e favoritos, mas respeita a tensão do ramal.
   const todos = dedupByRamal(LAST);
   const idx = todos.filter(q => q.kind === 'INDEXED'), fix = todos.filter(q => q.kind === 'FIXED');
   if (!idx.length) return `<div class=card>${i18n('loading')}</div>`;
@@ -807,16 +808,14 @@ async function loadQuarters(a, date) {
   const box = document.getElementById('cmpQ');
   if (!a) return;
   try {
-    // As horas na região do carregamento: é nesse relógio que se lêem os
-    // períodos (vazio/fora) — no fuso do browser, um visitante nos Açores via
-    // o vazio do Continente a começar "às 21:00".
+    // As horas mostram-se no relógio da região do carregamento, que é onde se
+    // lêem os períodos (vazio/fora).
     const q = await api(`/v1/indexed/quarters?tariff=${a.id}&region=${S.region}&tz=${encodeURIComponent(regionTz())}${S.fix ? '&fixed=' + S.fix : ''}${date ? '&date=' + date : ''}`);
     const byPrice = [...q.quarters].sort((x, y) => x.price - y.price);
     const wins = ranges(byPrice.slice(0, 8));
 
-    // "onde o indexado ganha ao fixo" e uma coisa diferente de "os 8 mais
-    // baratos": a primeira precisa do fixo de referencia, que o cliente
-    // escolheu no comparador e nos mandou com &fixed=.
+    // "Onde o indexado ganha ao fixo" é diferente de "os 8 mais baratos": o
+    // primeiro precisa do fixo escolhido, que vai em &fixed=.
     const temFixo = !!q.fixed;
     const faixasIdx = temFixo ? ranges(q.quarters.filter(x => x.winner === 'IDX')) : [];
     const resumo = !temFixo ? i18n('vsFixedNoData')
@@ -856,14 +855,10 @@ async function loadCmp() {
     const [daily] = await Promise.all([api('/v1/omie/daily?days=60')]);
     const cyc = a.cycle === 'DIARIO' ? ['bd_v', 'bd_f'] : ['bs_v', 'bs_f'];
     const loss = 1 + (a.loss || 0);
-    // É a fórmula do motor, escrita no browser de propósito: o gráfico
-    // desenha 60 dias com a TAR e o loss do tarifário sem endpoint novo.
-    // O perigo (dupla implementação a divergir) é travado por teste:
-    // `formula.test.js` extrai esta linha do HTML e compara com
-    // indexedPrice() nos dois ramos. Mudou aqui? O teste em falha —
-    // melhor do que o gráfico a mentir.
-    // Sem isto o gráfico e o breakeven do Ynerluz seguiam a fórmula errada
-    // (CGS dentro do factor de perdas) — be sai 0,0417 em vez de 0,0450.
+    // A mesma fórmula de engine/indexed.js, repetida aqui para o gráfico de
+    // 60 dias não precisar de um endpoint próprio. O test/formula.test.js
+    // extrai esta linha e confirma que dá o mesmo que o backend: se mudares
+    // uma, muda a outra.
     const yn = a.formula === 'ynerluz';
     const idxPrice = (o, t) => yn ? loss * (o + a.k) + a.cgs + t : loss * (o + a.k + a.cgs) + t;
     const tar = await api('/v1/tar').then(j => Object.fromEntries(j.data.filter(tr => tr.region === 'CONT' && tr.voltage === a.voltage).map(tr => [tr.period, tr.price_eur_kwh])));
@@ -915,9 +910,7 @@ async function route() {
   if (!cmp) {
     const R2 = () => refresh().catch(e => console.warn('[ceme] refresh falhou:', e.message)).then(route);
     // Mudar kWh <-> bateria muda a energia, logo obriga a recalcular. O botão
-    // marca-se de imediato (feedback instantâneo) e o re-render completo
-    // espera pelo refresh — senão o utilizador vê o valor velho até ao clique
-    // seguinte.
+    // marca-se logo, e o resto redesenha-se quando chega a resposta.
     document.querySelectorAll('[data-em]').forEach(x => x.onclick = () => {
       S.energyMode = x.dataset.em;
       document.querySelectorAll('[data-em]').forEach(b => b.classList.toggle('on', b === x));
@@ -929,9 +922,8 @@ async function route() {
     if (batCapEl) batCapEl.onchange = e => { S.batCap = Number(e.target.value || 60); R2(); };
     const batMinEl = document.getElementById('batMin');
     // Durante o arrasto do slider só se mexem os números que dependem dele.
-    // Re-renderizar aqui destruía o próprio slider a meio do gesto (o rato
-    // continuava a mover-se sobre um elemento já substituído). O render
-    // completo fica para o `change`, quando o utilizador larga.
+    // Redesenhar tudo substituía o próprio slider a meio do gesto. O
+    // redesenho completo fica para o `change`, quando o utilizador larga.
     const liveKwh = () => {
       const big = document.querySelector('.bigkwh');
       if (big) big.innerHTML = `${kwhTxt()} <span style="font-size:18px;color:var(--mut)">kWh</span>`;
@@ -961,8 +953,8 @@ async function route() {
     const fmBun = document.getElementById('fmBundle'); if (fmBun) fmBun.onclick = () => { FM.bundle = !FM.bundle; fmBun.classList.toggle('on', FM.bundle); renderFavModal(); };
     const fmGrn = document.getElementById('fmGreen'); if (fmGrn) fmGrn.onclick = () => { FM.green = !FM.green; fmGrn.classList.toggle('on', FM.green); renderFavModal(); };
     const whenEl = document.getElementById('when');
-    // Texto que não se lê como data não pode voltar em silêncio a "agora"
-    // (parecia que a hora escolhida era ignorada): fica marcado e não recalcula.
+    // Uma data ilegível fica marcada como erro e não recalcula (em vez de
+    // voltar em silêncio a "agora").
     if (whenEl) whenEl.onchange = e => {
       const at = fromIsoDisplay(e.target.value);
       if (!at) { e.target.setCustomValidity(i18n('whenBad')); e.target.reportValidity(); return; }
@@ -973,9 +965,8 @@ async function route() {
     const nowBtn = document.getElementById('nowBtn');
     if (nowBtn) nowBtn.onclick = () => { S.chargeAt = null; R2(); };
   } else {
-    // Com a lista ainda a carregar, vCmp() desenha só o card "a calcular"
-    // (sem dropdowns): os getElementById abaixo podem não existir —
-    // TypeError aqui abortava route() a meio (saveS() não corria).
+    // Com a lista ainda a carregar, vCmp() não desenha os dropdowns, por
+    // isso os elementos abaixo podem não existir.
     const cmpIdx = document.getElementById('cmpIdx'), cmpFix = document.getElementById('cmpFix'), cmpOmie = document.getElementById('cmpOmie');
     if (cmpIdx) cmpIdx.onchange = e => { S.idx = e.target.value; loadCmp(); };
     if (cmpFix) cmpFix.onchange = e => { S.fix = e.target.value; loadCmp(); };
@@ -987,9 +978,8 @@ async function route() {
   }
   saveS();
 }
-// OMIE de referência. Vai em segundo plano de propósito: o primeiro fetch
-// com cache frio pode demorar dezenas de segundos (o servidor tem timeout e
-// 3 tentativas), e a página não pode ficar em branco à espera disso.
+// Vai buscar o OMIE de referência em segundo plano: com a BD vazia pode
+// demorar dezenas de segundos, e a página não fica à espera.
 async function loadOmieRef() {
   try {
     // O último dia COMPLETO: o de amanhã, depois das ~13:00, ainda não tem a
@@ -1021,9 +1011,8 @@ async function init() {
     document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); route(); });
     await refresh();   // rápido: só o simulate, com o OMIE por omissão
   } catch (e) {
-    // Sem isto, uma falha no primeiro fetch (servidor a acordar, rede
-    // morta, token 401) deixava `#app` vazio — página em branco, sem
-    // mensagem. Mostra o erro e permite tentar outra vez.
+    // Se o primeiro pedido falhar, mostra o erro com um botão para tentar
+    // outra vez (em vez de uma página em branco).
     setLang(initialLang(), false);
     const app = document.getElementById('app');
     if (app) app.innerHTML = `<div class="card"><b>${i18n('bootFail')}</b><p>${i18n('bootFailWhy')}</p><button onclick="location.reload()">${i18n('retry')}</button></div>`;

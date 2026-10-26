@@ -1,192 +1,218 @@
-# 04 — API + auth total
+# 04 — API e autenticação
 
-## Princípio
+O guia para quem usa a API de fora (em inglês) está em `/api`
+(`frontend/api.html`). Este documento é a versão para quem mexe no código:
+como funciona a autenticação, os limites, e o que cada rota faz.
 
-Nenhum `/v1/*` responde sem `Authorization` — **excepção: `POST /v1/session`**,
-que é precisamente quem emite o token (obviamente não pode exigir um). As
-páginas HTML, os ficheiros estáticos (JS/CSS/PWA/ícones) e as sondas
-`/healthz`/`/readyz` também não pedem auth — não são API. Qualquer outro
-caminho cai na auth: sem credencial é **401**, não 404.
+## A regra
 
-Web e terceiros usam o mesmo controlo — muda só o tipo de credencial. Os
-favoritos continuam sem conta (localStorage), mas o browser envia sempre um
-token.
+Nenhuma rota `/v1/*` responde sem credencial, com uma excepção:
+`POST /v1/session`, que é quem te dá o token (não pode pedir um).
+
+Também não pedem credencial as páginas HTML, os ficheiros estáticos (JS,
+CSS, PWA, ícones) e as verificações `/healthz` e `/readyz`, porque não são
+API. Qualquer outro caminho desconhecido cai na autenticação: sem
+credencial recebes **401**, não 404.
+
+O site e as apps de terceiros passam pelo mesmo controlo; só muda o tipo de
+credencial. Os favoritos do site não precisam de conta (ficam no browser),
+mas o browser manda sempre um token.
 
 ## Credenciais
 
-| cliente | emissão | envia |
+| quem | como obtém | o que envia |
 |---|---|---|
-| Sessão web anónima | `POST /v1/session` → JWT `WEB_SESSION` 24h (sem dados pessoais; `sid` é um identificador aleatório gerado no servidor — *ainda não há IP hash; em produção, uuid + hash de IP anti-abuso*) | `Bearer <jwt>` |
-| App terceira | Chave provida via env `CEME_API_KEY` → no arranque, **só o sha256** vai para a BD (`api_key`, id fixo `env-key`); portal de emissão é fase 2 | `X-API-Key: <valor>` |
+| o site (sessão anónima) | `POST /v1/session` → um JWT do tipo `WEB_SESSION`, válido 24 h, sem dados pessoais (`sid` é um identificador aleatório) | `Authorization: Bearer <jwt>` |
+| uma app de terceiros | uma API key definida na variável `CEME_API_KEY` do servidor; no arranque, só o sha256 vai para a BD (tabela `api_key`, id `env-key`) | `X-API-Key: <chave>` |
 
-(Contas de admin/CEME com `USER` + `roles` são **fase 2** — não existem.)
+Um JWT é um texto em três partes (`cabeçalho.conteúdo.assinatura`). O
+servidor assina-o com `JWT_SECRET` (HMAC-SHA256); se alguém alterar o
+conteúdo, a assinatura deixa de bater. O código está em
+`backend/src/auth/tokens.js`.
 
-O `X-API-Key` é **validado** contra o hash em BD (chaves revogadas ou
-expiradas excluem) — qualquer string desconhecida recebe 401. O lookup tem
-índice (`idx_api_key_hash`, nos dois schemas).
+Uma `X-API-Key` valida-se comparando o seu hash com os da BD (ignoram-se
+chaves revogadas ou expiradas). Qualquer chave desconhecida recebe 401.
 
-**A env é a fonte de verdade da chave `env-key`**, e a BD persiste entre
-arranques (Postgres), por isso o arranque sincroniza nos dois sentidos:
+### A chave da variável de ambiente
 
-- **com** `CEME_API_KEY`: upsert do hash e `revoked_at` limpo — **trocar** o
-  valor da env invalida a chave antiga; voltar a pô-la reactiva;
-- **sem** `CEME_API_KEY`: a linha `env-key` é **revogada** (`revoked_at`).
+A variável `CEME_API_KEY` manda na linha `env-key` da BD. Como a BD
+sobrevive aos reinícios, o arranque sincroniza nos dois sentidos:
 
-Revogar = tirar (ou trocar) a env e reiniciar. Testado em `server.test.js`
-(«CEME_API_KEY — tirar a env revoga a chave»). Em `CEME_READONLY` nada disto
-corre (a BD é de outro ambiente).
+- **com** `CEME_API_KEY`: grava o hash e reactiva a chave. Mudar o valor da
+  variável invalida a chave antiga;
+- **sem** `CEME_API_KEY`: revoga a chave que estiver na BD.
 
-## Secret de sessão (`JWT_SECRET`)
+Para revogar, tiras (ou trocas) a variável e reinicias. Testado em
+`server.test.js` («CEME_API_KEY — tirar a env revoga a chave»). Em modo
+`CEME_READONLY` isto não corre.
 
-O servidor arranca sempre; sem `JWT_SECRET` usa a secret de dev
-(`dev-only-change-me`) com aviso no stdout. Em produção
-(`NODE_ENV=production`), com a secret de dev em uso, o `POST /v1/session`
-devolve **503** em vez de emitir tokens — `export
-JWT_SECRET=<openssl rand -hex 32>` é obrigatório (ver `backend/.env.example`).
+### O segredo das sessões (`JWT_SECRET`)
 
-O `POST /v1/simulate` rejeita corpos acima de **64 KB** (413), JSON
-inválido/não-objecto (400), `kwh` fora de (0, 1000], `at` não-ISO e rates
-`omie*`/`omieCycles` não numéricas ou ≤ 0 (400 com `error.code` explícito),
-e cada endpoint aceita só o seu método (405 com `Allow`). Um tarifário com
-componentes divergentes, dados maus ou sem TAR para a região entra em
-**quarentena**: sai da resposta (e fica no log do servidor, com o `id`) — os
-restantes seguem; não há 400 vindo de um seed mal.
+O servidor arranca sempre. Sem `JWT_SECRET`, usa um segredo de dev
+conhecido (`dev-only-change-me`) e avisa no log. Em produção
+(`NODE_ENV=production`) com esse segredo, recusa emitir tokens
+(`POST /v1/session` → **503**) e recusa os que receber. Em produção tens de
+definir `JWT_SECRET` (por exemplo `openssl rand -hex 32`); vê
+`backend/.env.example`.
 
-## Rate limit (em memória)
+## Validação dos pedidos
 
-Janela fixa de 60 s, por processo — em produção, um limitador à frente do
-server. Sessão web (Bearer) conta por IP: 60/min. `POST /v1/session` conta
-por IP à parte: 10/min (é pré-auth; sem teto era a rota barata para
-martelar JWT). Terceiros (X-API-Key) contam pela chave (o bucket é o
-prefixo de 8 caracteres): 60/min ou o `api_client.rate_limit` da BD. Exceder devolve **429** com
-`x-ratelimit-limit/remaining/reset` e `retry-after`. O mapa de buckets é
-podado e tem teto (10 000 chaves) — IPs distintos em enxurrada não crescem
-memória sem limite.
+- `POST /v1/simulate` recusa corpos acima de **64 KB** (413), JSON inválido
+  ou que não seja um objecto (400), `kwh` fora de ]0, 1000], `at` que não
+  seja uma data ISO e valores `omie*`/`omieCycles` que não sejam números
+  positivos (400, com um `error.code` próprio).
+- Cada rota aceita só o seu método HTTP (405, com o cabeçalho `Allow`).
+- Um tarifário com dados inconsistentes, ou sem TAR para a região, vai para
+  a **quarentena**: sai da resposta (com um aviso no log com o `id`) e os
+  outros seguem. Um seed com um erro nunca dá um 400.
 
-`x-content-type-options: nosniff` vai em todas as respostas JSON e no HTML
-da UI.
+## Rate limit
 
-## Endpoints (MVP)
+Uma janela fixa de 60 segundos, contada em memória por cada instância do
+servidor.
 
-## Endpoints implementados
+- Sessão web (Bearer): por IP, 60 pedidos por minuto.
+- `POST /v1/session`: por IP, à parte, 10 por minuto (é a única rota sem
+  auth, por isso tem um limite mais apertado).
+- API key: pela chave (os primeiros 8 caracteres), 60 por minuto ou o
+  `api_client.rate_limit` da BD.
+
+Ao passar o limite recebes **429**, com os cabeçalhos
+`x-ratelimit-limit/remaining/reset` e `retry-after`. O mapa de contadores
+tem um tecto (10 000 entradas), para um monte de IPs diferentes não encher
+a memória.
+
+**O IP atrás de proxies.** Em produção, os pedidos chegam através da
+Cloudflare e do balanceador, por isso o IP da ligação é sempre o do proxy.
+A variável `CEME_TRUST_PROXY=N` diz quantos proxies de confiança há à
+frente: o IP do cliente passa a ser a N-ésima entrada a contar da direita
+do cabeçalho `X-Forwarded-For` (as da esquerda o cliente pode inventar).
+Sem a variável, usa-se o IP da ligação.
+
+Todas as respostas JSON e o HTML levam `x-content-type-options: nosniff`.
+
+## Rotas
 
 ```
-GET  /healthz                           # liveness, sem auth; só o processo
-GET  /readyz                            # readiness, sem auth e só de loopback; processo + BD
-POST /v1/session                      # emite WEB_SESSION (24h), sem auth
-GET  /v1/health                       # exige Authorization; confirma o token
-GET  /v1/cemes                        # lista de comercializadores
-GET  /v1/tariffs                      # todos os tarifários + a versão vigente
-GET  /v1/tar                          # TAR em vigor (region, voltage, period, valid_from)
-POST /v1/simulate                     # ver abaixo
-GET  /v1/omie/daily?days=60           # agregados diários; days limitado a 7..120
-GET  /v1/omie/futures                 # contratos OMIP
-     Não é usado pela interface (removido do comparador); mantido para
-     consumidores da API.
-GET  /v1/omie/stats                   # estatísticas mensais + células de referência (docs/09)
+GET  /healthz                    # o processo está vivo; sem auth
+GET  /readyz                     # processo + BD; sem auth; só testa a BD a partir da própria máquina
+POST /v1/session                 # dá-te um WEB_SESSION (24 h); sem auth
+GET  /v1/health                  # confirma a credencial e diz de que tipo é
+GET  /v1/cemes                   # comercializadores
+GET  /v1/tariffs                 # todos os tarifários + a versão em vigor
+GET  /v1/tar                     # TAR em vigor (region, voltage, period, valid_from)
+POST /v1/simulate                # vê abaixo
+GET  /v1/omie/daily?days=60      # médias diárias; days entre 7 e 120
+GET  /v1/omie/futures            # contratos de futuros do OMIP (a interface não os usa)
+GET  /v1/omie/stats              # dados da página de estatísticas (docs/09)
 GET  /v1/indexed/quarters?tariff=&region=&date=&fixed=&tz=
-     Os quartos de um dia civil de Lisboa (`date`, por omissão hoje em
-     Lisboa) para um indexado, cotados com a TAR da região. `tz` (IANA) é o
-     fuso das horas `start`/`end` mostradas; cada quarto traz também o
-     instante `utc`. `fixed` = id do fixo escolhido no comparador: devolve por
-     quarto `fixed` (€/kWh) e `winner` (IDX|FIX|EQ|null), mais `wins` com as
-     contagens; sem `fixed`, `winner` é sempre `null`. Um `tariff` que não é
-     indexado cai no primeiro indexado. Erros: 400 `bad_region`, 404
-     `no_indexed`, 502 `omie_unavailable`.
 ```
 
 `POST /v1/session` devolve `{ token, expires_in }`; o JWT leva `kind`
 (`WEB_SESSION`), `sid` e `exp`.
 
-`/healthz` e `/readyz` são as rotas do Zerops (`run.healthCheck` e
-`deploy.readinessCheck`, ver `infra.md`). São as únicas sem auth, porque o
-balancer tem de as alcançar de dentro do container. `/readyz` faz um
-`SELECT 1` à BD **só quando vem de loopback** (com prazo e cache curta); de
-fora responde 200 com `db: unknown` (sem tocar na BD e sem chumbar um deploy
-por um probe mal endereçado). BD em baixo: 503 `db_unavailable`.
+### `/healthz` e `/readyz`
 
-`POST /v1/simulate` (o que a web usa):
+São as verificações da plataforma (vê `infra.md`). `/healthz` só diz que o
+processo responde. `/readyz` também faz um `SELECT 1` à BD, mas **só quando
+o pedido vem da própria máquina** (com 3 s de prazo e a resposta guardada
+5 s). De fora responde 200 com `db: unknown`, sem tocar na BD. Com a BD em
+baixo: 503 `db_unavailable`.
+
+### `/v1/indexed/quarters`
+
+Os quartos de hora de um dia de Lisboa (`date`, por omissão hoje) para um
+indexado (`tariff`), cotados com a TAR da região (`region`). `tz` (nome de
+fuso IANA, ex. `Europe/Lisbon`) é o fuso das horas `start`/`end`
+devolvidas; cada quarto traz também o instante `utc`.
+
+Com `fixed=<id de um fixo>`, cada quarto traz ainda `fixed` (o €/kWh do
+fixo nesse quarto) e `winner` (`IDX`, `FIX`, `EQ` ou `null`), e a resposta
+traz `wins` com as contagens. Sem `fixed`, `winner` é sempre `null`.
+
+Um `tariff` que não seja indexado é trocado pelo primeiro indexado. Erros:
+400 `bad_region`, 404 `no_indexed`, 502 `omie_unavailable`.
+
+### `POST /v1/simulate`
+
+É o que o site usa para o ranking.
 
 ```json
-{ "kwh": 40, "at": "2026-10-18T01:00:00Z", "region": "CONT", "omie": 0.081,
+{ "kwh": 40, "at": "2026-10-18T01:00:00Z", "region": "CONT", "useSpot": true,
   "omieCycles": { "DIARIO":  { "vazio": 0.105, "fora": 0.059 },
                   "SEMANAL": { "vazio": 0.098, "fora": 0.064 } } }
 ```
 
-Devolve **todos** os tarifários em vigor no dia do carregamento (dia civil na
-região), já cotados para o instante e a região pedidos, mais `avg` e
-`omieRef`. A filtragem é do cliente. Cada tarifário traz `parts` — a conta
-linha a linha (energia + TAR, IEC, activação, sem IVA, IVA), que soma o
-`totalEur` ao cêntimo (docs/02).
+`region` ∈ `CONT | MAD | AZO`. Sem `at`, usa agora.
 
-`region` ∈ `CONT | MAD | AZO`. `at` ausente = agora.
+Devolve **todos** os tarifários em vigor no dia do carregamento (o dia na
+região), já cotados, do mais barato para o mais caro, mais a média (`avg`)
+e o OMIE usado (`omieRef`). Filtrar é com o cliente. Cada tarifário traz
+`parts`, a conta linha a linha (energia + TAR, IEC, activação, sem IVA,
+IVA), que soma o `totalEur` ao cêntimo ([02](02-motor-calculo.md)).
 
 Notas:
-- `activation` da resposta é **o que o CEME publica no sheet capturado**
-  — nunca substituído pelo regulamentar. Juntamente vão `egme_legal` (o
-  valor legal 2026: 0,1088 €/carregamento, Regul. ERSE 7/2026) e
-  `activation_stale` (`true` só quando o publicado é ainda o valor legal
-  anterior — CEMEs que não actualizaram; taxas próprias acima do legal são
-  legítimas e não contam). Actualizar é tarefa de
-  verificação do seed, não de substituição no código (ver docs/02).
-- `useSpot: true`: os indexados são cotados ao OMIE do quarto de hora de `at`
-  (com as perdas desse quarto), por cima de `omie*`/`omieCycles`, que ficam
-  só como recurso se o quarto não existir. `omieRef` passa a ser o OMIE do
-  quarto e `omieSpot` `{utc, eurKwh}` diz qual foi (null sem `useSpot` ou sem
-  quarto). Detalhe em docs/02.
-- OMIE dos indexados (`SPLIT_VAZIO_FORA`), sem `useSpot`: com `omieCycles`, cada indexado
-  usa o par vazio/fora **do seu ciclo**; sem ele, `omieVazio`/`omieFora`
-  valem para todos (override explícito); sem nenhum, o `omie` único.
-- Erros em `{error:{code,message}}`. As **datas devolvidas são UTC** (ISO
-  `toISOString()`), independentemente da região; a conversão para a parede
-  horária local do carregamento é no cliente. Datas *pedidas* em `at`
-  seguem o offset que o cliente escrever.
 
-## Endpoints planeados (fase 2)
+- `activation` é a taxa de activação **que o CEME publica**. Vai
+  acompanhada de `egme_legal` (o valor legal em vigor) e
+  `activation_stale` (`true` quando o CEME ainda publica o valor legal do
+  ano anterior).
+- `useSpot: true`: os indexados são cotados ao OMIE do quarto de hora de
+  `at` (e às perdas desse quarto). `omieRef` passa a ser esse OMIE e
+  `omieSpot` (`{utc, eurKwh}`) diz qual foi. Se o quarto não existir,
+  usam-se as médias (`omieCycles` ou `omie*`) e `omieSpot` vem `null`.
+- Sem `useSpot`, com `omieCycles`, cada indexado usa o par vazio/fora **do
+  seu ciclo**; sem `omieCycles`, `omieVazio`/`omieFora` valem para todos;
+  sem nenhum, o `omie` único.
+- As **datas devolvidas são UTC** (`toISOString()`), seja qual for a região.
+  Passar para a hora local é com o cliente. As datas que **envias** em `at`
+  seguem o offset que escreveres.
+
+### Formatos gerais
+
+Erros em `{error:{code,message}}`. Datas em ISO UTC. €/kWh com 4 casas,
+totais com 2, com o arredondamento por parcela da fatura.
+
+## Língua das páginas
+
+As páginas bilingues (`/`, `/assistente`, `/simulador`, `/sobre`,
+`/contactos`, `/omie` e a raiz de `omie.cocofree.dev`) chegam ao
+browser já com a língua escolhida: o servidor troca o `<html lang>` e o
+marcador `window.__LANG__=null` por `"pt"` ou `"en"`. O guia `/api` é só em
+inglês.
+
+A escolha vem do cabeçalho `Accept-Language` (`negotiateLang()`), e a
+resposta leva `Vary: Accept-Language` (mais `Cookie` nas páginas que
+dependem do cookie `ceme_ui`, vê [05](05-frontend.md)). Só passa a inglês
+se a língua **preferida** (a de maior `q`) for inglês: um `en;q=0.8` atrás
+de um `pt;q=0.9` fica em português. No browser, a bandeira escolhida
+(guardada em `localStorage`) tem prioridade sobre o cabeçalho.
+
+## Planos
+
+Nada disto existe ainda; está no [roadmap](06-roadmap.md):
 
 ```
-GET  /v1/tariffs/:id                 # inclui versão vigente + histórico
-GET  /v1/tariffs/:id/quote?at=&kwh=   # um só tarifário (a decomposição já vem no /v1/simulate)
-POST /v1/suggestions                   # cria suggestion PENDING (sessão ou user)
+GET  /v1/tariffs/:id                    # versão em vigor + histórico
+GET  /v1/tariffs/:id/quote?at=&kwh=     # cotar um só tarifário
+POST /v1/suggestions                    # enviar uma sugestão de correcção
 GET  /v1/suggestions/mine
-# portal CEME (role ceme_editor, só o seu ceme_id)
+# portal para cada CEME (só o seu ceme_id)
 GET  /v1/ceme/tariffs
-POST /v1/ceme/tariffs/:id/versions    # cria DRAFT/SCHEDULED (campanha/futuro)
-# admin
+POST /v1/ceme/tariffs/:id/versions      # criar uma versão (campanha, preço futuro)
+# administração
 GET  /v1/admin/suggestions?status=
-POST /v1/admin/suggestions/:id/approve  # cria tariff_version
+POST /v1/admin/suggestions/:id/approve  # cria a tariff_version
 POST /v1/admin/suggestions/:id/reject
 ```
 
-Erros em `{error:{code,message}}`; datas ISO (UTC);
-€/kWh com 4 casas, totais com 2 — `ROUNDUP` por componente antes de somar,
-como na fatura.
+Com eles, a autorização passaria a depender do tipo de credencial:
 
-## Negociação de idioma
+- `WEB_SESSION`: leitura e `POST /suggestions`;
+- utilizador `ceme_editor`: leitura e escrita só no seu CEME;
+- utilizador `admin`: tudo, incluindo moderação;
+- `THIRD_PARTY`: leitura, conforme o plano da chave.
 
-As páginas bilíngues (`/`, `/assistente`, `/simulador`, `/sobre`,
-`/contactos`, `/omie` e a raiz do `omie.cocofree.dev`) recebem a língua
-detectada no HTML: o servidor troca o `<html lang>` e substitui o marcador
-`window.__LANG__=null` (espaços tolerados) por `"pt" | "en"`. O guia `/api`
-é só em inglês. Vem do
-cabeçalho `Accept-Language` (`negotiateLang()`), e a resposta leva
-`Vary: Accept-Language` — mais `Cookie`, porque a página servida em `/`
-também depende do cookie `ceme_ui` (ver `docs/05`).
-
-Só passa a inglês se o **primeiro** tag da lista ordenada por `q` for `en*` —
-um `en;q=0.8` atrás de um `pt;q=0.9` não ganha, porque o público-alvo é
-português. O cliente pode sobrepor via bandeira, que persiste em
-`localStorage` e tem precedência sobre o cabeçalho.
-
-## Autorização
-
-(Plano de fase 2 — o `kind` do payload só é informativo, ver
-`GET /v1/health`; os endpoints de escrita ainda **não** existem.)
-
-- `WEB_SESSION`: só leitura + `POST /suggestions`.
-- `USER ceme_editor`: leitura + escrita só em `ceme_id` próprio.
-- `USER admin`: tudo + moderação.
-- `THIRD_PARTY`: leitura conforme plano da key (MVP: tudo o que a web vê).
-
-Sem OAuth externo nesta fase (custo zero) — desenho permite trocar o
-emissor JWT por Auth0/Clerk/Cloudflare Access depois sem mudar rotas.
+Hoje o `kind` do token é só informativo (aparece em `GET /v1/health`). O
+desenho permite trocar quem emite os JWT por um serviço externo (Auth0,
+Clerk, Cloudflare Access) sem mudar as rotas.

@@ -1,12 +1,10 @@
 // Paridade da fórmula do motor no browser: o gráfico/breakeven do comparador
 // usa uma cópia da fórmula dos indexados escrita em JS dentro de
 // frontend/index.html (`idxPrice`). É deliberada (o gráfico desenha 60 dias
-// sem endpoint novo), mas é uma segunda implementação da aritmética — o
-// histórico: foi exactamente a divergência das duas que produziu o bug da
-// fórmula do Ynerluz corrigido nesta PR. O teste extrai essa linha do HTML e
-// compara com `indexedPrice()`/`breakevenOmie()` nos dois ramos, para várias
-// entradas — se o browser e o motor divergirem outra vez, falha aqui antes
-// do gráfico mentir a um utilizador.
+// sem endpoint novo), mas é uma segunda implementação da mesma conta. Este
+// teste extrai essa linha do HTML e compara-a com `indexedPrice()` e
+// `breakevenOmie()` nas duas fórmulas, para várias entradas: se as duas
+// divergirem, falha aqui.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

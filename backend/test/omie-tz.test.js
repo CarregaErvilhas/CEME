@@ -1,6 +1,6 @@
-// Guarda de regressão: o ficheiro do TF está em hora de Lisboa, por isso a
-// agregação tem de ser por dia civil de Lisboa. Se alguém voltar a agrupar por
-// dia de Madrid (CET), a média mensal deixa de bater com o TF.
+// O ficheiro do TF está em hora de Lisboa, por isso a agregação tem de ser
+// por dia de Lisboa. Este teste confirma que a média mensal calculada bate
+// com a que o TF publica.
 //
 // A validação usa o ficheiro em cache quando existe (dev) e, em alternativa,
 // tenta ir buscá-lo à fonte (CI). Se não for possível obter os dados, o teste

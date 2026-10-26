@@ -44,5 +44,5 @@ jobs:
 # push chega a main. Assim não existe nenhuma credencial Zerops no GitHub
 # para vazar.
 #
-# O gating de qualidade passa a ser a branch protection do main (exige este
+# O que impede código sem testes de chegar a produção é a protecção do main (exige este
 # job `test` verde antes do merge) — ver infra.md secção 4.

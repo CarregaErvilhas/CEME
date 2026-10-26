@@ -2,8 +2,7 @@
 #
 # É um `zerops.yml` (runtime apenas): o serviço managed — PostgreSQL, hostname
 # `db` — cria-se à parte (ver `zerops-import.yaml`), e é dele que este serviço
-# puxa as variáveis por referência `${hostname_variavel}`. (Houve um Valkey,
-# `cache`; foi desligado por não ter uso. Volta se aparecer um caso de uso.)
+# puxa as variáveis por referência `${hostname_variavel}`.
 #
 # JWT_SECRET: env secret do serviço `api` (gerado no import; editável na GUI).
 # Nunca no repositório.
@@ -19,12 +18,8 @@ zerops:
       # resto do build no mesmo shell.
       buildCommands:
         - cd backend && npm ci
-      # Sem `cache:`. A cache do build só ajuda `npm install`, que é
-      # incremental; com `npm ci` o node_modules é apagado e reinstalado do
-      # zero de qualquer maneira (docs do npm e o FAQ do Zerops), portanto o
-      # restore era trabalho perdido: mover para /build/source, apagar,
-      # reinstalar. A cache HTTP do npm (~/.npm) vive fora de /build/source e
-      # é preservada na mesma, sem config; é ela que faz os ~3s do npm ci.
+      # Sem `cache:`: o `npm ci` apaga sempre o node_modules, por isso guardá-lo
+      # não serve de nada. A cache HTTP do npm (~/.npm) é preservada sozinha.
       deployFiles:
         - backend
         - frontend
@@ -49,9 +44,8 @@ zerops:
         retryPeriod: "10s"
     run:
       base: nodejs@24
-      # `run.start` é executado por `exec`, não por um shell — `cd backend &&`
-      # falhava com "exec: cd: not found" (exit 127) e o serviço entrava em
-      # crash loop. O directório certo vai em `workingDir` (default /var/www).
+      # `run.start` corre sem shell, por isso `cd backend && …` não funciona.
+      # A pasta vai em `workingDir`.
       startCommands:
         - command: npm start
           name: api

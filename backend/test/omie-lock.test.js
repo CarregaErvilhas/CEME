@@ -1,10 +1,8 @@
 // O lock do refresh do OMIE (várias réplicas, uma BD) e a guarda do modo
 // readonly.
 //
-// O lock antigo dizia sempre "é meu" depois de tentar roubar um lock
-// expirado (sem ver se o UPDATE tinha acertado) e largava-o às cegas
-// (DELETE sem dono) — duas réplicas podiam ingerir ao mesmo tempo e uma
-// apagava o lock da outra.
+// Garante que só uma instância fica com o lock (mesmo quando duas tentam
+// tirar um lock expirado ao mesmo tempo) e que ninguém apaga o lock de outro.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';

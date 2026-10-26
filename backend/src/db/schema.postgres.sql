@@ -1,16 +1,28 @@
--- Schema MVP (PostgreSQL). Migracao do schema.sql (SQLite, node:sqlite).
--- Diferenças chave:
---   - INTEGER PRIMARY KEY AUTOINCREMENT  -> SERIAL PRIMARY KEY
---   - datetime('now')                    -> now()
---   - PRAGMA journal_mode = WAL          -> removido (nao existe no Postgres)
---   (o seed é um upsert ON CONFLICT … DO UPDATE nos dois dialetos)
+-- Schema da BD em PostgreSQL (produção). A versão para dev é schema.sql:
+-- as duas têm de ter sempre as mesmas tabelas e colunas. As diferenças são
+-- só de dialecto (SERIAL em vez de AUTOINCREMENT, now() em vez de
+-- datetime('now'), DATE/TIMESTAMPTZ em vez de TEXT).
+-- Corre em cada arranque; `IF NOT EXISTS` torna-o seguro de repetir.
+-- Para colunas novas em tabelas que já existem, vê db/migrate.js.
 
+-- Os comercializadores (CEME = Comercializador de Electricidade para a
+-- Mobilidade Eléctrica): as empresas que te vendem a energia quando
+-- carregas o carro num posto público, através do cartão ou da app delas.
 CREATE TABLE IF NOT EXISTS ceme (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, brand_color TEXT,
   website TEXT, email TEXT, phone TEXT, whatsapp TEXT,
   created_at TIMESTAMP DEFAULT now(), updated_at TIMESTAMP
 );
 
+-- Os tarifários de cada CEME.
+--   kind:     FIXED (preço fixo) ou INDEXED (segue o preço do OMIE);
+--   voltage:  BT (baixa tensão), MT (média tensão) ou BT_MT (os dois);
+--   schedule: SIMPLES (um preço) ou BI_HORARIA (vazio / fora de vazio);
+--   cycle:    DIARIO, SEMANAL ou SIMPLES (que horas são vazio, ver regions.js);
+--   green, bundle, popular: etiquetas para os filtros (energia verde, preço
+--             com condições, mais usado);
+--   regions:  lista separada por vírgulas (CONT,MAD,AZO) onde o tarifário é
+--             vendido. É só informação: o simulador cota-o em qualquer região.
 CREATE TABLE IF NOT EXISTS tariff (
   id TEXT PRIMARY KEY, ceme_id TEXT NOT NULL REFERENCES ceme(id),
   name TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('FIXED','INDEXED')),
@@ -19,9 +31,17 @@ CREATE TABLE IF NOT EXISTS tariff (
   cycle TEXT NOT NULL CHECK (cycle IN ('DIARIO','SEMANAL','SIMPLES')),
   green INTEGER DEFAULT 0, access TEXT, bundle INTEGER DEFAULT 0,
   popular INTEGER DEFAULT 0, source_url TEXT,
-  regions TEXT NOT NULL DEFAULT 'CONT' -- CSV: CONT,MAD,AZO onde o tarifario existe
+  regions TEXT NOT NULL DEFAULT 'CONT'
 );
 
+-- Versões de um tarifário no tempo. A versão em vigor num dia é a que tem
+-- valid_from <= dia e (valid_to vazio ou dia < valid_to). Uma campanha
+-- (campaign = 1) é uma versão com fim marcado.
+--   k_index_eur_mwh, cgs_eur_mwh: as margens dos indexados (vê
+--     engine/indexed.js). Atenção: apesar do nome, os valores estão em €/kWh.
+--   omie_aggregation: SPLIT_VAZIO_FORA (média do OMIE por período) ou UNICA.
+--   notes: um código (ex.: AC_DC_FLAT) que o frontend traduz.
+-- A chave única (tariff_id, valid_from) é o alvo do upsert do seed.
 CREATE TABLE IF NOT EXISTS tariff_version (
   id SERIAL PRIMARY KEY, tariff_id TEXT NOT NULL REFERENCES tariff(id),
   valid_from DATE NOT NULL, valid_to DATE, campaign INTEGER DEFAULT 0,
@@ -29,16 +49,17 @@ CREATE TABLE IF NOT EXISTS tariff_version (
   k_index_eur_mwh REAL, cgs_eur_mwh REAL,
   omie_aggregation TEXT DEFAULT 'SPLIT_VAZIO_FORA',
   notes TEXT, created_by TEXT, created_at TIMESTAMP DEFAULT now(),
-  -- Uma versão por data de vigência: garante o alvo do
-  -- `ON CONFLICT (tariff_id, valid_from)` do seed idempotente
-  -- (à paridade do mesmo alvo no seed postgres).
   UNIQUE (tariff_id, valid_from)
 );
 
--- `energy_eur_kwh` é o preço FINAL que o CEME publica (já com a TAR
--- dentro). `energy_only_eur_kwh` + `tar_eur_kwh` são a decomposição
--- quando a folha a tinha (o CEME publicava a energia separada e a folha
--- compunha o total): NULL quando não a temos — não se inventa.
+-- Os preços de cada versão, uma linha por período (VAZIO, FORA_VAZIO ou
+-- UNICO). Estes são os preços do Continente, e valem em qualquer região
+-- que não tenha linha própria em `price_component_region`.
+--   energy_eur_kwh: o €/kWh FINAL que o CEME publica, já com a TAR.
+--   energy_only_eur_kwh + tar_eur_kwh: o mesmo preço partido em energia e
+--     TAR, só quando o CEME publica a separação (senão ficam NULL).
+--   activation_eur: taxa por carregamento; support_eur: apoio por
+--     carregamento; iec_eur_kwh: imposto especial sobre a electricidade.
 CREATE TABLE IF NOT EXISTS price_component (
   tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
   period TEXT NOT NULL CHECK (period IN ('VAZIO','FORA_VAZIO','UNICO')),
@@ -48,12 +69,9 @@ CREATE TABLE IF NOT EXISTS price_component (
   PRIMARY KEY (tariff_version_id, period)
 );
 
--- Preços por região: quando o CEME cobra diferente nas ilhas (ex.: a Enable
--- publica energia 0,15 €/kWh na Madeira/Açores vs 0,12 no Continente), as
--- linhas da ilha vivem aqui, POR CIMA dos preços por omissão de
--- `price_component` (que são os do Continente). Só há linhas de região onde
--- os valores divergem; onde não há, o tarifário cota-se com o preço CONT em
--- qualquer região — e a TAR (tabela `tar`) segue sempre a região pedida.
+-- Preços próprios das ilhas (MAD, AZO), para quando o CEME cobra diferente
+-- lá. Mesmas colunas que `price_component`; uma linha aqui substitui a do
+-- Continente para essa região e período.
 CREATE TABLE IF NOT EXISTS price_component_region (
   tariff_version_id INTEGER NOT NULL REFERENCES tariff_version(id),
   region TEXT NOT NULL CHECK (region IN ('MAD','AZO')),
@@ -64,20 +82,28 @@ CREATE TABLE IF NOT EXISTS price_component_region (
   PRIMARY KEY (tariff_version_id, region, period)
 );
 
+-- TAR (Tarifas de Acesso às Redes): o que se paga pelo uso da rede eléctrica,
+-- fixado todos os anos pela ERSE (o regulador). €/kWh por região, tensão e
+-- período, com validade.
 CREATE TABLE IF NOT EXISTS tar (
   valid_from DATE NOT NULL, valid_to DATE, region TEXT NOT NULL DEFAULT 'CONT',
   voltage TEXT NOT NULL, period TEXT NOT NULL, price_eur_kwh REAL NOT NULL,
   PRIMARY KEY (valid_from, region, voltage, period)
 );
 
--- Os quartos-horários do OMIE, um por linha, indexados pelo INSTANTE (UTC).
+-- Os preços do OMIE, um por quarto de hora (96 por dia; 92 ou 100 nos dias
+-- de mudança de hora). O OMIE é o mercado grossista ibérico de electricidade.
 --
--- A chave é o instante, nunca a hora local: a hora repetida da mudança de
--- hora de Outono daria duas linhas com a mesma hora de relógio, e a chave
--- tem de as distinguir. Em UTC não há duplicados — o instante é único.
---
--- `source` diz de onde veio o preço: 'OMIE_ES' (o ficheiro oficial) ou 'TF'
--- (o Tiago Felícia, que traz também a classificação do período horário).
+-- A chave é o INSTANTE em UTC (ts_utc), nunca a hora local: no dia em que a
+-- hora atrasa, a 01:00–02:00 de Lisboa acontece duas vezes, e só o instante
+-- as distingue.
+--   day_lisbon, min_lisbon: o dia e os minutos desde a meia-noite em Lisboa,
+--     para agrupar por dia e mostrar horas;
+--   price_pt_eur_mwh / price_es_eur_mwh: preço em Portugal / Espanha (€/MWh);
+--   bd, bs: período (V = vazio, F = fora de vazio) no ciclo diário e semanal;
+--   source: 'OMIE_ES' (ficheiro oficial) ou 'TF' (dados.tiagofelicia.pt).
+--     As duas fontes podem ter o mesmo instante; ao ler, ganha a oficial;
+--   flags: avisos de validação (ex.: preço fora da gama esperada).
 CREATE TABLE IF NOT EXISTS omie_spot (
   ts_utc TIMESTAMPTZ NOT NULL, day_lisbon DATE NOT NULL, min_lisbon INTEGER NOT NULL,
   price_pt_eur_mwh REAL NOT NULL, price_es_eur_mwh REAL,
@@ -87,24 +113,29 @@ CREATE TABLE IF NOT EXISTS omie_spot (
 );
 CREATE INDEX IF NOT EXISTS omie_spot_day ON omie_spot(day_lisbon);
 
--- Os agregados diários (as médias por ciclo horário), materializados a
--- partir das linhas de cima.
+-- Resumo diário calculado a partir de omie_spot: média, mínimo e máximo, e
+-- as médias de vazio (v) e fora de vazio (f) nos ciclos diário (bd) e
+-- semanal (bs). É o que GET /v1/omie/daily devolve.
 CREATE TABLE IF NOT EXISTS omie_daily (
   date DATE PRIMARY KEY, avg_pt REAL, min_pt REAL, max_pt REAL,
   bd_v REAL, bd_f REAL, bs_v REAL, bs_f REAL, quarters INTEGER, source TEXT
 );
 
--- Estado da ingestão: quando foi o último refresh, o ETag do ficheiro
--- oficial (para o pedido condicional) e o payload das estatísticas.
+-- Pares chave/valor com o estado da ingestão do OMIE: quando foi a última
+-- actualização, o ETag do ficheiro oficial (para não o voltar a descarregar
+-- se não mudou), as estatísticas já calculadas e o lock entre réplicas.
 CREATE TABLE IF NOT EXISTS omie_meta (
   key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Por usar (vê docs/06): perfis de perdas por quarto de hora. Hoje as perdas
+-- vêm de engine/losses-<ano>.json.
 CREATE TABLE IF NOT EXISTS loss_profile (
   year INTEGER NOT NULL, ts_lisbon TIMESTAMP NOT NULL, voltage TEXT NOT NULL,
   factor REAL NOT NULL, PRIMARY KEY (year, ts_lisbon, voltage)
 );
 
+-- Por usar (vê docs/06): sugestões de correcção enviadas pela comunidade.
 CREATE TABLE IF NOT EXISTS suggestion (
   id SERIAL PRIMARY KEY, tariff_id TEXT,
   payload_json TEXT NOT NULL, status TEXT DEFAULT 'PENDING',
@@ -112,19 +143,21 @@ CREATE TABLE IF NOT EXISTS suggestion (
   created_at TIMESTAMP DEFAULT now()
 );
 
+-- Clientes da API (apps de terceiros). rate_limit = pedidos por minuto.
 CREATE TABLE IF NOT EXISTS api_client (
   id TEXT PRIMARY KEY, name TEXT NOT NULL,
   kind TEXT NOT NULL, ceme_id TEXT, rate_limit INTEGER DEFAULT 60
 );
 
+-- As API keys de cada cliente. Só o hash sha256 da chave fica guardado.
 CREATE TABLE IF NOT EXISTS api_key (
   id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES api_client(id),
   hash TEXT NOT NULL, prefix TEXT NOT NULL,
   revoked_at TIMESTAMP, expires_at TIMESTAMP
 );
--- A auth de X-API-Key procura pelo hash em cada pedido.
 CREATE INDEX IF NOT EXISTS idx_api_key_hash ON api_key(hash);
 
+-- Por usar (vê docs/06): registo de alterações.
 CREATE TABLE IF NOT EXISTS audit_log (
   id SERIAL PRIMARY KEY, at TIMESTAMP DEFAULT now(),
   actor TEXT, action TEXT, detail TEXT

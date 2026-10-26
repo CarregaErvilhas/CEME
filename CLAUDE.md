@@ -38,10 +38,11 @@ There's no linter or formatter config. Without `DATABASE_URL` the DB is SQLite (
 ## Conventions
 
 - Docs must not rot: don't copy prices, counts, test totals or golden values into docs/README — point to the file or test that owns them (`golden.test.js`, seed `TARIFFS`/`VERSIONS`, `TAR_2026`).
+- Docs and comments describe what the service does now and what is planned; no history ("used to", "the old bug", dated decisions). History lives in git. Docs are written casually, in the second person ("tu"), for a newcomer with basic programming knowledge.
 - Golden anchors in `golden.test.js` change only when a published price changes, and are re-frozen by running the engine, never by hand.
 - Tariff verification against CEME websites: follow `.opencode/commands/ceme-check.md` and the cookbook `.memories/ceme-tarifas-verificacao.md` (values change only with explicit approval; backup DB first; update both seeds).
 - `CEME_READONLY=1` must never write (guarded in `db.js` `run()`); `CEME_SKIP_SEED=1` skips the seed (previews: `docs/preview-envs.md`).
 - Deploy is the Zerops webhook on push to `main` (no Zerops credential in GitHub); CI only runs `npm test` (`.github/workflows/ci.yml`). Infra is documented only in `infra.md`.
 - Third-party data (ERSE sheet dumps, OMIE files) never goes into the repo; `backend/seed/` and `backend/data/` are gitignored.
 
-Deeper references: `docs/02` (engine), `docs/03` (OMIE ingestion), `docs/04` (API/auth), `docs/06` (roadmap — only open work), `docs/07` (islands), `docs/08` (SQLite/Postgres), `docs/09` (OMIE stats page).
+Deeper references: `docs/00` (glossary of EV/energy terms, start here if the domain is new), `docs/02` (engine), `docs/03` (OMIE ingestion), `docs/04` (API/auth), `docs/06` (roadmap — only open work), `docs/07` (islands), `docs/08` (SQLite/Postgres), `docs/09` (OMIE stats page).
