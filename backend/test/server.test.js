@@ -365,6 +365,18 @@ it('HTML também leva nosniff', async () => {
       assert.ok(!/href=["'][^"']*\/tabela/.test(html), 'não devia haver nenhum link para /tabela');
     });
 
+    it('/robots.txt é público e não anuncia a /tabela', async () => {
+      const { status, html } = await abrir('/robots.txt');
+      assert.equal(status, 200);
+      assert.match(html, /User-agent: \*/);
+      assert.doesNotMatch(html, /tabela/);
+    });
+
+    it('/tabela leva X-Robots-Tag noindex', async () => {
+      const r = await fetch(`${BASE}/tabela`);
+      assert.match(r.headers.get('x-robots-tag') || '', /noindex/);
+    });
+
     it('/v1/tabela exige auth', async () => {
       assert.equal((await fetch(`${BASE}/v1/tabela`)).status, 401);
     });

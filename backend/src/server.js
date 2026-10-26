@@ -608,6 +608,12 @@ async function handle(req, res) {
       return res.end(css);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/pages.css em falta' } }); }
   }
+  // robots.txt: sem auth. A /tabela fica de fora de propósito: o noindex é por
+  // cabeçalho, e um Disallow impediria os crawlers de o ler (e anunciava a página).
+  if (readStatic(req.method) && url.pathname === '/robots.txt') {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' });
+    return res.end('User-agent: *\nDisallow: /v1/\n');
+  }
   // PWA: manifest, service worker e gatilho de instalação. Servidos sem auth,
   // como os outros ficheiros estáticos (strings.js, pages.css).
   if (readStatic(req.method) && (url.pathname === '/manifest.webmanifest' || url.pathname === '/manifest.json')) {
@@ -675,7 +681,7 @@ async function handle(req, res) {
       const html = (await readFile(new URL(`../../frontend/${INFO_ROUTES[url.pathname]}`, import.meta.url), 'utf8'))
         .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
         .replace(LANG_MARK, `window.__LANG__=${JSON.stringify(lang)}`);
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language' });
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', vary: 'Accept-Language', ...(url.pathname === '/tabela' ? { 'x-robots-tag': 'noindex, nofollow' } : {}) });
       return res.end(html);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${INFO_ROUTES[url.pathname]} em falta` } }); }
   }
