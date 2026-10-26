@@ -19,6 +19,7 @@
 //   OMIE: o mercado grossista ibérico, de onde vem o preço dos indexados.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { query, get, run, dbInstance, READONLY } from './db.js';
 import { signJwt, verifyJwt, hashKey } from './auth/tokens.js';
 import { quoteFixed } from './engine/quote.js';
@@ -648,7 +649,7 @@ async function handle(req, res) {
     if (WEAK_IN_PROD) {
       return json(res, 503, { error: { code: 'no_secret', message: 'JWT_SECRET em falta: export JWT_SECRET=<openssl rand -hex 32>' } });
     }
-    const token = signJwt({ kind: 'WEB_SESSION', sid: Math.random().toString(36).slice(2) }, SECRET);
+    const token = signJwt({ kind: 'WEB_SESSION', sid: randomUUID() }, SECRET);
     return json(res, 200, { token, expires_in: 86400 });
   }
   const a = await auth(req);
