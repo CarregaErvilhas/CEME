@@ -55,10 +55,9 @@ describe('comparacao indexado vs fixo, quarto a quarto', () => {
     assert.deepEqual(tallyWinners(out), { idx: 1, fix: 1, eq: 1, na: 0, total: 3 });
   });
 
-  // O bug: um indexado DIARIO e um fixo SEMANAL nao partilham as fronteiras.
-  // As 22:00 o ciclo diario pasa a vazio, mas o semanal continua em
-  // fora-de-vazio ate a meia-noite — cotar o fixo pelo periodo do indexado
-  // dava-lhe o preco de vazio a partir das 22:00, quando so muda a meia-noite.
+  // Um indexado DIÁRIO e um fixo SEMANAL não mudam de período às mesmas
+  // horas: às 22:00 o diário passa a vazio, o semanal só à meia-noite. Cada
+  // um tem de ser cotado no seu período.
   it('o fixo e cotado no SEU periodo, nao no do indexado', () => {
     const fix = { VAZIO: 0.1066, FORA_VAZIO: 0.1992 };
     const out = compareWithFixed([

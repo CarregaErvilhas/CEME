@@ -100,10 +100,8 @@ describe('tradução dos nomes dos tarifários', () => {
   });
 });
 describe('i18n: a função de tradução não pode ser sombreada', () => {
-  // Já aconteceu: um `.map(t => ...)` sobre um tarifário tapava a função
-  // `t()` e o modal de favoritos ficava em branco com um TypeError silencioso.
-  // A função chama-se agora `i18n()` e as variáveis de tarifário chamam-se
-  // `tf` — nomes que não colidem. Este teste falha se alguém voltar a usar
+  // Uma variável `t` (ex.: `.map(t => ...)`) tapava uma função de tradução
+  // chamada `t()`. Por isso a função chama-se `i18n()` e os tarifários `tf`. Este teste falha se alguém voltar a usar
   // `t` como variável perto de uma chamada de tradução.
   it('não há variáveis chamadas `t` a sombrear o i18n', () => {
     const js = html.slice(html.lastIndexOf('<script>'));

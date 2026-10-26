@@ -1,7 +1,7 @@
-// Golden tests: valores congelados, apanhados do sheet em 2026-10-15.
+// Golden tests: totais congelados para tarifários fixos, a 40 kWh.
 //
-// Estes testes passam pelo seed E pelo motor reais (não por valores escritos à
-// mão no teste), por isso protect:
+// Passam pelo seed E pelo motor reais (não por valores escritos à mão), por
+// isso garantem que:
 //   - o motor de cálculo não regista uma regressão;
 //   - o seed não muda um preço, uma EGME ou um ciclo sem dar de conta.
 //
@@ -28,23 +28,18 @@ function seeded() {
   return db;
 }
 
-// [tariff_id, total €, €/kWh s/ IVA] — congelados a 2026-10-15 e re-congelados
-// a 2026-10-22 onde o CEME mudou o preço publicado (ver o histórico do git do
-// seed.js: galp/atlante/acp/bluecharge/charge2go). O Atlante (AC) e o Charge2Go
-// divergem da folha POR DECISÃO — a folha ficou desactualada face às páginas.
-// TODAS as âncoras implicam os valores publicados; o cenário «E se o CEME
-// aplicar a EGME legal 2026?» fica no teste do cenário regulatório, mais abaixo.
-// O enable é âncora da PÁGINA do CEME (2026-10-24): energia 0,12 €/kWh no
-// Continente + TAR (o site diz "exclui tarifas e impostos"), ciclo bi-horário
-// semanal — e nas ilhas 0,15 €/kWh (teste «preços por região», mais abaixo).
+// [tariff_id, total €, €/kWh s/ IVA] com os preços publicados pelos CEME.
+// Só mudam quando um preço publicado muda, e re-congelam-se correndo o motor
+// (procedimento em .opencode/commands/ceme-check.md), nunca à mão.
+// O cenário «e se o CEME aplicasse a EGME legal?» está mais abaixo.
 const GOLDEN = [
   ['atlante-mt-myatlanteac', 10.09, 0.21],
   ['atlante-bt-myatlanteac', 11.96, 0.25],
   ['atlante-mt-myatlantebus', 8.12, 0.17],
   ['atlante-bt-myatlantebus', 9.99, 0.21],
   ['charge2go-mt-ecogreen', 9.32, 0.19],
-  // Enable (página, 2026-10-24): final = energia 0,12 + TAR, bi-horário
-  // semanal. Quinta 22:09 = fora-vazio no ciclo semanal do Continente.
+  // Enable: final = energia + TAR, bi-horário semanal. Quinta 22:09 =
+  // fora de vazio no ciclo semanal do Continente.
   ['enable-bt-tarifasimple', 11.96, 0.25],
   ['enable-mt-tarifasimple', 10.09, 0.21],
   ['viaverde-mt-viaverdeelec', 8.31, 0.17],
@@ -84,9 +79,8 @@ describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
   // 0,1088 (Regul. ERSE 7/2026). O seed fica com o PUBLISHED e a API marca
   // `activation_stale`; aqui congela-se o total QUE O CENÁRIO legal daria
   // (8,31 − 8,25 = 0,06 ≈ (0,1572 − 0,1088) × 1,23) — em qualquer dos
-  // sentidos da actualização. (O Charge2Go chegou a estar neste cenário com
-  // 0,1572, mas a página passou a publicar 0,1088 a 2026-10-22 — saiu daqui
-  // e o golden dele passou para o valor legal.)
+  // sentidos da actualização. Um CEME que passe a publicar o valor legal sai
+  // desta lista.
   const EGME_2026 = 0.1088;
   for (const [id, scenarioTotal, scenarioKwh] of [
     ['viaverde-mt-viaverdeelec', 8.25, 0.17],
@@ -106,12 +100,9 @@ describe('golden: cenário regulatório (EGME 2026 legal em vigor)', () => {
   }
 });
 
-describe('golden: o motor continua a bater certo com a folha', () => {
-  // Este é o teste que vale: 10,09 € é o que o motor dá para o Atlante
-  // myAtlante (AC) MT/semanal com 40 kWh a 2026-10-15 22:09, com o preço
-  // público actual (energia 0,12 €/kWh desde 2026-10-22 — a folha dava
-  // 9,11 € com o 0,10 antigo). Se o motor divergir do ROUNDUP da folha,
-  // o número muda.
+describe('golden: o motor arredonda como a fatura', () => {
+  // Um caso de ponta a ponta: Atlante myAtlante (AC) MT/semanal, 40 kWh,
+  // 2026-10-15 22:09. Se o arredondamento por parcela mudar, o número muda.
   it('Atlante myAtlante (AC) MT/semanal fecha em 10,09 €', () => {
     const { q } = quoteFromDb(seeded(), 'atlante-mt-myatlanteac');
     assert.equal(q.totalEur, 10.09);
@@ -257,9 +248,8 @@ describe('cobertura do seed', () => {
 
   it('todas as versões partilham a data de captura (nenhuma data inventada)', () => {
     const db = seeded();
-    // A folha CEME nao tem coluna de datas: so sabemos quando capturamos. Uma
-    // data de "inicio de contrato" aqui seria invencao — e foi o que o seed
-    // teve ('2025-01-01') durante meses, com a UI a dizer "em vigor desde".
+    // Só sabemos quando os preços foram verificados, não quando cada contrato
+    // começou. Por isso todas as versões usam essa data (SHEET_SNAPSHOT).
     const d = db.prepare('SELECT COUNT(*) c FROM tariff_version WHERE valid_from != ? OR valid_from IS NULL').get(SHEET_SNAPSHOT);
     assert.equal(d.c, 0, `${d.c} versoes com data diferente de ${SHEET_SNAPSHOT}`);
     const aberta = db.prepare("SELECT COUNT(*) c FROM tariff_version WHERE valid_to IS NOT NULL AND status='ACTIVE'").get();
@@ -283,8 +273,7 @@ describe('cobertura do seed', () => {
   });
 
   it('a EGME só falta no miio', () => {
-    // Este é o teste que apanhou o bug do seed: o ramo dos indexados zerava a
-    // activação, e os 10 indexados ficavam sem EGME.
+    // Os indexados também têm de levar a taxa de activação do seed.
     const db = seeded();
     const sem = db.prepare(`SELECT DISTINCT t.ceme_id FROM tariff t
       JOIN tariff_version v ON v.tariff_id=t.id JOIN price_component pc ON pc.tariff_version_id=v.id

@@ -19,8 +19,7 @@ describe('pickComponents: coerência por versão', () => {
     assert.throws(() => pickComponents([r('VAZIO', 0.11), r('FORA_VAZIO', 0.12)]), /divergentes/);
   });
 
-  // O bug latente: o guard antigo tratava NULL como carta branca e o
-  // `act || 0` no fim APAGAVA a EGME de um tarifário que a cobra.
+  // Uma linha com NULL não pode apagar a taxa de activação já vista.
   it('NULL depois de um valor também é divergência (não zera a EGME)', async () => {
     const out = pickComponents([r('VAZIO', 0.1088), { period: 'FORA_VAZIO', energy_eur_kwh: 0.1, activation_eur: null, support_eur: 0, iec_eur_kwh: 0.001 }]);
     assert.equal(out.act, 0.1088);   // nunca se apaga com NULL
@@ -83,7 +82,6 @@ describe('auditoria EGME (tarifa de activação)', () => {
     return db;
   };
   // CEMEs que não cobram EGME. Todos os restantes devem ter uma activação > 0.
-  // (Okeana foi removido em 2026-10-18: última info de 2023, sem EGME discriminado.)
   const SEM_EGME = new Set(['miio']);
 
   it('só o miio fica sem EGME', () => {

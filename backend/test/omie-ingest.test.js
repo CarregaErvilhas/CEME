@@ -128,9 +128,9 @@ describe('ingestão OMIE — a BD', () => {
   });
 
   it('a janela explícita reescreve os dias recentes do TF (não só Dezembro)', async () => {
-    // O ficheiro do TF vai até ao fim do ano: sem janela explícita, o upsert
-    // só reescrevia os últimos dias do LOTE (Dezembro) e as revisões dos dias
-    // recentes (reais que substituem estimativas) ficavam congeladas na BD.
+    // O ficheiro do TF vai até ao fim do ano. Com a janela explícita, os
+    // dias recentes (onde o TF troca estimativas por valores reais) também
+    // são reescritos, e não só os últimos dias do ficheiro.
     const mk = (day, pt) => ({ utc: `${day}T00:00:00.000Z`, day, min: 0, pt, es: null, bd: 'V', bs: 'V' });
     const oldDays = ['2026-05-10', '2026-05-19', '2026-05-25', '2026-12-29'];
     await upsertSpot(oldDays.map(d => mk(d, 10)), 'TF');
@@ -161,10 +161,9 @@ describe('ingestão OMIE — a BD', () => {
 });
 
 // O ficheiro do TF está em hora de RELÓGIO de Lisboa. Nos dias de mudança de
-// hora o relógio não é tempo decorrido: o parser antigo somava minutos de
-// relógio à meia-noite e, no dia de Março, punha 89 dos 92 quartos uma hora
-// à frente (e os últimos por cima do dia seguinte). Linhas tal como o TF as
-// publica (cabeçalho e formato reais).
+// hora a hora de relógio não é tempo decorrido desde a meia-noite (em Março
+// salta uma hora, em Outubro repete uma). Estes testes usam linhas tal como o
+// TF as publica e confirmam que cada uma cai no instante certo.
 describe('TF — hora de relógio → instante, nos dias de mudança de hora', () => {
   const HEAD = 'dia,hora,intervalo,Simples,BD,BS,TD,TS,preco_pt,preco_es';
   const csvDay = (d, rows) => rows.map(([hora, iv], i) => `${d},${hora},${iv},S,V,V,V,V,${10 + i},${10 + i}`);

@@ -501,8 +501,8 @@ describe('servidor: secret de dev não emite tokens em produção', () => {
   });
 });
 
-// A chave de API da env: tirar a env revoga-a. A BD persiste entre arranques
-// (Postgres em produção), por isso antes a chave antiga continuava válida.
+// A chave de API da env: tirar a env revoga-a (a BD persiste entre arranques,
+// por isso a revogação tem de ser explícita).
 describe('servidor: CEME_API_KEY — tirar a env revoga a chave', () => {
   const P = PORT + 2, URL_ = `http://127.0.0.1:${P}`;
   const KEY = 'test-key-0123456789abcdef';
@@ -529,7 +529,7 @@ describe('servidor: CEME_API_KEY — tirar a env revoga a chave', () => {
   });
 });
 
-// Regressão: no comparador, indexado DIÁRIO (ynerluz) vs fixo SEMANAL (miio)
+// No comparador, indexado DIÁRIO (ynerluz) vs fixo SEMANAL (miio)
 // não partilham fronteiras. Sábado 24/10/2026 (ainda hora de Verão): o
 // indexado passa a fora-de-vazio às 08:00, o fixo semanal só às 09:00.
 // O teste de compare.test.js só cobre o motor; este apanha a rota (período

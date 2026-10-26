@@ -1,16 +1,10 @@
 // Smoke test do frontend.
 //
 // Os outros testes de i18n olham para o texto do ficheiro; este corre o código
-// a sério num contexto isolado (sem browser) e chama as funções que desenham
-// cada vista. Sem isto, dois bugs meus passaram despercebidos:
-//
-//   1. `.map(t => ...)` sobre um tarifário sombreava a função `t()` e o modal
-//      de favoritos ficava em branco com um TypeError silencioso.
-//   2. depois de renomear `t()` para `i18n()`, ficou um `t(cond ? 'a' : 'b')`
-//      por converter dentro de um ternário — a página deixava de renderizar.
-//
-// E um achado do próprio teste: sem `vat` no tarifário, o detalhe imprimia
-// "NaN% incluído no total". O código passou a omitir a linha nesse caso.
+// a sério num contexto isolado (sem browser, com um `document` falso) e
+// chama as funções que desenham cada vista. Apanha erros de JavaScript que
+// os testes de texto não vêem: uma função tapada por uma variável, uma
+// chamada a uma função que já não existe, um "NaN" impresso no ecrã.
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -160,18 +154,12 @@ describe('smoke do frontend', () => {
     }
   });
 
-  // A correção do "(AC)" da Atlante foi feita só como tooltip de hover, que
-  // não se vê sem passar o rato. Passou a ter badge visível + linha na
-  // composição do preço.
-  // A folha nao tem datas, por isso nao se pode escrever "em vigor desde" —
-  // foi o que o seed inventou durante meses ('2025-01-01' nas 128 linhas).
-  // A tabela de quartos resumia em "8 mais baratos" — que nao diz nada sobre
-  // indexado vs fixo. O resumo certo sao as faixas onde o indexado ganha.
-  // Pedido explicito: os "Futuros OMIP" nao servem para nada neste simulador.
-  // O endpoint continua de pe para terceiros, mas a interface nao os mostra nem
-  // os pede — e um `document.getElementById('cmpFut')` num elemento que ya nao
-  // existe nao daria erro nenhum no stub, por isso o teste tem de ser sobre o
-  // fonte, nao sobre o DOM.
+  // Os testes abaixo garantem que: a nota "(AC)" se vê sem passar o rato
+  // (badge + linha na conta); a UI diz "preços verificados em" e não "em
+  // vigor desde"; a tabela de quartos resume onde o indexado ganha ao fixo;
+  // e o comparador não mostra futuros OMIP.
+  // (O endpoint /v1/omie/futures existe para terceiros. Este teste olha para o
+  // código-fonte e não para o DOM, porque o `document` falso nunca devolve null.)
   it('os futuros OMIP não são exibidos nem pedidos', () => {
     assert.ok(!HTML.includes('cmpFut'), "ainda ha um contentor cmpFut");
     assert.ok(!/v1\/omie\/futures/.test(JS), "a interface ainda pede /v1/omie/futures");
@@ -300,8 +288,7 @@ describe('smoke do frontend', () => {
     assert.equal(out.nada, 0);
   });
 
-  // O botão dizia "sem condições" e mantinha exactamente os que têm a flag.
-  // Já o tinha feito com o rótulo antigo ("sem bundle") — é a mesma linha.
+  // O filtro "sem condições" tem de esconder os tarifários com a flag bundle.
   it('o filtro de condições vai pela forma certa (não ao contrário)', () => {
     // tem de ser BT: com ramal BT a lista não mostra tarifários MT
     const cond = FIXED({ id: 'f-cond', name: 'Condicionado', voltage: 'BT', bundle: 1, totalEur: 8 });
