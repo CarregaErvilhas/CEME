@@ -7,6 +7,7 @@
 // Uma linha má nunca faz o parser falhar: vai para a "quarentena" (uma lista
 // à parte, com o motivo) e o resto do ficheiro segue.
 // Devolve { rows, quarantined, warnings }.
+import { dmyToIso } from '../time.js';
 
 // Gama de preços (€/MWh) considerada normal. Fora dela, a linha entra na
 // mesma mas leva a flag 'suspect_range'.
@@ -25,10 +26,8 @@ export function parsePrice(raw) {
 
 // "5/3/2026" → { iso: '2026-03-05' }.
 export function parseMarketDay(raw) {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(raw || '').trim());
-  if (!m) return { iso: null, error: `bad_date:${raw}` };
-  const [_, d, mo, y] = m;
-  const iso = `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  const iso = dmyToIso(raw);
+  if (!iso) return { iso: null, error: `bad_date:${raw}` };
   const dt = new Date(`${iso}T12:00:00Z`);
   if (Number.isNaN(dt.getTime())) return { iso: null, error: `bad_date:${raw}` };
   return { iso, error: null };

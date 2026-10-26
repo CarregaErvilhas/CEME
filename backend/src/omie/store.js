@@ -10,6 +10,7 @@
 // classificação vazio/fora de vazio vem do TF.
 import { run, query, get } from '../db.js';
 import { periodForRegion } from '../engine/regions.js';
+import { shiftDays } from '../time.js';
 
 // Quantos dias antes do último são reescritos em cada actualização (é onde
 // o OMIE ainda pode corrigir valores).
@@ -260,14 +261,4 @@ export async function recentDays(fromDay, n = 10) {
     )
     : back;
   return [...more.reverse(), ...fwd].map(r => String(r.day_lisbon).slice(0, 10));
-}
-
-// ----------------------------------------------------------------- util
-
-// 'AAAA-MM-DD' mais `delta` dias.
-export function shiftDays(iso, delta) {
-  const [y, m, d] = iso.split('-').map(Number);
-  const t = Date.UTC(y, m - 1, d) + delta * 86400000;
-  const nd = new Date(t);
-  return `${nd.getUTCFullYear()}-${String(nd.getUTCMonth() + 1).padStart(2, '0')}-${String(nd.getUTCDate()).padStart(2, '0')}`;
 }

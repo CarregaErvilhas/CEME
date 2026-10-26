@@ -15,6 +15,7 @@ import { REGIONS, periodForRegion } from '../engine/regions.js';
 import { compareWithFixed, tallyWinners } from '../engine/compare.js';
 import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from '../omie/pipeline.js';
 import { civilDay } from '../omie/convert.js';
+import { zonedParts } from '../time.js';
 import { allTariffs, comps, compRows, loadPricing, tarFor, quoteOne, today, vmeta } from '../tariffs.js';
 import { json, fail, clientIp } from './respond.js';
 import { rateBucket, rlHeaders, rateLimited, RATE_DEFAULT } from './ratelimit.js';
@@ -34,11 +35,8 @@ function validTz(name) {
 
 // 'HH:MM' de um instante UTC, no fuso pedido.
 function fmtTime(utcIso, tz) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
-  }).formatToParts(new Date(utcIso));
-  const get = (t) => parts.find(p => p.type === t)?.value;
-  return `${get('hour')}:${get('minute')}`;
+  const { hour, minute } = zonedParts(new Date(utcIso), tz);
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 // O dia pedido ('AAAA-MM-DD', dia de Lisboa) ou, se não vier, hoje em Lisboa.

@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from 'no
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lisbonDayQuarters } from './convert.js';
+import { dmyToIso } from '../time.js';
 
 // Pasta da cache em disco (backend/data/). Podes apagá-la: volta a encher-se.
 const DATA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
@@ -92,11 +93,10 @@ export function parseTfQuarters(text) {
     if (line.startsWith('TABELA_')) break; // a partir daqui são tabelas de futuros
     const c = line.split(',');
     if (c.length < 9) { quarantined.push({ reason: 'few_columns', text: line.slice(0, 140) }); continue; }
-    const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((c[ix('dia')] || '').trim());
-    if (!dm) { quarantined.push({ reason: 'bad_day', text: line.slice(0, 140) }); continue; }
+    const day = dmyToIso(c[ix('dia')]);
+    if (!day) { quarantined.push({ reason: 'bad_day', text: line.slice(0, 140) }); continue; }
     const pt = Number(c[ix('preco_pt')]);
     if (!Number.isFinite(pt)) { quarantined.push({ reason: 'bad_price', text: line.slice(0, 140) }); continue; }
-    const day = `${dm[3]}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
 
     const list = days.get(day) || [];
     // Como chegar ao instante UTC de cada linha:
@@ -161,9 +161,8 @@ function quarterStart(intervalo, hora) {
 // Lê "Data_Valores_OMIE" do ficheiro de futuros: o último dia com preços
 // reais do mercado. Os dias a seguir no CSV do TF são estimativas.
 export function parseOmieCutoff(text) {
-  const m = /Data_Valores_OMIE,(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(text || ''));
-  if (!m) return null;
-  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  const m = /Data_Valores_OMIE,(\d{1,2}\/\d{1,2}\/\d{4})/.exec(String(text || ''));
+  return m ? dmyToIso(m[1]) : null;
 }
 
 // Lê o CSV de médias diárias do TF (bd_v/bd_f/bs_v/bs_f) e devolve os
@@ -232,9 +231,9 @@ export function parseTfDailyFutures(text, zona = 'PT') {
   const rows = parseTfFutures(text).filter(r => r.zona === zona && /^FPB D\b/.test(r.contrato));
   const out = [];
   for (const r of rows) {
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(r.descricao || '').trim());
-    if (!m || r.valor == null) continue;
-    out.push({ date: `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`, value: r.valor });
+    const date = dmyToIso(r.descricao);
+    if (!date || r.valor == null) continue;
+    out.push({ date, value: r.valor });
   }
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }

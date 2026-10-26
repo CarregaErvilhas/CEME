@@ -11,23 +11,10 @@
 //     25 h (100 quartos).
 //   - Em Outubro, a mesma hora de relógio acontece duas vezes. Só o instante
 //     UTC (ou o offset) as distingue.
+import { euDstDays, zonedParts } from '../time.js';
 
 // Horas de diferença de Madrid para UTC: CET = +1 (Inverno), CEST = +2 (Verão).
 const CET_OFFSETS = { winter: 1, summer: 2 };
-
-// Os dois dias de mudança de hora do ano de `isoDate` ('AAAA-MM-DD').
-function dstBounds(isoDate) {
-  const y = Number(isoDate.slice(0, 4));
-  const lastSunday = (month) => {
-    const d = new Date(Date.UTC(y, month, 31));
-    const dow = d.getUTCDay();
-    return 31 - dow;
-  };
-  return {
-    spring: `${y}-03-${String(lastSunday(2)).padStart(2, '0')}`,
-    autumn: `${y}-10-${String(lastSunday(9)).padStart(2, '0')}`,
-  };
-}
 
 // O offset de Madrid à MEIA-NOITE do dia de mercado.
 //
@@ -38,6 +25,9 @@ function dstBounds(isoDate) {
 //   - Outubro: a meia-noite é CEST (+2); às 03:00 volta às 02:00
 //     (100 períodos).
 // A partir da meia-noite basta somar 15 minutos por período.
+// Os dois dias de mudança de hora do ano de `isoDate` ('AAAA-MM-DD').
+const dstBounds = (isoDate) => euDstDays(Number(isoDate.slice(0, 4)));
+
 function cetOffsetOn(isoDate) {
   const { spring, autumn } = dstBounds(isoDate);
   if (isoDate === autumn) return CET_OFFSETS.summer; // a meia-noite ainda é CEST
@@ -60,48 +50,19 @@ export function marketPeriodToLisbon(marketDayIso, marketPeriod) {
   if (Number.isNaN(utcMs)) return { iso: null, error: 'bad_day' };
   const utc = new Date(utcMs);
   // Escreve o instante em hora de Lisboa, com o offset (+00:00 ou +01:00).
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, hourCycle: 'h23',
-    timeZoneName: 'shortOffset',
-  }).formatToParts(utc);
-  const get = (t) => parts.find(p => p.type === t)?.value;
-  const iso = `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:00${normalizeOffset(get('timeZoneName'))}`;
+  const l = zonedParts(utc, 'Europe/Lisbon');
+  const iso = `${l.ymd}T${String(l.hour).padStart(2, '0')}:${String(l.minute).padStart(2, '0')}:00${l.offset}`;
   return { iso, utc: utc.toISOString(), error: null };
-}
-
-// O Intl devolve o offset como "GMT+1", "GMT-3:30" ou "GMT+01:00", conforme
-// o ambiente. Isto passa-o sempre a ±HH:MM.
-function normalizeOffset(tzName) {
-  const s = String(tzName || '').replace('GMT', '').trim();
-  const m = /^([+-])(\d{1,2})(?::?(\d{2}))?$/.exec(s);
-  if (!m) return '+00:00';
-  return `${m[1]}${String(m[2]).padStart(2, '0')}:${m[3] || '00'}`;
 }
 
 // Quantos quartos de hora tem um dia de Lisboa: 92 no último domingo de
 // Março, 100 no último domingo de Outubro, 96 nos outros.
 export function expectedQuartersForLisbonDay(lisbonDayIso) {
-  const y = Number(lisbonDayIso.slice(0, 4));
-  const lastSunday = (month) => {
-    const d = new Date(Date.UTC(y, month, 31));
-    return 31 - d.getUTCDay();
-  };
-  const spring = `${y}-03-${String(lastSunday(2)).padStart(2, '0')}`;
-  const autumn = `${y}-10-${String(lastSunday(9)).padStart(2, '0')}`;
+  const { spring, autumn } = dstBounds(lisbonDayIso);
   if (lisbonDayIso === spring) return 92;
   if (lisbonDayIso === autumn) return 100;
   return 96;
 }
-
-// Um dia de calendário como número inteiro (dias desde 1970-01-01). Dá
-// jeito para somar/subtrair dias e comparar datas sem pensar em fusos.
-export const dayNum = (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / 86400000);
-export const dayNumOf = (isoDate) => dayNum(Number(isoDate.slice(0, 4)), Number(isoDate.slice(5, 7)), Number(isoDate.slice(8, 10)));
-export const isoOfDayNum = (n) => {
-  const d = new Date(n * 86400000);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-};
 
 // Lê um ISO que já está em hora de Lisboa (com offset) e devolve o dia, os
 // minutos desde a meia-noite e o offset. É o offset que distingue as duas
@@ -119,15 +80,8 @@ export function lisbonParts(iso) {
 // Dia e minutos desde a meia-noite em Lisboa, a partir de um instante em
 // milissegundos (epoch).
 export function lisbonWallClock(utcMs) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
-  }).formatToParts(new Date(utcMs));
-  const get = (t) => parts.find(p => p.type === t)?.value;
-  return {
-    day: `${get('year')}-${get('month')}-${get('day')}`,
-    minutes: Number(get('hour')) * 60 + Number(get('minute')),
-  };
+  const { ymd, minutes } = zonedParts(new Date(utcMs), 'Europe/Lisbon');
+  return { day: ymd, minutes };
 }
 
 // O dia de calendário ('AAAA-MM-DD') de um instante num fuso; por omissão,
@@ -136,11 +90,7 @@ export function lisbonWallClock(utcMs) {
 // `new Date().toISOString().slice(0, 10)`: os dois dão o dia em UTC, que
 // entre a meia-noite e a 01:00 de Verão em Lisboa ainda é ontem.
 export function civilDay(at = new Date(), tz = 'Europe/Lisbon') {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(at);
-  const get = (t) => parts.find(p => p.type === t)?.value;
-  return `${get('year')}-${get('month')}-${get('day')}`;
+  return zonedParts(at, tz).ymd;
 }
 
 // A meia-noite de um dia de Lisboa, em milissegundos UTC.

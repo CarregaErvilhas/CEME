@@ -22,33 +22,25 @@ export const WINDOW_DAYS = 366;
 // poder ser recalculado a cada pedido (ver currentPrice).
 export const TAIL_ROWS = 400;
 
-import { lisbonMidnightUtc, expectedQuartersForLisbonDay } from './convert.js';
+import { lisbonMidnightUtc, expectedQuartersForLisbonDay, lisbonWallClock } from './convert.js';
+import { dayNum, dayNumOf, isoOfDayNum as isoOf } from '../time.js';
 
 const pad2 = (n) => String(n).padStart(2, '0');
-// Um dia de calendário como número inteiro (dias desde 1970-01-01), e as
-// conversões de volta. Servem para contar e agrupar dias sem pensar em fusos.
-const dayNum = (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / 86400000);
-const numToDay = (n) => new Date(n * 86400000);
-const isoOf = (n) => { const d = numToDay(n); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; };
-const monthKey = (n) => { const d = numToDay(n); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`; };
+// Os dias contam-se como números (dias desde 1970-01-01; vê time.js), para
+// agrupar sem pensar em fusos. monthKey dá o 'AAAA-MM' de um desses números.
+const monthKey = (n) => isoOf(n).slice(0, 7);
 
 // "Agora" em UTC: dia, minutos desde a meia-noite UTC e número do dia.
 export function utcNow(now = new Date()) {
   const iso = now.toISOString();
   const day = iso.slice(0, 10);
   const minutes = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
-  return { day, minutes, dayNum: dayNum(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))) };
+  return { day, minutes, dayNum: dayNumOf(day) };
 }
 // "Agora" em hora de Lisboa (o fuso em que a página agrupa os dias).
 export function lisbonNow(now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
-  }).formatToParts(now);
-  const get = (t) => parts.find(p => p.type === t)?.value;
-  const day = `${get('year')}-${get('month')}-${get('day')}`;
-  const minutes = Number(get('hour')) * 60 + Number(get('minute'));
-  return { day, minutes, dayNum: dayNum(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))) };
+  const { day, minutes } = lisbonWallClock(now.getTime());
+  return { day, minutes, dayNum: dayNumOf(day) };
 }
 
 const avg = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
@@ -89,8 +81,8 @@ function shape(b) {
 function partialOf(mk, b) {
   const [y, m] = mk.split('-').map(Number);
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const domMin = numToDay(b.dnMin).getUTCDate();
-  const domMax = numToDay(b.dnMax).getUTCDate();
+  const domMin = Number(isoOf(b.dnMin).slice(8, 10));
+  const domMax = Number(isoOf(b.dnMax).slice(8, 10));
   if (domMin > 1) return { partial: true, cut: 'start' };
   if (domMax < lastDay) return { partial: true, cut: 'end' };
   return { partial: false, cut: null };
@@ -103,7 +95,7 @@ function partialOf(mk, b) {
 //   fpbDaily: futuros diários { 'AAAA-MM-DD': €/MWh }
 export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {} } = {}) {
   if (!rows.length) throw new Error('sem dados de quartos-horários');
-  const cutDn = cutoff ? dayNum(Number(cutoff.slice(0, 4)), Number(cutoff.slice(5, 7)), Number(cutoff.slice(8, 10))) : Infinity;
+  const cutDn = cutoff ? dayNumOf(cutoff) : Infinity;
   // Preços reais: até ao `cutoff` e sem a marca de estimativa.
   const real = rows.filter(r => r.dn <= cutDn && !r.est);
   if (!real.length) throw new Error('sem preços de mercado');
@@ -263,11 +255,11 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
       monthToDate: {
         month: monthKeyNow,
         from: (() => {
-          const s = dayStart(dayNum(Number(monthKeyNow.slice(0, 4)), Number(monthKeyNow.slice(5, 7)), 1));
+          const s = dayStart(dayNumOf(`${monthKeyNow}-01`));
           return stamp(s.dn, s.min);
         })(),
         fromUtc: (() => {
-          const s = dayStart(dayNum(Number(monthKeyNow.slice(0, 4)), Number(monthKeyNow.slice(5, 7)), 1));
+          const s = dayStart(dayNumOf(`${monthKeyNow}-01`));
           return stampUtc(s.dn, s.min);
         })(),
         to: stamp(anchor.lisbonDn, anchor.lisbonMin),
@@ -291,7 +283,7 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
 // publica o dia inteiro de uma vez.
 export function currentPrice(payload, now = new Date()) {
   const nowMs = now.getTime();
-  const cut = payload.cutoff ? dayNum(Number(payload.cutoff.slice(0, 4)), Number(payload.cutoff.slice(5, 7)), Number(payload.cutoff.slice(8, 10))) : Infinity;
+  const cut = payload.cutoff ? dayNumOf(payload.cutoff) : Infinity;
   // Só preços reais (até ao cutoff).
   const pool = (payload.recent || []).filter(r => r.dn <= cut);
   // O instante de cada linha: `utc` se existir; senão, calcula-se a partir

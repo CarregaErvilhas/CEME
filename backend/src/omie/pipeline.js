@@ -30,10 +30,11 @@ import {
 } from './tf.js';
 import {
   upsertSpot, upsertDaily, spotForDay, spotBetween, reconcile, spotRange, recentDays, lastMarketDay,
-  getMeta, setMeta, getMetaJson, setMetaJson, dailyRows, shiftDays,
+  getMeta, setMeta, getMetaJson, setMetaJson, dailyRows,
 } from './store.js';
 import { aggregate, currentPrice } from './stats.js';
 import { civilDay, expectedQuartersForLisbonDay } from './convert.js';
+import { dayNumOf, shiftDays } from '../time.js';
 
 // O crédito às fontes que vai nas respostas da API (a licença do TF obriga).
 export const SOURCE_LABEL = `${OMIE_LABEL} + ${TF_SOURCE}`;
@@ -227,7 +228,7 @@ export async function rebuildDerived({ now = new Date(), persist = !READONLY } =
   // Agrupa-se por dia de Lisboa, como o TF faz nos resumos dele, para os
   // números baterem com os publicados.
   const statsRows = rows.map(r => {
-    const dn = dayNum(r.day);
+    const dn = dayNumOf(r.day);
     return {
       dn,
       day: r.day,
@@ -423,12 +424,6 @@ export async function getFutures() {
 }
 
 // ------------------------------------------------------------------ util
-
-// 'AAAA-MM-DD' → número de dias desde 1970-01-01.
-const dayNum = (iso) => {
-  const [y, m, d] = iso.split('-').map(Number);
-  return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
-};
 
 // Resumo do estado da ingestão, para logs e diagnóstico.
 export async function status() {
