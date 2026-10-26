@@ -58,10 +58,13 @@ Algumas coisas que o simulador faz por ti:
 ## Como funciona por dentro
 
 ```
-browser ──► backend/src/server.js ──► motor (engine/) ──► base de dados
-               │                                         (SQLite em dev,
-               └──► pipeline OMIE (omie/) ──► omie.es    PostgreSQL em produção)
-                                          └─► dados.tiagofelicia.pt
+browser ──► server.js ──► http/ (páginas, API) ──► tariffs.js ──► motor (engine/)
+                                 │                     │
+                                 │                     └──► base de dados
+                                 │                          (SQLite em dev,
+                                 │                           PostgreSQL em produção)
+                                 └──► pipeline OMIE (omie/) ──► omie.es
+                                                            └─► dados.tiagofelicia.pt
 ```
 
 - **Backend:** Node.js 24, sem framework (`node:http`). A única dependência
@@ -110,9 +113,10 @@ importam em produção:
 2. `backend/src/engine/quote.js` — como se calcula o custo de um tarifário
    fixo. É curto e é o coração do simulador.
 3. `backend/src/engine/indexed.js` e `regions.js` — indexados e horários.
-4. `backend/src/server.js` — o arranque e as rotas. Começa pelo comentário
-   do topo.
-5. `backend/src/db/seed.js` — de onde vêm os tarifários e preços.
+4. `backend/src/server.js` — o ponto de entrada. Segue um pedido a partir
+   daí: `http/api.js` (as rotas da API) e `tariffs.js` (a ponte entre a BD
+   e o motor).
+5. `backend/src/db/seed-data.js` — os tarifários e preços.
 6. `frontend/index.html` — o simulador no browser.
 
 Depois, os documentos em `docs/` aprofundam cada parte.
@@ -171,13 +175,19 @@ Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
   backend/
     package.json
     src/
-      server.js               # HTTP, auth, rate limit, rotas
+      server.js               # ponto de entrada: arranca e encaminha pedidos
+      boot.js                 # prepara a BD no arranque (schema, TAR, seed)
+      http/                   # pages (site), api (rotas /v1), auth,
+                              #   ratelimit, respond
+      tariffs.js              # lê tarifários e preços da BD e cota-os
+      time.js                 # datas, fusos e mudança de hora
       auth/tokens.js          # JWT e hash das API keys
       db.js                   # escolhe SQLite ou PostgreSQL
-      db/                     # pg.js, schemas, migrate.js, seeds, components.js
+      db/                     # sqlite.js, pg.js, schemas, migrate.js,
+                              #   seed-data.js, seed.js, tar.js, components.js
       engine/                 # o motor: quote, indexed, regions, losses, compare
-      omie/                   # preços OMIE: omiees, tf, parse, convert, store,
-                              #   pipeline, stats
+      omie/                   # preços OMIE: omiees, tf, fetch, parse, convert,
+                              #   store, pipeline, stats
     test/                     # testes (`npm test`)
     tools/cores.mjs           # mede as paletas de cor da página OMIE
     data/                     # gerado: SQLite + cache dos CSV (fora do git)

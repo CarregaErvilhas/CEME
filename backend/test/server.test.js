@@ -1,6 +1,5 @@
-// Testes de rede do servidor: arranca uma instância como subprocesso
-// (como o smoke manual fazia, mas agora no suite). Cobrem o hardening da
-// API: rate limit (com teto no mapa de buckets), validação do /v1/simulate,
+// Testes de rede do servidor: arranca uma instância a sério, como
+// subprocesso, e fala com ela por HTTP. Cobrem o hardening da API: rate limit (com teto no mapa de buckets), validação do /v1/simulate,
 // 413, 405, nosniff, quarentena de tarifário mau e a secret de dev sem
 // emitir tokens em produção. A BD fica num directório temporário.
 import { describe, it, before, after } from 'node:test';

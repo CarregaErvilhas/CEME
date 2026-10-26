@@ -5,10 +5,10 @@ que cada CEME publica. Usado pelo comando `/ceme-check`
 (`.opencode/commands/ceme-check.md`). Caminhos relativos à raiz do repo.
 
 Ficheiros-chave:
-- `backend/src/db/seed.js` — CEMES, SPLITS (energia+TAR), TARIFFS (finais c/ TAR, act), @@@ act.
-- `backend/src/db/seed.postgres.js` — duplicado de TARIFFS; **SPLITS é importado do seed.js** (`import { SPLITS } from './seed.js'`) — só editar TARIFFS aqui.
+- `backend/src/db/seed-data.js` — a única fonte: CEMES, SPLITS (energia+TAR), TARIFFS (um objecto por tarifário: `prices` finais c/ TAR, `act`, `url`…; legenda por cima de TARIFFS).
+- `backend/src/db/seed.js` — grava os dados na BD (SQLite e Postgres); não tem valores.
 - `backend/data/ceme.db` — SQLite: `ceme(id, website)`, `tariff(id, ceme_id, kind, voltage, source_url)`, `tariff_version(id, tariff_id→tariff.id, k_index_eur_mwh, cgs_eur_mwh)`, `price_component(tariff_version_id, period, energy_eur_kwh=final c/ TAR, activation_eur, energy_only_eur_kwh, tar_eur_kwh)`.
-- Quando foi a última verificação e o que mudou: `git log -p backend/src/db/seed.js`.
+- Quando foi a última verificação e o que mudou: `git log -p backend/src/db/seed-data.js`.
 
 ## Comando
 Existe o comando `/ceme-check` (`.opencode/commands/ceme-check.md`) que carrega esta memória. Argumentos opcionais: `/ceme-check galp` (só um CEME) ou `/ceme-check update` (aplicar updates autorizadas).
@@ -16,11 +16,11 @@ Existe o comando `/ceme-check` (`.opencode/commands/ceme-check.md`) que carrega 
 ## Regras do seed
 - `energy_eur_kwh` = preço **final** (energia + TAR, s/ IVA). `energy_only`/`tar` só quando o CEME/sheet separava; "não se inventa" decomposição.
 - `act` = taxa por carregamento **publicada pelo CEME**. Pode estar acima do valor legal (`EGME_LEGAL` em `server.js`); não se "corrige" por razões regulatórias. Só muda se a página do CEME passar a publicar outro valor.
-- Quando a página diverge do seed E o utilizador autoriza, actualiza-se o seed (os dois ficheiros) e a BD. A fonte e a data ficam na mensagem do commit.
+- Quando a página diverge do seed E o utilizador autoriza, actualiza-se o `seed-data.js` e a BD. A fonte e a data ficam na mensagem do commit.
 
 ## Valores de referência
-- TAR da mobilidade: `TAR_2026` em `backend/src/server.js`.
-- Taxa de activação legal: `EGME_LEGAL` em `backend/src/server.js`.
+- TAR da mobilidade: `TAR` em `backend/src/db/tar.js`.
+- Taxa de activação legal: `EGME_LEGAL` em `backend/src/tariffs.js`.
 - IVA por região: `REGIONS` em `backend/src/engine/regions.js`.
 
 ## Dump de expectativas da DB (primeiro passo)
@@ -57,28 +57,16 @@ Sem valores a comparar (app-only/documentos): iberdrola (app), moeve (app GOW), 
 
 ## Fluxo de update autorizada (seed+DB+testes)
 1. `cp backend/data/ceme.db backend/data/ceme.db.bak-YYYYMMDD`.
-2. `seed.js`: SPLITS (energia) e TARIFFS (finais + act) — edit tool, replaceAll onde os substrings são únicos (ex.: `0.269}, 0.1088` é bluecharge; `0.2889}, 0.1572` charge2go). Cuidado com colisões: galp e bluecharge ambos têm `0.1088` → incluir o valor do preço no padrão do replace.
-3. `seed.postgres.js`: mesmas linhas TARIFFS (não tem SPLITS).
-4. Comentário no cabeçalho do seed.js: data, fonte, o que mudou.
-5. DB UPDATEs (JOIN tariff_version→tariff por t.id; activation por ceme_id com subquery):
-   ```sql
-   UPDATE price_component SET energy_eur_kwh = CASE period WHEN 'VAZIO' THEN X ELSE Y END,
-          energy_only_eur_kwh = Z
-   WHERE tariff_version_id IN (SELECT tv.id FROM tariff_version tv JOIN tariff t ON t.id=tv.tariff_id WHERE t.id='...');
-   UPDATE price_component SET activation_eur = V
-   WHERE tariff_version_id IN (SELECT tv.id FROM tariff_version tv JOIN tariff t ON t.id=tv.tariff_id WHERE t.ceme_id='...');
-   ```
-   + UPDATE `ceme` SET website / `tariff` SET source_url quando os URLs mudam. Verificar com SELECT depois.
-6. `cd backend && npm test` (`node --test test/*.test.js`). Testes com âncoras: `test/golden.test.js` (GOLDEN, cenário regulatório, ROUNDUP), `test/preco-split.test.js` (decomposição). Re-congelar âncoras com o motor, não à mão:
+2. `seed-data.js`: SPLITS (energia) e TARIFFS (`prices`, `act`, `url`). Cada tarifário é um objecto com `id`, por isso procura pelo id (`id: 'bluecharge-bt-cartobluecha'`) e edita só essa linha; o mesmo CEME tem normalmente uma linha BT e outra MT (e às vezes `-2` para o ciclo semanal). Os URLs dos CEME estão em CEMES (`website`).
+3. Se a data de verificação muda para todos, actualiza `PRICES_VERIFIED_ON`.
+4. Aplica à BD local: `cd backend && node src/db/seed.js` (o seed é convergente; actualiza os valores que mudaram). Verifica com SELECT depois.
+5. `cd backend && npm test` (`node --test test/*.test.js`). Testes com âncoras: `test/golden.test.js` (GOLDEN, cenário regulatório, ROUNDUP), `test/preco-split.test.js` (decomposição). Re-congelar âncoras com o motor, não à mão:
    ```sh
    node --input-type=module -e "
-   import { DatabaseSync } from 'node:sqlite';
-   import { readFileSync } from 'node:fs';
-   import { seed } from './src/db/seed.js';
+   import { seededDb } from './test/seeded-db.js';
    import { quoteFixed } from './src/engine/quote.js';
    import { pickComponents } from './src/db/components.js';
-   const db = new DatabaseSync(':memory:');
-   db.exec(readFileSync('src/db/schema.sql', 'utf8')); seed(db);
+   const db = await seededDb();
    const KWH = 40, AT = new Date('2026-10-15T22:09:00+01:00');
    for (const id of ['...']) {
      const t = db.prepare('SELECT * FROM tariff WHERE id=?').get(id);
@@ -89,5 +77,5 @@ Sem valores a comparar (app-only/documentos): iberdrola (app), moeve (app GOW), 
      console.log(id, q.totalEur.toFixed(4), q.eurKwhNoIva.toFixed(4));
    }"
    ```
-   Regras do re-freeze: actualiza só as âncoras dos tarifários cujos valores mudaram; cenário regulatório (EGME) só leva tarifários com `act` acima do legal no seed — se o CEME passou a publicar o valor legal, sai da lista. Sempre atualizar os comentários dos testes.
-7. Relatório final: tabela batem certo / drift aplicado / sem publicação; nunca push (local apenas).
+   Regras do re-freeze: actualiza só as âncoras dos tarifários cujos valores mudaram; cenário regulatório (EGME) só leva tarifários com `act` acima do legal no seed — se o CEME passou a publicar o valor legal, sai da lista. Actualiza sempre os comentários dos testes.
+6. Relatório final: tabela batem certo / drift aplicado / sem publicação; nunca push (local apenas).

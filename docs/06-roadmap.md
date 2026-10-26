@@ -19,15 +19,17 @@ documentos. Quando acabares um item, tira-o daqui.
   antes de a primeira fase entrar em vigor.
 - **TAR de 2027:** a tabela de TAR da mobilidade da ERSE aplica-se no regime
   transitório do DL 93/2025, até 31-12-2026. É preciso saber o que a
-  substitui antes de Janeiro (`TAR_2026` em `server.js`).
+  substitui antes de Janeiro. A de um ano novo entra como uma entrada nova
+  em `TAR` (`backend/src/db/tar.js`).
 - **Perdas na BD:** a tabela `loss_profile` existe mas não se usa; os
   perfis de perdas vêm de `engine/losses-<ano>.json`.
 
 ## Motor
 
 - **Indexado simples:** o motor só calcula indexados bi-horários. Um
-  indexado de preço único precisa de um preço `UNICO` (hoje usa o de fora
-  de vazio como aproximação, em `quoteOne`).
+  indexado de preço único precisa de uma regra para a TAR (que é
+  bi-horária); até lá, `quoteOne` põe-no de quarentena. Não há nenhum no
+  seed.
 
 ## OMIE
 
@@ -38,8 +40,8 @@ documentos. Quando acabares um item, tira-o daqui.
 ## Testes e infra
 
 - **Testes contra um PostgreSQL real:** hoje os testes correm em SQLite e
-  alguns caminhos (como os de `to_regclass` em `migrate.js`) só correm em
-  produção ([08](08-sqlite-postgres.md)).
+  alguns caminhos (o seed e a TAR gravados no Postgres, o `to_regclass` em
+  `migrate.js`) só correm em produção ([08](08-sqlite-postgres.md)).
 - **Previews por PR:** os scripts `scripts/preview-*.sh` têm os comandos
   comentados; o procedimento está em [preview-envs](preview-envs.md).
 

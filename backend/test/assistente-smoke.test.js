@@ -134,7 +134,7 @@ describe('smoke do assistente', () => {
     assert.ok(!/href="\/"/.test(landing + results), 'sobrou um href="/" que devolve o assistente');
   });
 
-  it('nenhuma referência ao nome antigo (protótipo)', () => {
+  it('a página nunca se apresenta como protótipo', () => {
     assert.ok(!/prot[óo]tipo/i.test(HTML), 'o HTML ainda fala em protótipo');
     assert.ok(!/prot[óo]tipo/i.test(JS), 'o JS ainda fala em protótipo');
   });

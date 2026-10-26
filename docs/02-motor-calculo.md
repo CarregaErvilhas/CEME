@@ -18,9 +18,10 @@ falam com a BD nem com a rede, por isso testas-las facilmente.
 | Perdas por quarto de hora: `lossAt(...)`, `lossByPeriod(...)` | `backend/src/engine/losses.js` |
 | Períodos: `periodForRegion(...)` (instante) e `periodForWall(...)` (hora de relógio) | `backend/src/engine/regions.js` |
 | Indexado vs fixo, quarto a quarto: `compareWithFixed`, `tallyWinners` | `backend/src/engine/compare.js` |
-| Cotar um tarifário com os dados da BD (`quoteOne`), escolher versão e TAR | `backend/src/server.js` |
-| Preços, K/CGS/perdas/fórmula por tarifário, campanhas | `backend/src/db/seed.js` (`TARIFFS`, `SPLITS`, `VERSIONS`, `CAMPAIGN_END`) |
-| TAR | `backend/src/server.js` (`TAR_2026`), tabela `tar` |
+| Ler da BD versões, preços e TAR de uma vez (`loadPricing`) e cotar um tarifário (`quoteOne`) | `backend/src/tariffs.js` |
+| Preços, K/CGS/perdas/fórmula por tarifário, campanhas | `backend/src/db/seed-data.js` (`TARIFFS`, `SPLITS`, `VERSIONS`, `CAMPAIGN_END`) |
+| TAR | `backend/src/db/tar.js` (`TAR`), tabela `tar` |
+| Datas, fusos e mudança de hora partilhados | `backend/src/time.js` |
 | Resultados congelados (golden) | `backend/test/golden.test.js` |
 
 ## Tempo: instantes, relógios e dias
@@ -138,7 +139,7 @@ congela o resultado.
 ### Taxa de activação (EGME)
 
 Usamos **o valor que o CEME publica**, tal como está. O valor legal em
-vigor está em `EGME_LEGAL` (`server.js`) e vai em cada resposta como
+vigor está em `EGME_LEGAL` (`tariffs.js`) e vai em cada resposta como
 `egme_legal`. Quando o CEME ainda publica o valor legal do ano anterior
 (`EGME_PREVIOUS`), a API devolve `activation_stale: true` e o cartão mostra
 um aviso. Um valor próprio acima do legal (taxas do próprio CEME) é
@@ -175,7 +176,9 @@ ynerluz:   preço = (1 + perdas) × (OMIE + K) + CGS + TAR
 | `SPLIT_VAZIO_FORA` | o OMIE de cada período é a média desse período **no ciclo do próprio tarifário** (diário ≠ semanal: ao fim-de-semana as horas são outras) |
 | `UNICA` | um só OMIE para os dois períodos |
 
-Todos os indexados do seed são bi-horários e usam `SPLIT_VAZIO_FORA`.
+Todos os indexados do seed são bi-horários e usam `SPLIT_VAZIO_FORA`. Um
+indexado SIMPLES (preço único) vai para a quarentena: a TAR é bi-horária e
+ainda não há regra para o juntar num preço só ([06](06-roadmap.md)).
 
 O `POST /v1/simulate` aceita:
 

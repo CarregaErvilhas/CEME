@@ -22,7 +22,7 @@ frontend.
 
 ## Porque existe `CEME_SKIP_SEED`
 
-O seed (`backend/src/db/seed.postgres.js` e `seed.js`) é **convergente**:
+O seed (`backend/src/db/seed.js`) é **convergente**:
 faz `INSERT ... ON CONFLICT (...) DO UPDATE SET ...`, ou seja, volta a
 escrever os valores do seed por cima das linhas que já existem. Se o
 correres contra uma cópia da produção, **apaga** as edições feitas à mão.

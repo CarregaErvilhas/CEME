@@ -27,8 +27,12 @@ mas o browser manda sempre um token.
 
 Um JWT é um texto em três partes (`cabeçalho.conteúdo.assinatura`). O
 servidor assina-o com `JWT_SECRET` (HMAC-SHA256); se alguém alterar o
-conteúdo, a assinatura deixa de bater. O código está em
-`backend/src/auth/tokens.js`.
+conteúdo, a assinatura deixa de bater. Na validação, o cabeçalho tem de
+dizer `alg: HS256` e a assinatura compara-se em tempo constante
+(`timingSafeEqual`), para o tempo de resposta não dar pistas sobre ela. Um
+token estragado é só um 401, nunca um erro do servidor. O código está em
+`backend/src/auth/tokens.js`; quem lê a credencial de cada pedido é
+`backend/src/http/auth.js`.
 
 Uma `X-API-Key` valida-se comparando o seu hash com os da BD (ignoram-se
 chaves revogadas ou expiradas). Qualquer chave desconhecida recebe 401.

@@ -27,7 +27,7 @@ const { migrateAddedColumns, ADDED_COLUMNS } = await import('../src/db/migrate.j
 const colsOf = async (table) => (await query(`PRAGMA table_info(${table})`)).map(r => r.name);
 
 // Uma `price_component` sem as colunas da separação energia + TAR.
-const PRICE_COMPONENT_ANTIGO = `CREATE TABLE price_component (
+const PRICE_COMPONENT_SEM_COLUNAS = `CREATE TABLE price_component (
   tariff_version_id INTEGER NOT NULL,
   period TEXT NOT NULL,
   energy_eur_kwh REAL, activation_eur REAL DEFAULT 0,
@@ -36,8 +36,8 @@ const PRICE_COMPONENT_ANTIGO = `CREATE TABLE price_component (
 )`;
 
 describe('migração: colunas novas em tabelas que já existem', () => {
-  it('acrescenta a coluna em falta à tabela com a forma antiga', async () => {
-    await run(PRICE_COMPONENT_ANTIGO);
+  it('acrescenta a coluna em falta a uma tabela que não a tem', async () => {
+    await run(PRICE_COMPONENT_SEM_COLUNAS);
     assert.deepEqual(
       (await colsOf('price_component')).includes('energy_only_eur_kwh'),
       false,
@@ -69,7 +69,7 @@ describe('migração: colunas novas em tabelas que já existem', () => {
   });
 
   it('a coluna nova nasce nula — não inventa valores para as linhas que já lá estão', async () => {
-    await run(PRICE_COMPONENT_ANTIGO);
+    await run(PRICE_COMPONENT_SEM_COLUNAS);
     await run(`INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh)
                VALUES (1, 'VAZIO', 0.12)`);
     await migrateAddedColumns();

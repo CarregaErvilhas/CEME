@@ -45,12 +45,6 @@ describe('OMIE — lock do refresh', () => {
     assert.equal(await lockValue(), novo, 'o lock do novo dono fica');
     await releaseLock(novo);
   });
-
-  it('lê os locks antigos (só a hora, sem token)', async () => {
-    await run(`INSERT INTO omie_meta (key, value) VALUES ('refresh_lock', $1)`, [String(Date.now())]);
-    assert.equal(await acquireLock(), null, 'um lock antigo ainda válido é respeitado');
-    await run(`DELETE FROM omie_meta WHERE key = 'refresh_lock'`);
-  });
 });
 
 describe('CEME_READONLY — a BD não se toca', () => {

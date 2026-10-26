@@ -13,22 +13,25 @@ O mesmo código corre contra duas bases de dados:
 O **ambiente**, não o código. `backend/src/db.js` usa o PostgreSQL quando
 existe a variável `DATABASE_URL`, e o `node:sqlite` (ficheiro `DB_PATH`, por
 omissão `backend/data/ceme.db`) quando não existe. O resto do código só vê
-`query` / `get` / `run` (assíncronas) e escreve SQL num dialecto comum.
+`query` / `get` / `run` / `exec` (assíncronas) e escreve SQL num dialecto
+comum.
 
 | peça | SQLite | PostgreSQL |
 |---|---|---|
-| ligação | `db.js` (`node:sqlite`) | `db/pg.js` (pool criado na primeira query; conversões de tipos) |
+| ligação | `db/sqlite.js` (`node:sqlite`) | `db/pg.js` (pool criado na primeira query; conversões de tipos) |
 | schema | `db/schema.sql` | `db/schema.postgres.sql` |
-| seed | `db/seed.js` | `db/seed.postgres.js` |
-| parâmetros | `$1, $2…` traduzidos para `?` em `db.js` | nativos |
+| seed | `db/seed.js` (o mesmo) | `db/seed.js` (o mesmo) |
+| parâmetros | `$1, $2…` traduzidos para `?` em `db/sqlite.js` | nativos |
 
 ## Regras para escreveres SQL que corre nos dois
 
 - **Parâmetros `$N`** sempre. Para "insere ou actualiza", usa
-  `INSERT … ON CONFLICT … DO UPDATE`, que funciona nos dois. `"from"` e
+  `INSERT … ON CONFLICT … DO UPDATE SET col = EXCLUDED.col`, que funciona
+  nos dois. `"from"` e
   `"to"` vão entre aspas (são palavras reservadas).
 - **Escritas vão por `run()`**, nunca por `query()`: é o `run()` que respeita
-  o modo readonly.
+  o modo readonly. Várias instruções de uma vez (o schema) vão por `exec()`,
+  que também o respeita; o `run()` só corre uma.
 - **Datas são texto `AAAA-MM-DD`.** No Postgres, o `pg.js` regista conversões
   para que `DATE` e `TIMESTAMP` não virem objectos `Date` (que, passados a
   JSON, podiam aparecer como o dia anterior). Testado em `pg-parity.test.js`.
@@ -36,9 +39,8 @@ omissão `backend/data/ceme.db`) quando não existe. O resto do código só vê
   validades: dá o dia em UTC nos dois. O dia passa-se como parâmetro
   (`civilDay()`, vê [02](02-motor-calculo.md)).
 - **Os dois schemas andam juntos.** Uma tabela, coluna ou índice novo vai aos
-  dois ficheiros. Os dois seeds também: o `seed-parity.test.js` compara os
-  dados (`CEMES`, `TARIFFS`, `NOTES`, `VERSIONS`, `CAMPAIGN_END`) e falha se
-  forem diferentes.
+  dois ficheiros. O seed é um só (`db/seed.js`, com os dados em
+  `db/seed-data.js`), por isso não há nada a sincronizar.
 - **O seed é convergente:** um arranque com o seed novo actualiza os valores
   que mudaram, e não mexe em `valid_to` (para não reabrir uma versão
   fechada à mão).
@@ -47,16 +49,12 @@ omissão `backend/data/ceme.db`) quando não existe. O resto do código só vê
 
 O schema corre em cada arranque com `CREATE TABLE IF NOT EXISTS`. Isso cria
 tabelas que faltam, mas **não acrescenta colunas** a tabelas que já existem.
-Por isso o arranque (`server.js`) faz, por esta ordem:
+Por isso o arranque (`boot.js`) faz, por esta ordem:
 
-1. `migrateOmieTables()` — **antes** do schema: renomeia colunas do OMIE
-   com nome antigo (sem perder dados) e apaga tabelas do OMIE **vazias** com
-   uma forma que não reconhece, para o schema as recriar. Uma tabela com
-   dados nunca é apagada: fica um aviso no log;
-2. o schema do dialecto em uso;
-3. `migrateAddedColumns()` — acrescenta as colunas de `ADDED_COLUMNS` que
+1. o schema do dialecto em uso;
+2. `migrateAddedColumns()` — acrescenta as colunas de `ADDED_COLUMNS` que
    faltem;
-4. a chave da API, a TAR, o seed e os resumos do OMIE.
+3. a chave da API, a TAR, o seed e os resumos do OMIE.
 
 ### Para acrescentares uma coluna a uma tabela que já existe
 

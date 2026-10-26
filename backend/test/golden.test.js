@@ -48,7 +48,7 @@ function quoteFromDb(db, id, { kwh = KWH, at = AT, region = 'CONT' } = {}) {
   assert.ok(t, `tarifário ${id} não existe no seed`);
   const v = db.prepare('SELECT * FROM tariff_version WHERE tariff_id=? ORDER BY id DESC LIMIT 1').get(id);
   const rows = db.prepare('SELECT * FROM price_component WHERE tariff_version_id=?').all(v.id);
-  // Mesmas semântica e ordem do comps() do server.js: as linhas de região
+  // Mesmas semântica e ordem do loadPricing() de tariffs.js: as linhas de região
   // (price_component_region) vão POR CIMA das de omissão — a última vence.
   if (region && region !== 'CONT') {
     rows.push(...db.prepare('SELECT * FROM price_component_region WHERE tariff_version_id=? AND region=?').all(v.id, region));
@@ -213,7 +213,7 @@ describe('cobertura do seed', () => {
       assert.ok(Math.abs(row.energy_only_eur_kwh + row.tar_eur_kwh - row.energy_eur_kwh) < 1e-10,
         `${id}/${region}/${period}: energia + TAR não fecha no preço final`);
       // act/IEC/apoio repetem-se à força igual entre regiões: uma divergência
-      // rebenta no pickComponents (server.js), nunca aqui em silêncio.
+      // rebenta no pickComponents (db/components.js), nunca aqui em silêncio.
       assert.equal(row.activation_eur, row.act_cont);
       assert.equal(row.iec_eur_kwh, row.iec_cont);
     };
