@@ -6,7 +6,7 @@
 //   2. o schema do dialecto em uso (seguro de repetir);
 //   3. colunas novas em tabelas que já existiam (antes do seed, que as usa);
 //   4. a chave da API de terceiros (CEME_API_KEY);
-//   5. a TAR;
+//   5. a TAR (db/tar.js);
 //   6. o seed (CEMEs, tarifários, preços);
 //   7. os resumos do OMIE, recalculados a partir do que já está na BD.
 //
@@ -19,9 +19,9 @@
 import { readFile } from 'node:fs/promises';
 import { run, exec, dbInstance, READONLY, USE_PG } from './db.js';
 import { hashKey } from './auth/tokens.js';
-import { REGIONS } from './engine/regions.js';
 import { rebuildDerived } from './omie/pipeline.js';
 import { migrateOmieTables, migrateAddedColumns } from './db/migrate.js';
+import { syncTar } from './db/tar.js';
 
 const log = (...a) => console.warn('[ceme-v2]', ...a);
 
@@ -72,22 +72,4 @@ async function syncEnvApiKey() {
   await run(`INSERT INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', $1, $2)
     ON CONFLICT (id) DO UPDATE SET hash = $1, prefix = $2, revoked_at = NULL`,
     [hashKey(key), key.slice(0, 8)]);
-}
-
-// TAR da mobilidade eléctrica em 2026, em €/kWh sem IVA (ERSE, Diretiva
-// n.º 1/2026, art. 23.º). A ERSE publica uma tabela só para Continente,
-// Açores e Madeira; grava-se uma cópia por região porque a TAR procura-se
-// sempre pela região do carregamento (uma região sem TAR é erro, nunca zero).
-export const TAR_2026 = { BT: { VAZIO: 0.0266, FORA_VAZIO: 0.1192 }, MT: { VAZIO: 0.0157, FORA_VAZIO: 0.0812 } };
-
-async function syncTar() {
-  for (const region of Object.keys(REGIONS)) {
-    for (const [voltage, byPeriod] of Object.entries(TAR_2026)) {
-      for (const [period, price] of Object.entries(byPeriod)) {
-        await run(`INSERT INTO tar (valid_from, valid_to, region, voltage, period, price_eur_kwh)
-          VALUES ('2026-01-01', NULL, $1, $2, $3, $4)
-          ON CONFLICT (valid_from, region, voltage, period) DO NOTHING`, [region, voltage, period, price]);
-      }
-    }
-  }
 }
