@@ -1,27 +1,27 @@
-// O store do OMIE: os quartos-horários e os agregados, na base de dados.
+// Onde os preços do OMIE ficam guardados: as tabelas omie_spot, omie_daily
+// e omie_meta (vê os comentários no schema).
 //
-// Porquê na BD e não em ficheiros no contentor: a BD é gerida, persiste
-// entre deploys e é partilhada por todas as réplicas. Com ficheiros, cada
-// réplica tinha a sua cópia e um deploy deitava tudo fora.
+// Ficam na BD, e não em ficheiros, porque a BD sobrevive a deploys e é
+// partilhada por todas as instâncias do servidor.
 //
-// A chave de tudo é o INSTANTE em UTC (`ts_utc`). Nunca a hora local: na
-// mudança de hora de Outono a hora de relógio repete-se, e o instante é a
-// única coisa que não se repete.
-//
-// As duas fontes (omie.es e TF) escrevem linhas separadas — a chave
-// primária é (instante, fonte) — e a reconciliação acontece na leitura: o
-// preço do omie.es quando existe, o do TF quando não; a classificação do
-// período (BD/BS) vem do TF, que é quem a calcula.
+// Cada fonte (omie.es e TF) escreve as suas próprias linhas; a chave é
+// (instante UTC, fonte). Juntar as duas faz-se só na leitura, em
+// reconcile(): o preço vem do omie.es quando existe, senão do TF; a
+// classificação vazio/fora de vazio vem do TF.
 import { run, query, get } from '../db.js';
 import { periodForRegion } from '../engine/regions.js';
 
-// Quantos dias para trás do último são reescritos em cada refresh: é onde
-// o OMIE pode corrigir o dia anterior.
+// Quantos dias antes do último são reescritos em cada actualização (é onde
+// o OMIE ainda pode corrigir valores).
 const RECENT_DAYS = 3;
 
-const BATCH = 400; // linhas por INSERT (o limite de parâmetros do pg é 65535)
+// Linhas por INSERT. Cada linha usa 9 parâmetros e o Postgres aceita no
+// máximo 65535 por query.
+const BATCH = 400;
 
 // ------------------------------------------------------------------ meta
+// omie_meta é uma tabela chave → valor (texto). As versões *Json fazem o
+// JSON.parse/stringify por ti.
 
 export async function getMeta(key) {
   const row = await get('SELECT value FROM omie_meta WHERE key = $1', [key]);
@@ -48,22 +48,21 @@ export async function setMetaJson(key, value) {
 
 // ------------------------------------------------------------------ spot
 
-// Os dias (civis de Lisboa) que já estão na tabela, para uma fonte.
+// Os dias de Lisboa que já têm linhas desta fonte.
 async function knownDays(source) {
   const rows = await query('SELECT DISTINCT day_lisbon FROM omie_spot WHERE source = $1', [source]);
   return new Set(rows.map(r => String(r.day_lisbon).slice(0, 10)));
 }
 
-// Escreve as linhas de um dia (ou de vários) — upsert idempotente: correr
-// duas vezes com os mesmos dados não muda nada.
+// Grava linhas na omie_spot (upsert: repetir com os mesmos dados não muda
+// nada). Devolve quantas linhas escreveu.
 //
-// Por omissão reescrevem-se os dias em falta e os `recentDays` antes do dia
-// mais recente do lote (é onde o OMIE pode ter corrigido). Para o TF passa-se
-// uma janela explícita (`fromDay`/`toDay`, dias civis de Lisboa): o ficheiro
-// do TF vai até ao fim do ano, por isso "os últimos dias do lote" seriam
-// Dezembro — e as revisões dos dias recentes (reais que substituem
-// estimativas, estimativas revistas) nunca mais eram escritas depois da
-// primeira ingestão.
+// Para poupar trabalho, só escreve:
+//   - os dias que ainda não estão na tabela; e
+//   - os dias dentro de uma janela que a fonte ainda pode rever. Por omissão
+//     é [último dia do lote − recentDays, último dia]. Podes passar outra
+//     com `fromDay`/`toDay`; o TF precisa disso, porque o ficheiro dele vai
+//     até ao fim do ano e os dias que ele revê são os próximos de hoje.
 export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDay = null, fromDay = null, toDay = null } = {}) {
   if (!rows.length) return 0;
   const byDay = new Map();
@@ -75,8 +74,6 @@ export async function upsertSpot(rows, source, { recentDays = RECENT_DAYS, maxDa
   const last = maxDay || [...byDay.keys()].sort().pop();
   const from = fromDay || (last ? shiftDays(last, -recentDays) : null);
   const to = toDay || last;
-  // Escreve os dias que faltam e os dias dentro da janela (os que o upstream
-  // ainda pode rever). O resto do histórico já está lá e não muda.
   const days = [...byDay.keys()].filter(d => !known.has(d) || (from && to && d >= from && d <= to));
   if (!days.length) return 0;
 
@@ -126,6 +123,7 @@ export async function lastOmieInstant() {
   return m ? String(m) : null;
 }
 
+// As linhas de um dia de Lisboa, já reconciliadas.
 export async function spotForDay(lisDay) {
   const rows = await query(
     `SELECT ts_utc, day_lisbon, min_lisbon, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags
@@ -135,7 +133,7 @@ export async function spotForDay(lisDay) {
   return reconcile(rows, { lastOmie: await lastOmieInstant() });
 }
 
-// As linhas de um intervalo de dias (inclusive), reconciliadas.
+// As linhas de um intervalo de dias de Lisboa (inclusive), reconciliadas.
 export async function spotBetween(fromDay, toDay) {
   const rows = await query(
     `SELECT ts_utc, day_lisbon, min_lisbon, price_pt_eur_mwh, price_es_eur_mwh, bd, bs, source, flags
@@ -145,8 +143,13 @@ export async function spotBetween(fromDay, toDay) {
   return reconcile(rows, { lastOmie: await lastOmieInstant() });
 }
 
-// Reconcilia as linhas das duas fontes (o JS, para ser igual nos dois
-// dialects de BD).
+// Junta as linhas das duas fontes numa só por instante:
+//   { utc, day, min, pt, es, bd, bs, src, flags, est? }
+//   src: de onde veio o preço ('OMIE_ES' ou 'TF');
+//   est: true se é uma estimativa (só TF, depois do último instante oficial).
+// Faz-se em JS e não em SQL para ser igual em SQLite e Postgres.
+// `opts.lastOmie` é o último instante oficial; se não vier, deduz-se das
+// linhas (o que falha quando o lote só tem linhas do TF).
 export function reconcile(rows, opts = {}) {
   const byUtc = new Map();
   for (const r of rows) {
@@ -159,7 +162,7 @@ export function reconcile(rows, opts = {}) {
       item.src = 'OMIE_ES';
       if (r.flags) { try { item.flags = JSON.parse(r.flags); } catch { item.flags = null; } }
     } else {
-      // TF: o preço só entra se o omie.es não trouxer o mesmo instante.
+      // TF: o preço só conta se o omie.es não tiver este instante.
       if (item.pt == null) item.pt = r.price_pt_eur_mwh;
       if (item.es == null && r.price_es_eur_mwh != null) item.es = r.price_es_eur_mwh;
       item.bd = r.bd;
@@ -169,19 +172,13 @@ export function reconcile(rows, opts = {}) {
     byUtc.set(utc, item);
   }
   const out = [...byUtc.values()].sort((a, b) => (a.utc < b.utc ? -1 : 1));
-  // A fronteira do mercado: o último instante que o omie.es trouxe. O que
-  // estiver para além e só existir no TF é estimativa, não preço.
-  // Aceita-se a fronteira explícita (`opts.lastOmie`): nas leituras de um só
-  // dia (ex. um dia futuro só com linhas do TF) não há linhas do omie.es no
-  // lote para deduzir a fronteira, e sem ela nada era marcado como estimativa.
   let lastOmie = (opts && opts.lastOmie) || null;
   if (!lastOmie) {
     for (const r of rows) if (r.source === 'OMIE_ES' && (!lastOmie || String(r.ts_utc) > lastOmie)) lastOmie = String(r.ts_utc);
   }
   for (const item of out) {
     if (item.src !== 'OMIE_ES' && lastOmie && item.utc > lastOmie) item.est = true;
-    // A classificação do período horário: a do TF quando há (o TF aplica as
-    // regras da ERSE); senão, as do motor, calculadas a partir do instante.
+    // Sem classificação do TF, calcula-se com as regras do motor (regions.js).
     if (!item.bd || !item.bs) {
       const at = new Date(item.utc);
       const dia = periodForRegion({ region: 'CONT', schedule: 'BI_HORARIA', cycle: 'DIARIO', at });
@@ -195,6 +192,7 @@ export function reconcile(rows, opts = {}) {
 
 // ---------------------------------------------------------------- daily
 
+// Grava os resumos diários (um upsert por dia).
 export async function upsertDaily(rows) {
   for (const r of rows) {
     await run(
@@ -223,9 +221,9 @@ export async function dailyRows(days) {
   return rows.reverse();
 }
 
-// O intervalo de dias que há na tabela.
+// O primeiro e o último dia que há na omie_spot.
 export async function spotRange() {
-  // "from"/"to" são palavras reservadas em SQL — o alias vai entre aspas.
+  // "from" e "to" são palavras reservadas em SQL, daí as aspas.
   const rows = await query('SELECT MIN(day_lisbon) AS "from", MAX(day_lisbon) AS "to" FROM omie_spot');
   const r = rows[0] || {};
   return {
@@ -234,16 +232,15 @@ export async function spotRange() {
   };
 }
 
-// O último dia com preço publicado (o omie.es).
+// O último dia de Lisboa com preço oficial (omie.es).
 export async function lastMarketDay() {
   const rows = await query(`SELECT MAX(day_lisbon) AS d FROM omie_spot WHERE source = 'OMIE_ES'`);
   const d = rows[0] && rows[0].d;
   return d ? String(d).slice(0, 10) : null;
 }
 
-// Os dias disponíveis à volta de um dia (para o seletor de dias): até n dias,
-// com o dia pedido incluído e os anteriores ainda acessíveis. Só olhar para a
-// frente fazia desaparecer os dias anteriores ao escolher uma data futura.
+// Até `n` dias com dados à volta de `fromDay` (para o selector de dias):
+// cerca de metade para trás e o resto para a frente, incluindo `fromDay`.
 export async function recentDays(fromDay, n = 10) {
   const before = Math.floor(n / 2);
   const back = await query(
@@ -254,7 +251,7 @@ export async function recentDays(fromDay, n = 10) {
     `SELECT DISTINCT day_lisbon FROM omie_spot WHERE day_lisbon >= $1 ORDER BY day_lisbon LIMIT $2`,
     [fromDay, n - back.length]
   );
-  // Sem dias suficientes à frente (dia perto do fim), compensa com mais para trás.
+  // Se não houver dias suficientes à frente, vai buscar mais para trás.
   const extra = n - back.length - fwd.length;
   const more = extra > 0 && back.length === before
     ? await query(
@@ -267,7 +264,7 @@ export async function recentDays(fromDay, n = 10) {
 
 // ----------------------------------------------------------------- util
 
-// Uma data ISO, deslocada em dias.
+// 'AAAA-MM-DD' mais `delta` dias.
 export function shiftDays(iso, delta) {
   const [y, m, d] = iso.split('-').map(Number);
   const t = Date.UTC(y, m - 1, d) + delta * 86400000;

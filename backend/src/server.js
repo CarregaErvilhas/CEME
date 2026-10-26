@@ -1,12 +1,24 @@
-// Servidor (Node.js em produção via pg; SQLite em dev/test).
-// Serve a web em / e a API em /v1/* (tudo com auth). O hardening da main
-// está re-aplicado sobre a migração assíncrona: nosniff, rate limiting,
-// 405 por método, cap do corpo (413), validação de input, guarda da secret
-// de dev, auth de X-API-Key por hash e quarentena por tarifário.
+// O servidor HTTP. Um só processo serve tudo:
+//   - as páginas HTML e os ficheiros estáticos (JS, CSS, ícones, PWA);
+//   - a API em /v1/*, que pede sempre credencial (vê auth/tokens.js);
+//   - /healthz e /readyz, para a plataforma saber se o processo está vivo.
+//
+// Usa só o módulo `node:http`, sem framework. O ficheiro lê-se de cima para
+// baixo assim:
+//   1. arranque: schema, migrações, chave da API, TAR, seed, resumos OMIE;
+//   2. funções de apoio: datas, rate limit, autenticação, cotação de um
+//      tarifário (quoteOne), negociação de língua;
+//   3. handle(): o "router", uma sequência de `if (url.pathname === …)`;
+//   4. o arranque do servidor na porta PORT.
+//
+// Glossário rápido (mais em docs/00-glossario.md):
+//   CEME: a empresa que te vende a energia no posto (via cartão/app);
+//   TAR:  tarifa de acesso às redes, fixada pela ERSE;
+//   EGME: a taxa de activação cobrada por carregamento;
+//   IEC:  imposto especial sobre a electricidade;
+//   OMIE: o mercado grossista ibérico, de onde vem o preço dos indexados.
 import http from 'node:http';
-import path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { query, get, run, dbInstance, READONLY } from './db.js';
 import { signJwt, verifyJwt, hashKey } from './auth/tokens.js';
 import { quoteFixed } from './engine/quote.js';
@@ -22,36 +34,24 @@ import { VERSIONS } from './db/seed.postgres.js';
 
 const PORT = Number(process.env.PORT || 3001);
 const USE_PG = !!process.env.DATABASE_URL;
-// Secret "de dev" conhecida manteria o servidor a arrancar sem configuração —
-// mas no deploy real é a porta para fabricar WEB_SESSION à vontade. O meio
-// termo: o server arranca sempre (dev/CI não rebenta), mas se a secret em
-// uso for a de dev e o processo pareça produção (`NODE_ENV=production`), o
-// /v1/session recusa-se a emitir bilhete (503) — o site não fica seguro
-// por omissão só porque o aviso do log ninguém o leu.
+// O segredo que assina os JWT. Sem JWT_SECRET usa-se um valor de dev
+// conhecido, para correres local sem configurar nada. Em produção
+// (NODE_ENV=production) com esse valor, o servidor arranca mas recusa emitir
+// e aceitar tokens: com um segredo público qualquer pessoa fabricava sessões.
 const DEV_FALLBACK = 'dev-only-change-me';
 const SECRET = process.env.JWT_SECRET || DEV_FALLBACK;
 const WEAK_SECRET = SECRET === DEV_FALLBACK;
-// Com a secret de dev em produção nem se emite (/v1/session) nem se aceita
-// Bearer: a secret é pública, qualquer um fabricava um token que não expira.
 const WEAK_IN_PROD = WEAK_SECRET && process.env.NODE_ENV === 'production';
 if (WEAK_SECRET) console.warn('[ceme-v2] AVISO: JWT_SECRET não definida — a secret de dev "dev-only-change-me" está em uso. Qualquer pessoa pode fabricar sessões.',
   'Com NODE_ENV=production, POST /v1/session devolve 503 em vez de emitir tokens.',
   'Em publicação: export JWT_SECRET=<openssl rand -hex 32>.');
-// Directórios resolvidos a partir do ficheiro, não do cwd: `npm start` corre
-// da pasta backend/, mas arrancar `node ceme-v2/backend/src/server.js` da raiz
-// do repo criava `./data` no sítio errado (cache OMIE vazia → 502).
-const BACKEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DATA_DIR = path.join(BACKEND_DIR, 'data');
 
-// Flags de bootstrap (opcionais, para previews/snapshots/readonly):
-//   CEME_READONLY=1     -> não escreve nada na BD: o bootstrap salta
-//                         schema/seed/tar/api_key, o OMIE não ingere nem grava
-//                         derivados (calcula-os em memória), e `run()` recusa
-//                         qualquer escrita que escape (db.js). Usar com a BD de
-//                         outro ambiente ou com um snapshot já restaurado.
-//   CEME_SKIP_SEED=1    -> salta o seed (upsert massivo), mas corre schema +
-//                         tar + api_key. Útil com snapshot restaurado, para não
-//                         sobrescrever edições manuais da produção.
+// Variáveis de ambiente opcionais (úteis em previews, docs/preview-envs.md):
+//   CEME_READONLY=1  não escreve nada na BD: salta schema, seed, TAR e chave,
+//                    o OMIE não actualiza, e db.js recusa qualquer escrita.
+//                    Para ligares a uma BD que não é tua.
+//   CEME_SKIP_SEED=1 corre tudo menos o seed, para não pisar dados copiados
+//                    de outro ambiente.
 const SKIP_SEED = READONLY || process.env.CEME_SKIP_SEED === '1';
 const SKIP_SCHEMA = READONLY;
 const SKIP_TAR = READONLY;
@@ -59,16 +59,15 @@ const SKIP_API_KEY = READONLY;
 
 if (READONLY) console.warn('[ceme-v2] modo READONLY: bootstrap de escrita desactivado.');
 
-// Migrações que o CREATE TABLE IF NOT EXISTS não cobre (as tabelas do OMIE
-// passaram a ser indexadas pelo instante UTC). Correm antes do schema.
+// ---- Arranque (corre uma vez, antes de aceitar pedidos) ----
+// A ordem importa: migrações do OMIE → schema → colunas novas → chave da
+// API → TAR → seed → resumos do OMIE. Vê db/migrate.js.
 if (!SKIP_SCHEMA) {
   const notes = await migrateOmieTables();
   for (const n of notes) console.warn(`[ceme-v2] migração: ${n}`);
 }
 
-// Schema executado uma vez no arranque (idempotente). Em modo readonly as
-// tabelas já existem (snapshot ou BD de produção) — saltar evita erros de
-// permissão (CREATE TABLE exige privilégio CREATE no schema).
+// O schema do dialecto em uso (seguro de repetir).
 if (!SKIP_SCHEMA) {
   const schemaFile = USE_PG
     ? new URL('./db/schema.postgres.sql', import.meta.url)
@@ -77,22 +76,17 @@ if (!SKIP_SCHEMA) {
   await run(schemaSql);
 }
 
-// Colunas novas em tabelas que já existem: o `CREATE TABLE IF NOT EXISTS`
-// não as acrescenta, e sem isto o seed vai à vida contra a forma antiga da
-// BD de produção. Corre DEPOIS do schema (numa BD nova, a tabela já nasce
-// com as colunas) e ANTES do seed (que é quem as usa).
+// Colunas novas em tabelas que já existiam (antes do seed, que as usa).
 if (!SKIP_SCHEMA) {
   const notes = await migrateAddedColumns();
   for (const n of notes) console.warn(`[ceme-v2] migração: ${n}`);
 }
 
-// API key para terceiros: o valor claro é provido pela env (CEME_API_KEY) e
-// NUNCA fica na BD — só o sha256. A env é a fonte de verdade da linha
-// `env-key`, nos dois sentidos:
-//   - com a env: upsert do hash (trocar a chave invalida a antiga) e
-//     `revoked_at` limpo (voltar a pôr a env reactiva-a);
-//   - sem a env: a linha é revogada. A BD persiste (Postgres), por isso tirar
-//     a env sem isto deixava a chave antiga a funcionar para sempre.
+// A API key de terceiros vem da variável CEME_API_KEY; na BD fica só o hash
+// (linha 'env-key'). A variável manda:
+//   - definida: grava o hash e reactiva a chave (trocar o valor invalida a
+//     antiga);
+//   - ausente: revoga a chave que estiver na BD.
 if (!SKIP_API_KEY) {
   if (process.env.CEME_API_KEY) {
     const key = process.env.CEME_API_KEY;
@@ -106,14 +100,10 @@ if (!SKIP_API_KEY) {
   }
 }
 
-// TAR da mobilidade eléctrica 2026 (ERSE, Diretiva n.º 1/2026, art. 23.º).
-// É UMA tabela para o Continente, a RAA e a RAM ("Tarifas de Acesso às Redes
-// da Mobilidade Elétrica em Portugal continental, RAA e RAM", no livro de
-// tarifas da ERSE) — os valores são os mesmos nas três regiões, mas cada uma
-// tem as suas linhas: a TAR procura-se sempre pela região do carregamento, e
-// uma região sem linha é um erro, não um zero. O que a ERSE publica à parte
-// para as ilhas é a TE/Com (energia + comercialização da EDA/EEM ao CEME),
-// que não é TAR e não entra aqui.
+// TAR da mobilidade eléctrica em 2026, em €/kWh sem IVA (ERSE, Diretiva
+// n.º 1/2026, art. 23.º). A ERSE publica uma tabela só para Continente,
+// Açores e Madeira; grava-se uma cópia por região porque a TAR procura-se
+// sempre pela região do carregamento (uma região sem TAR é erro, nunca zero).
 const TAR_2026 = { BT: { VAZIO: 0.0266, FORA_VAZIO: 0.1192 }, MT: { VAZIO: 0.0157, FORA_VAZIO: 0.0812 } };
 if (!SKIP_TAR) {
   for (const region of Object.keys(REGIONS)) {
@@ -127,7 +117,7 @@ if (!SKIP_TAR) {
   }
 }
 
-// Seed — depende do backend ativo. Saltado em modo readonly ou com snapshot.
+// O seed (vê db/seed.js).
 if (!SKIP_SEED) {
   if (USE_PG) {
     const { seed } = await import('./db/seed.postgres.js');
@@ -139,24 +129,22 @@ if (!SKIP_SEED) {
 } else {
   console.warn('[ceme-v2] seed saltado (CEME_SKIP_SEED/CEME_READONLY).');
 }
-// Reaplica a lógica actual aos dados já guardados (ex.: mudança de agrupamento
-// por dia de mercado), sem depender de uma ingestion completa ao arranque.
-// (Em readonly não se grava: as estatísticas calculam-se em memória no
-// primeiro pedido.)
+// Recalcula os resumos do OMIE com o código actual, a partir do que já está
+// na BD (sem ir à rede).
 if (!READONLY) {
   try { await rebuildDerived(); console.log('[ceme-v2] derivados recalculados no arranque'); }
   catch (e) { console.warn('[ceme-v2] rebuildDerived falhou:', e.message); }
 }
 
+// Fórmula e perdas fixas de um indexado (VERSIONS no seed).
 function vmeta(tid) {
   const v = VERSIONS[tid] || {};
   const loss = (v.loss != null) ? v.loss : null;
   return { loss, formula: v.formula || 'standard' };
 }
 
-// A hora de relógio que se mostra ao utilizador é a do fuso DELE (o browser
-// manda o seu). O backend guarda tudo em UTC — o fuso só aparece aqui, na
-// fronteira da apresentação. Sem fuso válido, UTC.
+// Valida um nome de fuso IANA vindo do browser (ex.: 'Europe/Lisbon'). Se
+// for inválido, usa UTC.
 function validTz(name) {
   if (!name || typeof name !== 'string' || name.length > 64) return 'UTC';
   try {
@@ -174,38 +162,28 @@ function fmtTime(utcIso, tz) {
   return `${get('hour')}:${get('minute')}`;
 }
 
-// O dia pedido (dia civil de Lisboa, que é o dia dos quartos do OMIE) ou
-// hoje em Lisboa. Não o dia UTC: entre as 00:00 e as 01:00 de Verão o dia
-// UTC ainda é ontem, e o comparador abria no dia errado.
+// O dia pedido ('AAAA-MM-DD', dia de Lisboa) ou, se não vier, hoje em Lisboa.
 function quarterDay(date) {
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
   return civilDay();
 }
 
-// "Hoje", para as validades (tarifários e TAR): o dia civil em Portugal.
-// Nunca `CURRENT_DATE` da BD — é o dia UTC (o pool do pg corre em UTC), e
-// uma campanha que acaba a 30/09 ficava em vigor até à 01:00 de 01/10.
+// "Hoje" em Portugal, para escolher a versão em vigor (vê civilDay).
 const today = () => civilDay();
 
 const json = (res, code, obj, extraHeaders = {}) => {
-  // nosniff: sem isto, um JSON reflectido podia ser interpretado como
-  // text/html em browsers antigos — resposta barata para um ataque real.
+  // nosniff impede o browser de "adivinhar" que o JSON é HTML.
   res.writeHead(code, { 'content-type': 'application/json', 'x-content-type-options': 'nosniff', ...extraHeaders });
   res.end(JSON.stringify(obj));
 };
 
-// Endereços de loopback, para o readinessCheck. O Zerops chama de dentro do
-// container; `::ffff:127.0.0.1` aparece quando o servidor escuta em :: (dual
-// stack) e o cliente vem de 127.0.0.1.
+// Endereços da própria máquina (loopback), em IPv4, IPv6 e IPv4-em-IPv6.
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const isLoopback = req => LOOPBACK.has(req.socket?.remoteAddress || '');
 
-// SELECT 1 com prazo e com cache. O health check do Zerops dá 5 s ao
-// pedido: o timeout de ligação do pg (5 s) deixaria a resposta em cima da
-// hora, e um check que nunca passa é pior do que nenhum. O cache de 5 s
-// limita o custo a uma query por intervalo, venha o check de onde vier.
-// Resolve (nunca rejeita) para não deixar uma rejeição tardia a crashar o
-// processo.
+// A BD responde? Faz um SELECT 1 com 3 s de prazo e guarda a resposta 5 s,
+// para não fazer uma query por cada verificação. Devolve true/false, nunca
+// atira erro.
 const DB_CHECK_TTL = 5000;
 let dbCheck = null;
 const dbAlive = async () => {
@@ -227,22 +205,22 @@ const dbAlive = async () => {
   return promise;
 };
 
-// Rate limiting: janela fixa, em memória — suficiente para um nó
-// único (em produção, um limitador à frente do server). Sessão web conta
-// por IP; terceiros contam pela chave de API. O mapa é podado
-// preguiçosamente e tem teto: sem isso, uma enxurrada de IPs distintos
-// cresce memória sem limite — DoS do próprio limitador.
+// Rate limit: no máximo N pedidos por minuto, contados em memória (cada
+// instância conta os seus). A sessão web conta por IP; uma API key conta
+// pela chave. O mapa de contadores tem um tecto de entradas, para um monte
+// de IPs diferentes não encher a memória.
 const RATE_WINDOW_MS = 60_000;
-const RATE_DEFAULT = 60;        // requisições/minuto de API web (Bearer)
-const RATE_SESSION = 10;        // /v1/session por IP por minuto (pré-auth!)
+const RATE_DEFAULT = 60;        // pedidos/minuto por defeito
+const RATE_SESSION = 10;        // POST /v1/session por IP e minuto
 const RATE_MAX_BUCKETS = 10_000;
 const buckets = new Map();      // chave -> { count, resetAt }
+// Conta mais um pedido para `key` e diz se ainda está dentro do `limit`.
 function rateBucket(key, limit) {
   const now = Date.now();
   let b = buckets.get(key);
   if (!b || now > b.resetAt) {
     if (buckets.size >= RATE_MAX_BUCKETS) {
-      // poda: largar o que já expirou; se ainda estiver cheio, largar o mais antigo
+      // Cheio: apaga os expirados e, se não chegar, o mais antigo.
       for (const [k, v] of buckets) { if (now > v.resetAt) buckets.delete(k); }
       if (buckets.size >= RATE_MAX_BUCKETS) buckets.delete(buckets.keys().next().value);
     }
@@ -262,11 +240,11 @@ const rateLimited = (res, rl, limit) => json(res, 429, {
   error: { code: 'rate_limited', message: 'limite de requisições excedido; repetir depois de Retry-After' },
 }, rlHeaders(rl, limit));
 
-// Atrás do proxy (Cloudflare + L7 do Zerops) o peer TCP é sempre o proxy e o
-// limitador dava UM orçamento global a todos os clientes. CEME_TRUST_PROXY=N
-// diz quantos saltos de confiança há à frente do processo: o IP do cliente é
-// a N-ésima entrada a contar da DIREITA de X-Forwarded-For (as da esquerda
-// são forjáveis). Por omissão (0) usa-se o peer, como antes.
+// O IP do cliente. Atrás de proxies (Cloudflare, balanceador) a ligação TCP
+// vem sempre do proxy, e o IP real está no cabeçalho X-Forwarded-For.
+// CEME_TRUST_PROXY=N diz quantos proxies de confiança há à frente: o IP é a
+// N-ésima entrada a contar da DIREITA (as da esquerda o cliente pode
+// inventar). Com 0 (por omissão) usa-se o IP da ligação.
 const TRUST_PROXY = Math.max(0, parseInt(process.env.CEME_TRUST_PROXY || '0', 10) || 0);
 const clientIp = (req) => {
   if (TRUST_PROXY > 0) {
@@ -277,6 +255,7 @@ const clientIp = (req) => {
   return (req.socket && req.socket.remoteAddress) || 'unknown';
 };
 
+// Lê a credencial do pedido. Devolve { ok: true, payload } ou { ok: false, error }.
 async function auth(req) {
   const h = req.headers.authorization || '';
   if (h.startsWith('Bearer ')) {
@@ -285,8 +264,7 @@ async function auth(req) {
   }
   const k = req.headers['x-api-key'];
   if (k) {
-    // Valida contra o hash em BD (revogada/expirada exclui). Antes aceitava
-    // qualquer string — o endpoint estava, na prática, sem auth de terceiros.
+    // Procura o hash da chave na BD (ignora chaves revogadas ou expiradas).
     const row = await get(`
       SELECT c.id AS client, c.name AS name, c.kind AS kind, c.rate_limit AS rate_limit
         FROM api_key k JOIN api_client c ON c.id = k.client_id
@@ -298,14 +276,9 @@ async function auth(req) {
   return { ok: false, error: 'missing' };
 }
 
-// A versão é a que está em vigor no dia pedido. Para um dia sem versão
-// conhecida (anterior à primeira captura) usa-se a de hoje: o seed não tem
-// histórico de preços antes da folha, e uma lista vazia sem erro é pior do
-// que o preço actual.
+// Todos os tarifários, cada um com `vid` = a versão em vigor no dia `day`.
+// Se o dia for anterior à primeira versão conhecida, usa a de hoje.
 async function allTariffs(day = today()) {
-  // Simulam-se TODOS os tarifários para a região escolhida (com o IVA
-  // e os ciclos dessa região). A disponibilidade comercial (`regions`) é
-  // mostrada como informação, não como filtro.
   return await query(`
     SELECT t.*, c.name AS ceme_name,
       COALESCE(
@@ -325,12 +298,11 @@ async function allTariffs(day = today()) {
   `, [day, today()]);
 }
 
+// Os preços de uma versão numa região: { price, act, iec, sup, split }.
 async function comps(vid, region = 'CONT') {
   let rows = await query('SELECT * FROM price_component WHERE tariff_version_id = $1', [vid]);
-  // Linhas de região POR CIMA das de omissão (Continente): só existem onde o
-  // CEME cobra diferente nas ilhas (price_component_region). Vão DEPOIS das
-  // de omissão — preço e decomposição usam "a última vence", logo a ilha
-  // sobrepõe ao Continente e um período sem linha própria cai no preço CONT.
+  // Nas ilhas, as linhas de price_component_region vêm DEPOIS das do
+  // Continente; como "a última vence", substituem-nas onde existirem.
   if (region && region !== 'CONT') {
     const reg = await query('SELECT * FROM price_component_region WHERE tariff_version_id = $1 AND region = $2', [vid, region]);
     rows = [...rows, ...reg];
@@ -338,17 +310,13 @@ async function comps(vid, region = 'CONT') {
   return compRows(rows, vid);
 }
 
-// O formato { price, split } a partir das linhas JÁ MESCLADAS de uma versão
-// (Continente + região, só região, ou só Continente). Usado pelo comps() e
-// pelo /v1/tabela (que precisa do mesmo formato por ilha, sem o merge POR
-// CIMA — as linhas de região são mostradas À PARTE, nunca misturadas).
+// Transforma linhas de preço em { price, act, iec, sup, split }. O
+// /v1/tabela também a usa, para mostrar os preços das ilhas à parte.
 function compRows(rows, vid) {
   let out;
   try { out = pickComponents(rows); }
   catch (e) { throw new Error(`${e.message} na versão ${vid}`); }
-  // A decomposição energia + TAR, quando a folha a tinha (o CEME publicava a
-  // energia separada). Onde não há, fica null — o preço final é o que o
-  // CEME publica, e não se inventa a parte da energia.
+  // split[período] = { energy, tar } quando se conhece a separação; senão null.
   const split = {};
   for (const r of rows) {
     split[r.period] = (r.energy_only_eur_kwh == null || r.tar_eur_kwh == null)
@@ -359,22 +327,18 @@ function compRows(rows, vid) {
   return out;
 }
 
-// EGME: o `activation` da resposta é o que o CEME publica (sem substituição
-// silenciosa — ver seed.js). O valor legal em vigor fica como contexto no
-// lado do cliente: quando o publicado ainda é o de 2025 (acima do legal),
-// `activation_stale` assinala — actualizar é tarefa de nova captura da folha,
-// não de derivar valores no código a cada mudança de regulamento.
-// `activation_stale` só marca quem ainda publica o valor legal ANTERIOR
-// (EGME_PREVIOUS). Valores próprios acima do legal (packs, taxas do próprio
-// CEME) são legítimos e não são "desactualizados".
+// Taxa de activação (EGME). Usamos sempre o valor que o CEME publica. Cada
+// tarifário vai com dois campos extra:
+//   egme_legal:       o valor legal em vigor, para referência;
+//   activation_stale: true se o CEME ainda publica o valor legal do ano
+//                     anterior (provavelmente não actualizou a página).
+// Um valor próprio acima do legal é legítimo e não é marcado.
 const EGME_LEGAL = 0.1088; // €/carregamento, Regul. ERSE 7/2026 (em vigor 2026-01-01)
 const EGME_PREVIOUS = 0.1572; // o valor legal de 2025
 const egmeFlags = (act) => ({ egme_legal: EGME_LEGAL, activation_stale: Math.abs(act - EGME_PREVIOUS) < 1e-9 });
 
-// A TAR em vigor num dia para (região, tensão, período) — ou null, se não a
-// temos. A TAR é o acesso à rede: o valor regulado pela ERSE, o mesmo para
-// todos os comercializadores. Não se inventa TAR nenhuma: um dia anterior à
-// primeira TAR conhecida usa a mais antiga que há (como os tarifários).
+// A TAR em vigor num dia para (região, tensão, período), ou null se não
+// houver. Para um dia anterior à primeira TAR conhecida, usa a mais antiga.
 async function tarFor(region, voltage, period, day = today()) {
   const row = await get(
     `SELECT price_eur_kwh FROM tar
@@ -391,7 +355,14 @@ async function tarFor(region, voltage, period, day = today()) {
   return row?.price_eur_kwh ?? null;
 }
 
-
+// Cota UM tarifário: devolve os dados para o cartão dele, com o total em €
+// e a conta parcela a parcela. Atira erro se faltar algum dado; quem chama
+// apanha-o e deixa o tarifário de fora ("quarentena").
+//   t:     linha de allTariffs()
+//   at:    instante do carregamento; day: o dia dele na região
+//   kwh, region
+//   omie, omieVazio, omieFora, omieCycles: o OMIE de referência (€/kWh)
+//   spot:  { omieKwh, loss } do quarto de hora do carregamento, se houver
 async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot }) {
   const ver = await get('SELECT * FROM tariff_version WHERE id = $1', [t.vid]);
   const { price, act, iec, sup, split } = await comps(t.vid, region);
@@ -405,33 +376,26 @@ async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, om
   };
   if (t.kind === 'FIXED') {
     const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region, split });
-    // A decomposição vem dos componentes (a folha): só a há para os
-    // tarifários em que o CEME publicava a energia à parte. Nos outros o
-    // preço é o final, tal como o CEME o publica.
     return { ...meta, activation: act, iec, prices: price, split, avail: t.regions, ...egmeFlags(act), ...q };
   }
-  // INDEXED: PE por período com o OMIE de referência do pedido.
-  // Nas ilhas usa-se a ref. continental com aviso (MIBEL não cobre as ilhas).
+  // INDEXADO: calcula o €/kWh de cada período e depois usa a mesma conta dos
+  // fixos. Nas ilhas o mercado ibérico não chega; usa-se o OMIE do
+  // Continente e o cartão leva o aviso OMIE_CONT_REF.
   const here = REGIONS[region].omieIndexed ? null : 'OMIE_CONT_REF';
-  // A TAR é a da região do carregamento (a rede é a da ilha); só o OMIE é
-  // continental. Sem TAR não há preço: rebenta e o tarifário vai para a
-  // quarentena, em vez de sair um preço sem rede.
+  // A TAR é a da região do carregamento. Sem TAR, erro (quarentena).
   const tarOf = async (per) => {
     const tar = await tarFor(region, t.voltage, per, day);
     if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${day}`);
     return tar;
   };
   const vm = vmeta(t.id);
-  // Perdas(h): média do perfil E-REDES do dia nos quartos de cada período —
-  // o mesmo conjunto de quartos de que vêm as médias do OMIE. Sem perfil
-  // (ano não carregado) cai nas perdas da versão / média anual.
+  // Perdas médias de cada período nesse dia (vê engine/losses.js).
   const lossPer = lossByPeriod(t.voltage, at, d => periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at: d }), `${region}|${t.schedule}|${t.cycle}`);
-  // SPLIT_VAZIO_FORA: o OMIE de cada período é a média desse período NO
-  // CICLO DO TARIFÁRIO — o vazio do ciclo semanal (LuziGas) não é o do diário
-  // (MEO, Ynerluz): ao sábado e ao domingo as horas são outras. Com
-  // `omieCycles` (o que a web manda) cada um usa o seu; sem ele, o par
-  // omieVazio/omieFora vale para todos (é um override explícito).
-  // UNICA: um só OMIE para os dois períodos.
+  // Que OMIE usar em cada período:
+  //   SPLIT_VAZIO_FORA: a média desse período no ciclo DO TARIFÁRIO (o vazio
+  //     do ciclo semanal não tem as mesmas horas que o do diário). Vem de
+  //     `omieCycles[ciclo]`; se não vier, de omieVazio/omieFora; se não, `omie`.
+  //   UNICA: `omie` para tudo.
   const agg = ver.omie_aggregation || 'SPLIT_VAZIO_FORA';
   const cyc = (omieCycles && omieCycles[t.cycle]) || {};
   const pair = { vazio: cyc.vazio ?? omieVazio, fora: cyc.fora ?? omieFora };
@@ -439,14 +403,11 @@ async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, om
     if (agg === 'SPLIT_VAZIO_FORA') return (per === 'VAZIO' ? (pair.vazio ?? omie) : (pair.fora ?? omie));
     return omie;
   };
-  // `spot`: o OMIE (e as perdas) do quarto de hora do carregamento — o que o
-  // CEME cobra de facto nesse instante. Quando há, substitui as médias por
-  // período (que só servem de referência para um carregamento sem hora).
+  // Se há `spot` (o OMIE do quarto de hora do carregamento), é esse que se
+  // usa: é o que o CEME cobra de facto. As médias ficam como plano B.
   const spotKwh = spot?.omieKwh ?? null;
   const out = {};
-  // Nos indexados a energia e a TAR estão SEPARADAS por construção: o preço
-  // é (OMIE + K + CGS) × (1 + perdas) + TAR. Logo a decomposição é exacta
-  // — não é aritmética nossa, é a fórmula.
+  // Aqui a separação energia + TAR é exacta: a TAR é uma parcela da fórmula.
   const splitIdx = {};
   for (const per of ['VAZIO', 'FORA_VAZIO']) {
     const oref = spotKwh ?? omieForPeriod(per);
@@ -457,12 +418,9 @@ async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, om
     splitIdx[per] = tar == null ? null : { energy: price - tar, tar };
   }
   const omieRef = spotKwh ?? ((agg === 'SPLIT_VAZIO_FORA') ? (pair.vazio ?? omie) : omie);
-  // Guarda: indexado com ciclo SIMPLES só tem preço UNICO — o motor só sabe
-  // preços por período (VAZIO/FORA_VAZIO). Não há tarifário assim no seed,
-  // mas um futuro seed sem esta guarda fazia o quoteFixed rebentar com
-  // "sem preço final para UNICO" em cada simulação. Aproximação honesta:
-  // usa o preço fora-vazio da energia (sem TAR — o UNICO real teria a
-  // TAR simples do período, ignorada aqui) — melhor do que 500.
+  // Um indexado SIMPLES precisaria de um preço UNICO, que este código não
+  // calcula. Não há nenhum no seed; se aparecer, usa-se o de fora de vazio
+  // como aproximação (vê docs/06).
   if (t.schedule === 'SIMPLES' && out.UNICO == null) {
     out.UNICO = out.FORA_VAZIO ?? out.VAZIO ?? 0;
   }
@@ -470,16 +428,13 @@ async function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, om
   return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: spot?.loss ?? lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], omieSpot: spotKwh != null, lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }
 
-// Negociação de idioma a partir do cabeçalho Accept-Language. Só há PT e EN:
-// se o browser pedir explicitamente inglês, servimos inglês; qualquer outra
-// coisa (es, fr, de, it, ou header ausente) fica em português, porque o
-// público-alvo é português. O cliente pode sobrepor via localStorage.
-// O marcador que cada página traz para o servidor lhe injectar a língua. Com
-// espaços opcionais: o /tabela escrevia `window.__LANG__ = null` e o replace
-// literal nunca acertava (a página ignorava o Accept-Language sem ninguém dar
-// por isso).
+// Língua das páginas. Cada HTML traz `window.__LANG__=null`; o servidor
+// troca o null por "pt" ou "en" antes de enviar. (O regex aceita espaços à
+// volta do `=`.)
 const LANG_MARK = /window\.__LANG__\s*=\s*null/;
 
+// Escolhe a língua pelo cabeçalho Accept-Language: inglês só se a língua
+// preferida (maior `q`) for inglês; tudo o resto dá português.
 function negotiateLang(header) {
   if (!header) return 'pt';
   const tags = String(header).split(',')
@@ -488,10 +443,10 @@ function negotiateLang(header) {
   return tags[0] && tags[0].tag.startsWith('en') ? 'en' : 'pt';
 }
 
-// Duas interfaces para a mesma API: o assistente passo-a-passo (três
-// perguntas, por omissão) e o simulador completo. O assistente é a porta de
-// entrada; o utilizador troca no link de cada página, e a escolha fica num
-// cookie que este servidor lê para responder à página certa em `GET /`.
+// Duas interfaces para a mesma API: o assistente (três perguntas) e o
+// simulador completo. `/` mostra a que estiver no cookie `ceme_ui` (por
+// omissão, o assistente). `/assistente` e `/simulador` mostram essa e gravam
+// a escolha no cookie.
 const UI = {
   assistente: { file: 'assistente.html' },
   completo: { file: 'index.html' },
@@ -501,27 +456,23 @@ const UI_ROUTES = { '/': null, '/index.html': null, '/assistente': 'assistente',
 const UI_COOKIE = 'ceme_ui';
 const UI_COOKIE_MAX_AGE = 31536000; // 1 ano
 
-// Páginas institucionais do site (Sobre, Contactos). São as mesmas para toda
-// a gente — a escolha do cookie é só da interface (assistente vs simulador),
-// por isso aqui não há cookie para ler nem para gravar. O English existe
-// porque metade dos nossos utilizadores escreve em inglês: `/sobre` e
-// `/about` são a mesma página.
+// Outras páginas HTML, sem cookie. `/sobre` e `/about` são a mesma página
+// (o mesmo para contactos).
 const INFO_ROUTES = {
   '/sobre': 'about.html', '/about': 'about.html',
   '/contactos': 'contact.html', '/contact': 'contact.html',
   '/api': 'api.html',
-  // Subpágina sem links (rota subterrânea): a tabela em bruto dos
-  // tarifários em vigor, directa da BD.
+  // Tabela em bruto dos tarifários em vigor. Não tem links a apontar para
+  // ela e não é indexada pelos motores de busca.
   '/tabela': 'tabela.html',
 };
 
-// Página das estatísticas OMIE (omie.cocofree.dev, e /omie no site
-// principal). É uma página à parte — vive dos dados OMIE e não do motor de
-// simulação — mas partilha o servidor e a API. O domínio próprio aponta
-// para a raiz: quem abre omie.cocofree.dev quer a tabela, não o simulador.
+// Página das estatísticas OMIE: /omie em qualquer domínio, e também a raiz
+// `/` quando o pedido chega pelo domínio omie.cocofree.dev.
 const OMIE_ROUTES = { '/omie': 'omie.html', '/omie.html': 'omie.html' };
 const OMIE_HOST = 'omie.cocofree.dev';
 
+// O valor do cookie `name`, ou null.
 function readCookie(req, name) {
   const raw = req.headers.cookie;
   if (!raw) return null;
@@ -533,19 +484,17 @@ function readCookie(req, name) {
   }
   return null;
 }
-// Valor ausente ou desconhecido cai no assistente: é a interface que um
-// visitante novo vê, e um cookie editado à mão não pode dar 500.
+// Interface escolhida no cookie; qualquer valor estranho dá o assistente.
 const uiFromCookie = req => (readCookie(req, UI_COOKIE) === 'completo' ? 'completo' : 'assistente');
-// Cookie de preferência de UI, não de sessão: nada aqui autentica, e o JS
-// não precisa de o ler. `Secure` só quando o pedido chegou por https (em dev
-// é http, e um cookie Secure seria descartado).
+// O cabeçalho Set-Cookie da escolha de interface (válido 1 ano). Leva
+// `Secure` só se o pedido veio por https; em dev, com http, o browser
+// deitava-o fora.
 function uiCookie(req, ui) {
   const https = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
   return `${UI_COOKIE}=${ui}; Path=/; Max-Age=${UI_COOKIE_MAX_AGE}; SameSite=Lax${https ? '; Secure' : ''}`;
 }
 
-// Um método por endpoint: leitura para os /v1/* de dados, POST para os
-// dois que aceitam corpo. 405 antes de gastar auth.
+// O método HTTP aceite por cada rota da API. Outro método dá 405.
 const METHODS = {
   '/v1/health': 'GET', '/v1/cemes': 'GET', '/v1/tariffs': 'GET', '/v1/tar': 'GET',
   '/v1/tabela': 'GET',
@@ -553,8 +502,10 @@ const METHODS = {
   '/v1/indexed/quarters': 'GET',
   '/v1/session': 'POST', '/v1/simulate': 'POST',
 };
-const MAX_BODY = 64 * 1024; // 64 KB — corpos raquíticos; pedir mais é abuso
+const MAX_BODY = 64 * 1024; // tamanho máximo do corpo de um POST (64 KB)
 
+// O router: recebe cada pedido e decide o que responder, pela ordem
+// health → ficheiros estáticos → páginas HTML → API (auth, rate limit, rotas).
 async function handle(req, res) {
   let url;
   try { url = new URL(req.url, 'http://x'); }
@@ -562,27 +513,18 @@ async function handle(req, res) {
   // Web sem auth (ficheiros estáticos); a API continua toda com auth.
   // HEAD é aceito (só read-only, corpo vazio) — sem isto, HEAD / dava 401.
   const readStatic = method => method === 'GET' || method === 'HEAD';
-  // Liveness e readiness para o Zerops (`run.healthCheck` e
-  // `deploy.readinessCheck` em zerops.yml). São as únicas rotas sem auth:
-  // o balancer tem de as alcançar de dentro do container.
-  //
-  // `/healthz` (liveness) só diz que o processo está vivo — não toca na BD.
-  // `/readyz` (readiness) acrescenta um SELECT 1: é a que decide se o
-  // container novo pode receber tráfego. A verificação da BD é o que
-  // separa as duas: se a BD cai, o healthCheck não pode desligar o pod do
-  // balancer (com um só pod isso era o site inteiro a dar 502), mas o
-  // readinessCheck tem de reprovar o pod novo.
+  // Verificações da plataforma (zerops.yml), sem auth:
+  //   /healthz: "o processo está vivo?" Não toca na BD, para uma falha da BD
+  //             não tirar o site do ar.
+  //   /readyz:  "posso receber tráfego?" Também testa a BD. Usa-se num
+  //             deploy, antes de pôr a versão nova a servir.
   if (readStatic(req.method) && url.pathname === '/healthz') {
     return json(res, 200, { ok: true, up: Math.round(process.uptime()) });
   }
   if (readStatic(req.method) && url.pathname === '/readyz') {
-    // O readinessCheck do Zerops corre de dentro do container (127.0.0.1) —
-    // é aí que a BD é consultada. De fora não se toca na BD: o check é
-    // interno e um `SELECT 1` por pedido seria um caminho grátis para
-    // esgotar o pool. E, fora do loopback, a resposta é 200 com
-    // `db: unknown` em vez de 403 — assim um probe que venha de outro
-    // sítio nunca chumba um deploy (um check que dá `false` por engano é
-    // pior que a falta dele).
+    // Só testa a BD se o pedido vier da própria máquina (é de lá que a
+    // plataforma pergunta). De fora responde 200 com `db: unknown`, para
+    // ninguém usar isto para martelar a BD.
     if (!isLoopback(req)) return json(res, 200, { ok: true, db: 'unknown' });
     const alive = await dbAlive();
     if (!alive) {
@@ -591,8 +533,8 @@ async function handle(req, res) {
     return json(res, 200, { ok: true, db: 'up' });
   }
   if (readStatic(req.method) && url.pathname === '/strings.js') {
-    // Dicionário partilhado pelas duas interfaces: um só ficheiro para os dois
-    // sites, por isso não pode ficar preso em cache depois de um deploy.
+    // Ficheiros estáticos. `no-store` em JS/CSS/HTML para o browser nunca
+    // ficar com uma versão antiga depois de um deploy.
     try {
       const js = await readFile(new URL('../../frontend/strings.js', import.meta.url), 'utf8');
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
@@ -600,22 +542,19 @@ async function handle(req, res) {
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/strings.js em falta' } }); }
   }
   if (readStatic(req.method) && url.pathname === '/pages.css') {
-    // Estilo das páginas Sobre/Contactos (frontend/pages.css). Vive fora
-    // porque as duas páginas são irmãs e não vale a pena duplicar o CSS.
     try {
       const css = await readFile(new URL('../../frontend/pages.css', import.meta.url), 'utf8');
       res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
       return res.end(css);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/pages.css em falta' } }); }
   }
-  // robots.txt: sem auth. A /tabela fica de fora de propósito: o noindex é por
-  // cabeçalho, e um Disallow impediria os crawlers de o ler (e anunciava a página).
+  // robots.txt. A /tabela não aparece aqui: é escondida pelo cabeçalho
+  // x-robots-tag (um Disallow aqui anunciava-a).
   if (readStatic(req.method) && url.pathname === '/robots.txt') {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' });
     return res.end('User-agent: *\nDisallow: /v1/\n');
   }
-  // PWA: manifest, service worker e gatilho de instalação. Servidos sem auth,
-  // como os outros ficheiros estáticos (strings.js, pages.css).
+  // PWA (app instalável): manifest, service worker e ícones.
   if (readStatic(req.method) && (url.pathname === '/manifest.webmanifest' || url.pathname === '/manifest.json')) {
     try {
       const m = await readFile(new URL('../../frontend/manifest.webmanifest', import.meta.url));
@@ -631,8 +570,6 @@ async function handle(req, res) {
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: 'frontend/sw.js em falta' } }); }
   }
   if (readStatic(req.method) && url.pathname === '/tz.js') {
-    // Horas de relógio por região (simulador + assistente). no-store, como o
-    // strings.js: é código partilhado e não pode ficar preso numa versão velha.
     try {
       const js = await readFile(new URL('../../frontend/tz.js', import.meta.url), 'utf8');
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
@@ -655,10 +592,7 @@ async function handle(req, res) {
       } catch { return json(res, 404, { error: { code: 'no_frontend', message: `frontend/${icon} em falta` } }); }
     }
   }
-  // Página OMIE. No domínio próprio (omie.cocofree.dev) é o que aparece na
-  // raiz; no site principal vive em /omie. O servidor até agora só olhava
-  // para o path — com dois domínios a servir a mesma app é o Host que
-  // decide o que é a raiz.
+  // Página OMIE (vê OMIE_ROUTES). O cabeçalho Host diz por que domínio veio.
   const host = String(req.headers.host || '').split(':')[0].toLowerCase();
   const onOmieHost = host === OMIE_HOST;
   if (readStatic(req.method) && (onOmieHost && url.pathname === '/' || Object.hasOwn(OMIE_ROUTES, url.pathname))) {
@@ -673,9 +607,7 @@ async function handle(req, res) {
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${file} em falta` } }); }
   }
   if (readStatic(req.method) && Object.hasOwn(INFO_ROUTES, url.pathname)) {
-    // Sobre e Contactos: HTML estático com a mesma negociação de língua das
-    // interfaces (o cabeçalho Accept-Language decide, a bandeira decide
-    // depois). Sem cookie — estas páginas não são uma "interface" a escolher.
+    // Páginas de INFO_ROUTES, com a língua negociada.
     const lang = negotiateLang(req.headers['accept-language']);
     try {
       const html = (await readFile(new URL(`../../frontend/${INFO_ROUTES[url.pathname]}`, import.meta.url), 'utf8'))
@@ -686,10 +618,8 @@ async function handle(req, res) {
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${INFO_ROUTES[url.pathname]} em falta` } }); }
   }
   if (readStatic(req.method) && Object.hasOwn(UI_ROUTES, url.pathname)) {
-    // A escolha da interface vive num cookie que o servidor lê: `GET /` já
-    // responde com a página certa (sem redirect nem flash). Só os caminhos
-    // explícitos gravam a escolha; `/` nunca escreve, para a primeira visita
-    // ficar sempre no assistente.
+    // Assistente ou simulador (vê UI_ROUTES). `/` só lê o cookie; as rotas
+    // explícitas gravam-no.
     const forced = UI_ROUTES[url.pathname]; // null = respeitar o cookie
     const ui = forced || uiFromCookie(req);
     const lang = negotiateLang(req.headers['accept-language']);
@@ -703,20 +633,18 @@ async function handle(req, res) {
       return res.end(html);
     } catch { return json(res, 500, { error: { code: 'no_frontend', message: `frontend/${UI[ui].file} em falta` } }); }
   }
-  // Um método por pathname: os handlers de leitura respondiam 200 a
-  // PUT/DELETE (não faziam nada, mas fingiam que sim). 405 com `allow`.
+  // ---- API ----
+  // Método errado: 405, com o cabeçalho `allow` a dizer o certo.
   const allowed = METHODS[url.pathname];
   if (allowed && req.method !== allowed && !(allowed === 'GET' && req.method === 'HEAD')) {
     res.writeHead(405, { 'content-type': 'application/json', 'x-content-type-options': 'nosniff', allow: allowed });
     return res.end(JSON.stringify({ error: { code: 'method_not_allowed', message: `${req.method} em ${url.pathname}; usar ${allowed}` } }));
   }
   if (req.method === 'POST' && url.pathname === '/v1/session') {
-    // /v1/session corre ANTES da auth: sem aqui um teto, um martelo pode
-    // assinar JWTs sem fim (custo de CPU) e fabricar sessões à vazia.
+    // Emite um token de sessão web. É a única rota da API sem auth, por isso
+    // tem o seu próprio rate limit, mais apertado.
     const sessRl = rateBucket(`sess:${clientIp(req)}`, RATE_SESSION);
     if (!sessRl.allowed) return rateLimited(res, sessRl, RATE_SESSION);
-    // Com a secret de dev em produção, proteger o bilhete: 503 em vez de
-    // emitir tokens fabricáveis. Em dev/CI a secret segue a ser aceitável.
     if (WEAK_IN_PROD) {
       return json(res, 503, { error: { code: 'no_secret', message: 'JWT_SECRET em falta: export JWT_SECRET=<openssl rand -hex 32>' } });
     }
@@ -726,8 +654,7 @@ async function handle(req, res) {
   const a = await auth(req);
   if (!a.ok) return json(res, 401, { error: { code: 'unauthorized', message: 'falta Authorization (Bearer ou X-API-Key)' } });
 
-  // Rate limit depois da auth (401 não dá orçamento). Por IP para a sessão
-  // web anonima; pela chave para terceiros. /v1/session tem o dele (acima).
+  // Rate limit, depois da auth: por chave (API key) ou por IP (sessão web).
   const rlLimit = a.payload.kind === 'THIRD_PARTY' && a.payload.rate_limit != null ? Number(a.payload.rate_limit) : RATE_DEFAULT;
   const rlKey = `${a.payload.kind === 'THIRD_PARTY' ? 'key' : 'ip'}:${a.payload.kind === 'THIRD_PARTY' ? a.payload.key : clientIp(req)}`;
   const rl = rateBucket(rlKey, rlLimit);
@@ -745,20 +672,14 @@ async function handle(req, res) {
     return json(res, 200, { data: await query('SELECT * FROM tar WHERE valid_from <= $1 AND (valid_to IS NULL OR valid_to > $1)', [today()]) }, headers);
   }
   if (url.pathname === '/v1/tabela') {
-    // Página /tabela: o espelho da folha. Os mesmos allTariffs + comps da
-    // API (e a mesma janela de validade — o que expirou não sai). Reaproveito
-    // tal como estão: se um tarifário com componente divergente rebentar
-    // aqui, é o mesmo sinal que o simulador já dava — não há silêncio.
+    // Dados da página /tabela: os tarifários em vigor com os preços, sem
+    // cálculo nenhum.
     const out = [];
     for (const t of await allTariffs()) {
-      if (t.vid == null) continue; // sem versão em vigência (ex.: campanha expirada)
+      if (t.vid == null) continue; // sem versão em vigor (ex.: campanha acabada)
       const cp = await comps(t.vid);
-      // Ilhas: os preços À PARTE por região, para os CEMEs que cobram
-      // diferente nas ilhas (price_component_region) — ex.: a Enable, energia
-      // 0,15 vs 0,12 €. No MESMO formato price/split de cima, um mapa
-      // região → { prices, split }. Onde o CEME não diverge, NÃO há chave: o
-      // tarifário cota-se com o preço do Continente em qualquer região (não
-      // se inventa preço insular), e o /tabela não mostra linha nenhuma.
+      // Preços próprios das ilhas, à parte: { MAD: { prices, split }, … }.
+      // Só aparece para quem cobra diferente lá.
       const regRows = await query(
         `SELECT region, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh,
                 energy_only_eur_kwh, tar_eur_kwh
@@ -795,22 +716,23 @@ async function handle(req, res) {
     return;
   }
   if (url.pathname === '/v1/omie/stats' && req.method === 'GET') {
-    // As estatísticas mensais: agregados por mês e por ciclo horário, mais
-    // as células de referência. Vêm da BD (calculadas na ingestion).
     getStats().then(
       d => json(res, 200, d, headers),
       e => json(res, 502, { error: { code: 'omie_unavailable', message: `estatísticas indisponíveis: ${e.message}` } }, headers));
     return;
   }
   if (url.pathname === '/v1/indexed/quarters' && req.method === 'GET') {
+    // Os 96 quartos de hora de um dia com o preço de um indexado e, se
+    // vier `fixed`, quem ganha em cada quarto contra esse fixo.
+    // Parâmetros: tariff, region, date (dia de Lisboa), fixed, tz (fuso em
+    // que se mostram as horas).
     const tid = url.searchParams.get('tariff'), region = url.searchParams.get('region') || 'CONT';
     const tz = validTz(url.searchParams.get('tz'));
     if (!REGIONS[region]) return json(res, 400, { error: { code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' } }, headers);
     const t = (await query('SELECT * FROM tariff WHERE id = $1', [tid || ''])).find(x => x.kind === 'INDEXED')
       || (await query("SELECT * FROM tariff WHERE kind = 'INDEXED' ORDER BY id LIMIT 1"))[0];
     if (!t) return json(res, 404, { error: { code: 'no_indexed', message: 'sem tarifário indexado' } }, headers);
-    // A versão em vigor hoje; se ainda nenhuma começou, a primeira que vier
-    // (como allTariffs/tarFor). Uma versão já fechada nunca fixa o preço.
+    // A versão em vigor hoje (ou, se ainda nenhuma começou, a próxima).
     const ver = await get(
       `SELECT * FROM tariff_version WHERE tariff_id = $1
         AND valid_from <= $2 AND (valid_to IS NULL OR valid_to > $2)
@@ -821,8 +743,7 @@ async function handle(req, res) {
     );
     if (!ver) return json(res, 404, { error: { code: 'no_indexed_version', message: 'sem versão em vigor do tarifário indexado' } }, headers);
 
-    // Fixo de referencia: o que o cliente escolheu no comparador. Sem ele nao
-    // ha com quem comparar — o endpoint so sabe quanto o INDEXADO custa.
+    // O fixo escolhido no comparador, cotado na mesma região.
     const fixId = url.searchParams.get('fixed');
     let fixPrice = null, fixInfo = null;
     if (fixId) {
@@ -834,11 +755,8 @@ async function handle(req, res) {
            ORDER BY valid_from DESC LIMIT 1`,
           [ft.id, today()]
         );
-        // Fixo sem versão em vigor, ou sem preços de energia (ex. só EGME),
-        // não dá comparação: fica null — a UI trata como "sem fixo" e esconde
-        // colunas, em vez de mostrar uma referência vazia com nome.
-        // Preços por região: o fixo é cotado na MESMA região que os quartos
-        // (a ilha sobrepõe ao Continente quando há linhas de região).
+        // Sem versão em vigor ou sem preços, fica sem fixo (a página esconde
+        // as colunas de comparação).
         const fp = fv ? (await comps(fv.id, region)).price : null;
         if (fp && Object.keys(fp).length) {
           fixPrice = fp;
@@ -850,11 +768,8 @@ async function handle(req, res) {
 
     const finish = (q) => {
       try {
-        // Cada tarifario e' cotado no SEU periodo, no SEU instante: um
-        // indexado DIARIO e um fixo SEMANAL nao partilham as fronteiras.
-        // (Usar o periodo do indexado para cotar o fixo dava um preco
-        // fixo errado — o fixo mudava de preco as 22:00, que e' a
-        // fronteira do ciclo diario, e nao a do semanal.)
+        // O período de cada quarto, calculado à parte para o indexado e
+        // para o fixo (os ciclos deles podem ser diferentes).
         const withP = q.rows.map(r => {
           const at = new Date(r.utc);
           const per = periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at });
@@ -867,9 +782,8 @@ async function handle(req, res) {
           };
         });
         Promise.all(withP.map(async (item) => {
-          // A TAR em vigor no dia dos quartos, na região pedida (a coluna pode
-          // levar versões futuras). Sem TAR não se cota: o quarto fica sem
-          // preço em vez de sair um preço sem rede.
+          // Preço do indexado neste quarto, com a TAR da região e as perdas
+          // do próprio quarto.
           const tarEurKwh = await tarFor(region, t.voltage, item.period, q.date);
           if (tarEurKwh == null) throw new Error(`sem TAR ${region}/${t.voltage}/${item.period} em ${q.date}`);
           const vm = vmeta(t.id);
@@ -877,19 +791,19 @@ async function handle(req, res) {
           const { price } = indexedPrice({ omieEurKwh: item.omieMwh / 1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss: item.loss, formula: vm.formula });
           item.price = Math.round(price * 10000) / 10000;
         })).then(() => {
-          // quem ganha, quarto a quarto — logica em engine/compare.js
+          // Quem ganha em cada quarto (engine/compare.js).
           const comp = compareWithFixed(withP, fixPrice);
           const ranked = [...comp].sort((x, y) => x.price - y.price);
-          // Pelo instante, não pela hora de relógio: no dia da mudança de hora
-          // de Outubro há dois quartos "01:00" e o rótulo não os distingue.
+          // Os 8 quartos mais baratos, identificados pelo instante (em Outubro
+          // há duas "01:00").
           const cheap = new Set(ranked.slice(0, 8).map(x => x.utc));
           const vm2 = vmeta(t.id);
           json(res, 200, {
             date: q.date, tariff: t.id, name: t.name, region, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh,
-            // média das perdas dos quartos do dia (cada quarto usa a sua)
+            // Média das perdas dos quartos (cada quarto usa a sua).
             loss: withP.every(x => x.loss != null) && withP.length ? withP.reduce((a, x) => a + x.loss, 0) / withP.length : (vm2.loss ?? LOSS_PLACEHOLDER[t.voltage]), source: SOURCE_LABEL,
-            // estimado = o dia todo; parcial = so a cauda (o dia de mercado da OMIE
-            // acaba as 23:00 de Lisboa, o resto do dia vem do OMIP)
+            // estimated: o dia todo é estimativa; estimatedFrom: a hora a partir
+            // da qual passa a ser (tipicamente 23:00, vê docs/03).
             estimated: q.rows.length > 0 && q.rows.every(r => r.est),
             estimatedFrom: q.rows.some(r => r.est) && !q.rows.every(r => r.est) ? withP.find(x => x.est).start : null,
             days: q.days, fixed: fixInfo,
@@ -906,20 +820,16 @@ async function handle(req, res) {
   if (url.pathname === '/v1/simulate' && req.method === 'POST') {
     let body = '', tooBig = false;
     req.on('data', c => {
-      // Cap de 64 KB: sem isto um POST de 48 MB crescia a String e rebentava
-      // no JSON.parse — memória à solta em cada conexão. O cap guarda a
-      // decisão para o `end` (linha em branco, sem parse) e responde 413.
-      if (tooBig) return;                       // já decidido: não voltar a encher o buffer
+      // Acima de MAX_BODY pára de guardar e responde 413 no fim.
+      if (tooBig) return;
       if (body.length + c.length > MAX_BODY) { tooBig = true; body = ''; return; }
       body += c;
     });
     req.on('end', async () => {
       if (tooBig) return json(res, 413, { error: { code: 'payload_too_large', message: `corpo > ${MAX_BODY} bytes` } }, headers);
       try {
-        // Corpo de terceiros/anónimos é input hostil: JSON malformado, kwh
-        // string, `at` carne para new Date, omie o que vier. Sem validação,
-        // o erro apanhado aqui vai com message crua para o cliente e valores
-        // tolos (omie negativo, kwh 1e300) produziam preços absurdos.
+        // Valida tudo o que vem no corpo antes de usar (vê docs/04 para o
+        // formato do pedido).
         let parsed;
         try { parsed = JSON.parse(body || '{}'); } catch { return json(res, 400, { error: { code: 'bad_request', message: 'corpo JSON inválido' } }, headers); }
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -951,14 +861,11 @@ async function handle(req, res) {
             return json(res, 400, { error: { code: 'bad_omie', message: `${nome} deve ser um número (€/kWh) positivo` } }, headers);
           }
         }
-        // O dia civil do carregamento, no relógio da região: é por ele que se
-        // escolhe a versão do tarifário e a TAR em vigor (um carregamento
-        // amanhã, depois de uma mudança de preço, usa o preço de amanhã).
+        // O dia do carregamento na região escolhe a versão e a TAR em vigor.
         const day = civilDay(now, REGIONS[region].tz);
         const tariffs = await allTariffs(day);
-        // useSpot: cota os indexados ao OMIE do quarto de hora do carregamento
-        // (e às perdas desse quarto). Sem quarto disponível (dia sem dados,
-        // OMIE em baixo) cai nas médias por período, sem rebentar o pedido.
+        // useSpot: usa o OMIE do quarto de hora do carregamento nos
+        // indexados. Se não houver, ficam as médias.
         let spot = null;
         if (useSpot === true) {
           try {
@@ -967,17 +874,10 @@ async function handle(req, res) {
             if (r && Number.isFinite(r.pt)) spot = { omieKwh: r.pt / 1000, utc: r.utc, loss: null };
           } catch (e) { console.warn('[ceme-v2] simulate: sem OMIE do quarto, a usar médias:', e.message); }
         }
-        // Isolamento por tarifário: um seed com um único período divergente
-        // não pode derrubar os 128 — quarentena em vez de 400 (princípio do
-        // docs/03). O tarifário a mais sai fora do ranking; a lista mantém
-        // os restantes.
-        //
-        // Em paralelo com concorrência limitada: cada quoteOne faz várias
-        // queries, e em pg cada uma é um round-trip pela rede. Em série, 128
-        // tarifários x ~4 queries ficavam ~500 round-trips encadeados e o
-        // pool (max 10) nunca era aproveitado. O limite fica abaixo do pool
-        // para não ocupar todas as ligações e deixar pedidos concorrentes à
-        // espera; 8 mantém folga e ainda paraleliza.
+        // Cota cada tarifário. Se um falhar (dados errados, falta de TAR),
+        // fica de fora com um aviso no log e os outros seguem ("quarentena").
+        // Correm 8 de cada vez: cada cotação faz várias queries, e 8 fica
+        // abaixo das 10 ligações do pool para sobrar para outros pedidos.
         const CONCURRENCY = 8;
         const results = new Array(tariffs.length);
         let next = 0;
@@ -989,7 +889,6 @@ async function handle(req, res) {
             try {
               results[i] = await quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) } });
             } catch (e) {
-              // com identidade, para quem lê os logs/BD saber o que foi posto de lado
               console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
             }
           }
@@ -997,8 +896,7 @@ async function handle(req, res) {
         await Promise.all(
           Array.from({ length: Math.min(CONCURRENCY, tariffs.length) }, worker)
         );
-        // Ordem de resultados independente da ordem de conclusão; a lista de
-        // saída tem de continuar determinística.
+        // Do mais barato para o mais caro.
         const data = results.filter(Boolean);
         data.sort((x, y) => x.totalEur - y.totalEur);
         const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
@@ -1010,9 +908,8 @@ async function handle(req, res) {
   json(res, 404, { error: { code: 'not_found', message: url.pathname } }, headers);
 }
 
-// Fronteira de erro: o node:http ignora a promessa que o listener devolve, por
-// isso uma rejeição (BD em baixo, dados inesperados) seria `unhandledRejection`
-// e o Node terminava o processo — o site todo por um pedido. Responde 500.
+// Qualquer erro não apanhado num pedido vira um 500, em vez de derrubar o
+// processo inteiro.
 const server = http.createServer(async (req, res) => {
   try { await handle(req, res); }
   catch (e) {

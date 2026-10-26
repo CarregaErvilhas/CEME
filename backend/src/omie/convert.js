@@ -1,12 +1,21 @@
-// Conversão dia de mercado (CET) + período 1..96 → instante Europe/Lisbon.
-// O leilão corre em CET; Portugal segue Europe/Lisbon (DST próprio).
-// Regras defensivas:
-// - a hora inexistente da primavera nunca pode resultar em ts_lisbon válido;
-// - a hora repetida do outono distingue-se pelo offset, não pelo wall-clock.
+// Contas de datas e horas para o OMIE.
+//
+// O OMIE publica os preços por "dia de mercado" e "período": o período N é o
+// N-ésimo quarto de hora do dia, contado a partir da meia-noite de MADRID
+// (CET no Inverno, CEST no Verão). Portugal está uma hora atrás. Aqui
+// convertes isso em instantes UTC e em dias/horas de Lisboa.
+//
+// O que tens de ter sempre em mente:
+//   - A hora muda no último domingo de Março e no último domingo de Outubro,
+//     sempre às 01:00 UTC. Em Março o dia tem 23 h (92 quartos), em Outubro
+//     25 h (100 quartos).
+//   - Em Outubro, a mesma hora de relógio acontece duas vezes. Só o instante
+//     UTC (ou o offset) as distingue.
 
-const CET_OFFSETS = { winter: 1, summer: 2 }; // CET=+1, CEST=+2
+// Horas de diferença de Madrid para UTC: CET = +1 (Inverno), CEST = +2 (Verão).
+const CET_OFFSETS = { winter: 1, summer: 2 };
 
-// Último domingo de março (02:00 CET -> 03:00 CEST) e de outubro (inverso).
+// Os dois dias de mudança de hora do ano de `isoDate` ('AAAA-MM-DD').
 function dstBounds(isoDate) {
   const y = Number(isoDate.slice(0, 4));
   const lastSunday = (month) => {
@@ -20,18 +29,15 @@ function dstBounds(isoDate) {
   };
 }
 
-// Offset de Madrid à MEIA-NOITE do dia de mercado.
+// O offset de Madrid à MEIA-NOITE do dia de mercado.
 //
-// A transição da hora de verão legal acontece sempre às 01:00 UTC — ou seja,
-// *depois* da meia-noite local. Por isso o dia de mercado da mudança de hora
-// começa com o offset antigo e acaba com o novo:
-//   - manhã (último domingo de março): a meia-noite é CET (+1) e às 02:00
-//     salta para as 03:00 (o dia tem 92 períodos);
-//   - outono (último domingo de outubro): a meia-noite é CEST (+2) e às
-//     03:00 recua para as 02:00 (o dia tem 100 períodos).
-//
-// Errar aqui significa que o dia inteiro da mudança fica uma hora fora — por
-// isso o offset é do dia *da transição*, não do período.
+// Como a mudança é às 01:00 UTC, depois da meia-noite local, o dia da
+// mudança começa ainda com o offset antigo:
+//   - Março: a meia-noite é CET (+1); às 02:00 salta para as 03:00
+//     (92 períodos);
+//   - Outubro: a meia-noite é CEST (+2); às 03:00 volta às 02:00
+//     (100 períodos).
+// A partir da meia-noite basta somar 15 minutos por período.
 function cetOffsetOn(isoDate) {
   const { spring, autumn } = dstBounds(isoDate);
   if (isoDate === autumn) return CET_OFFSETS.summer; // a meia-noite ainda é CEST
@@ -39,22 +45,21 @@ function cetOffsetOn(isoDate) {
   return (isoDate > spring && isoDate < autumn) ? CET_OFFSETS.summer : CET_OFFSETS.winter;
 }
 
-// Devolve o ISO com offset de Lisboa para o início do quarto-horário.
-//
-// O dia de mercado tem 96 períodos — 92 na manhã (o dia de mudança de hora
-// perde uma hora) e 100 no Outono (ganha uma). O ficheiro oficial é a
-// verdade sobre quantos há; aqui só se recusa o que é impossível.
+// Converte (dia de mercado, período) no início desse quarto de hora.
+// Devolve { iso (hora de Lisboa com offset), utc (ISO terminado em Z), error }.
+// Períodos fora de 1..100 são recusados; quantos existem de facto num dia
+// é o ficheiro oficial que diz.
 export function marketPeriodToLisbon(marketDayIso, marketPeriod) {
   if (!Number.isInteger(marketPeriod) || marketPeriod < 1 || marketPeriod > 100) {
     return { iso: null, error: `bad_period:${marketPeriod}` };
   }
   const minutes = (marketPeriod - 1) * 15;
   const cetOff = cetOffsetOn(marketDayIso);
-  // instante UTC = meia-noite CET + minutos
+  // instante = meia-noite de Madrid + 15 min × (período − 1)
   const utcMs = Date.parse(`${marketDayIso}T00:00:00+0${cetOff}:00`) + minutes * 60_000;
   if (Number.isNaN(utcMs)) return { iso: null, error: 'bad_day' };
   const utc = new Date(utcMs);
-  // formata em Europe/Lisbon com offset numérico
+  // Escreve o instante em hora de Lisboa, com o offset (+00:00 ou +01:00).
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, hourCycle: 'h23',
@@ -65,9 +70,8 @@ export function marketPeriodToLisbon(marketDayIso, marketPeriod) {
   return { iso, utc: utc.toISOString(), error: null };
 }
 
-// O offset que o Intl devolve é "GMT+1", "GMT-3:30" ou "GMT+01:00"
-// (consoante o ICU e o locale). Normaliza-se para ±HH:MM — sem isto o ISO
-// saía com "+100:00", que não é um offset válido.
+// O Intl devolve o offset como "GMT+1", "GMT-3:30" ou "GMT+01:00", conforme
+// o ambiente. Isto passa-o sempre a ±HH:MM.
 function normalizeOffset(tzName) {
   const s = String(tzName || '').replace('GMT', '').trim();
   const m = /^([+-])(\d{1,2})(?::?(\d{2}))?$/.exec(s);
@@ -75,9 +79,9 @@ function normalizeOffset(tzName) {
   return `${m[1]}${String(m[2]).padStart(2, '0')}:${m[3] || '00'}`;
 }
 
-// Nº esperado de quartos num dia civil de Lisboa (92/96/100).
+// Quantos quartos de hora tem um dia de Lisboa: 92 no último domingo de
+// Março, 100 no último domingo de Outubro, 96 nos outros.
 export function expectedQuartersForLisbonDay(lisbonDayIso) {
-  // dias de mudança de hora em PT: último domingo de março/outubro
   const y = Number(lisbonDayIso.slice(0, 4));
   const lastSunday = (month) => {
     const d = new Date(Date.UTC(y, month, 31));
@@ -90,8 +94,8 @@ export function expectedQuartersForLisbonDay(lisbonDayIso) {
   return 96;
 }
 
-// O mesmo dia civil em número de dias desde a época (só a data conta, o
-// fuso não entra): serve para ordenar, subtrair dias e agrupar por mês.
+// Um dia de calendário como número inteiro (dias desde 1970-01-01). Dá
+// jeito para somar/subtrair dias e comparar datas sem pensar em fusos.
 export const dayNum = (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / 86400000);
 export const dayNumOf = (isoDate) => dayNum(Number(isoDate.slice(0, 4)), Number(isoDate.slice(5, 7)), Number(isoDate.slice(8, 10)));
 export const isoOfDayNum = (n) => {
@@ -99,10 +103,9 @@ export const isoOfDayNum = (n) => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 };
 
-// Partes de um instante em hora de Lisboa: o dia civil e os minutos desde a
-// meia-noite local. O ISO já vem com o offset, por isso é hora de Lisboa —
-// e no dia da mudança de hora o offset distingue as duas passagem da hora
-// repetida.
+// Lê um ISO que já está em hora de Lisboa (com offset) e devolve o dia, os
+// minutos desde a meia-noite e o offset. É o offset que distingue as duas
+// passagens da hora repetida em Outubro.
 export function lisbonParts(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:\d{2})?$/.exec(String(iso || ''));
   if (!m) return null;
@@ -113,8 +116,8 @@ export function lisbonParts(iso) {
   };
 }
 
-// O mesmo, a partir do instante (epoch ms) — é o que a reconciliação usa,
-// porque o instante é a única coisa que não se repete.
+// Dia e minutos desde a meia-noite em Lisboa, a partir de um instante em
+// milissegundos (epoch).
 export function lisbonWallClock(utcMs) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -127,12 +130,11 @@ export function lisbonWallClock(utcMs) {
   };
 }
 
-// O dia civil (YYYY-MM-DD) de um instante num fuso — por omissão Lisboa.
-//
-// É o "hoje" de tudo o que tem datas civis portuguesas (validade dos
-// tarifários e da TAR, o dia do OMIE). Nunca `CURRENT_DATE` da BD nem
-// `toISOString().slice(0, 10)`: ambos dão o dia UTC, que entre as 00:00 e
-// as 01:00 de Verão em Lisboa ainda é ontem.
+// O dia de calendário ('AAAA-MM-DD') de um instante num fuso; por omissão,
+// Lisboa. É ESTE o "hoje" que deves usar para validades de tarifários, TAR e
+// dias do OMIE. Não uses `CURRENT_DATE` na BD nem
+// `new Date().toISOString().slice(0, 10)`: os dois dão o dia em UTC, que
+// entre a meia-noite e a 01:00 de Verão em Lisboa ainda é ontem.
 export function civilDay(at = new Date(), tz = 'Europe/Lisbon') {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -141,25 +143,21 @@ export function civilDay(at = new Date(), tz = 'Europe/Lisbon') {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-// A meia-noite local de um dia de Lisboa, em UTC.
-//
-// A mudança de hora acontece às 01:00 UTC — sempre *depois* da meia-noite
-// local. Por isso a meia-noite do dia da transição ainda está no offset
-// antigo: WET (+0) na manhã, WEST (+1) no Outono. É isso que dá ao dia de
-// Lisboa 23 horas em Março e 25 em Outubro.
+// A meia-noite de um dia de Lisboa, em milissegundos UTC.
+// No dia da mudança, a meia-noite ainda está no offset antigo: WET (+0) em
+// Março, WEST (+1) em Outubro.
 export function lisbonMidnightUtc(dayIso) {
   const { spring, autumn } = dstBounds(dayIso);
   const y = Number(dayIso.slice(0, 4)), m = Number(dayIso.slice(5, 7)), d = Number(dayIso.slice(8, 10));
   let offHours;
-  if (dayIso === spring) offHours = 0;        // WET — a meia-noite é antes da mudança
-  else if (dayIso === autumn) offHours = 1;   // WEST — a meia-noite é antes da mudança
+  if (dayIso === spring) offHours = 0;
+  else if (dayIso === autumn) offHours = 1;
   else offHours = (dayIso > spring && dayIso < autumn) ? 1 : 0;
   return Date.UTC(y, m - 1, d, 0, 0) - offHours * 3600000;
 }
 
-// Os instantes dos quartos de um dia civil de Lisboa, por ordem. É a
-// sequência de 15 minutos que começa à meia-noite local — e que, num dia de
-// mudança de hora, tem 92 ou 100 quartos em vez de 96.
+// Todos os quartos de hora de um dia de Lisboa, por ordem, cada um com o
+// instante UTC, o dia e os minutos de relógio. 92, 96 ou 100 entradas.
 export function lisbonDayQuarters(dayIso) {
   const start = lisbonMidnightUtc(dayIso);
   const n = expectedQuartersForLisbonDay(dayIso);

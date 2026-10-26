@@ -1,19 +1,22 @@
-// Estatísticas OMIE — as tabelas mensais e as células de referência que
-// estavam na folha "Comparador Mobie CEME" (separador "OMIE (via TF)").
+// Os números da página de estatísticas do OMIE (/omie e omie.cocofree.dev).
 //
-// A folha encolheu a uma aba de quartos-horários com três tabelas: a
-// "coloração de média anual" (uma escala verde→amarelo→vermelho sobre todas
-// as células da tabela), a "coloração mês-a-mês" (a coluna Simples com a
-// escala fixa em 60 €/MWh e as colunas Vazio/Cheia com uma escala divergente
-// azul↔vermelho POR LINHA) e as seis células de referência à esquerda.
-// Aqui essas três coisas passam a ser calculadas, não copiadas.
+// Recebes as linhas de quartos de hora já reconciliadas (pipeline.js) e
+// devolves um objecto com:
+//   - months: uma linha por mês (13 meses), com a média simples e as médias
+//     de vazio e fora de vazio ("cheia") nos ciclos semanal e diário;
+//   - total: as mesmas médias sobre toda a janela de 366 dias;
+//   - cards: os cartões (agora, hoje, amanhã, últimos 30 dias, previsão do
+//     mês, mês até agora);
+//   - recent: os últimos quartos, para recalcular o preço "agora" a cada
+//     pedido (currentPrice).
+// As escalas de cor das tabelas são feitas no frontend (frontend/omie.html).
 //
-// Este módulo só faz a AGREGAÇÃO: recebe as linhas dos quartos-horários
-// (já reconciliadas entre omie.es e TF, em `pipeline.js`) e devolve o
-// payload. Quem busca os dados e quem escreve o cache é o pipeline.
-//
-// O "preço à hora actual" não vem do payload em cache: recalcula-se a cada
-// pedido a partir da cauda de quartos guardados, para acompanhar o relógio.
+// Regra da casa: as médias só usam preços reais do mercado. A única
+// excepção são os futuros diários (FPB D), que entram no cartão "amanhã"
+// quando o dia ainda não foi publicado e na previsão do mês. Detalhe em
+// docs/09-omie-estatisticas.md.
+
+// Tamanho da janela das tabelas, em dias.
 export const WINDOW_DAYS = 366;
 // Quantos quartos recentes ficam no payload, para o "preço à hora actual"
 // poder ser recalculado a cada pedido (ver currentPrice).
@@ -22,30 +25,21 @@ export const TAIL_ROWS = 400;
 import { lisbonMidnightUtc, expectedQuartersForLisbonDay } from './convert.js';
 
 const pad2 = (n) => String(n).padStart(2, '0');
-// Dia do calendário como número inteiro (epoch em UTC). Serve para ordenar,
-// para subtrair dias e para agrupar por mês sem tocar em fusos: os dados
-// estão em hora de Lisboa, mas a agregação é por dia local, e o epoch UTC
-// de uma data (sem hora) é uma bijection data→inteiro.
+// Um dia de calendário como número inteiro (dias desde 1970-01-01), e as
+// conversões de volta. Servem para contar e agrupar dias sem pensar em fusos.
 const dayNum = (y, m, d) => Math.floor(Date.UTC(y, m - 1, d) / 86400000);
 const numToDay = (n) => new Date(n * 86400000);
 const isoOf = (n) => { const d = numToDay(n); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; };
 const monthKey = (n) => { const d = numToDay(n); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`; };
 
-// "Agora" — em UTC, como tudo o resto.
-//
-// O quarter em curso é o que contém o instante actual: a grelha de 15
-// minutos do mercado coincide com a de UTC (as duas difere de um número
-// inteiro de horas), por isso não é preciso converter para o fuso local
-// para saber qual é o quarter. O que o relógio local decide é o *período
-// do tarifário* — e isso é do motor (`engine/regions.js`), que tem as
-// regras da ERSE por região.
+// "Agora" em UTC: dia, minutos desde a meia-noite UTC e número do dia.
 export function utcNow(now = new Date()) {
   const iso = now.toISOString();
   const day = iso.slice(0, 10);
   const minutes = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
   return { day, minutes, dayNum: dayNum(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10))) };
 }
-// "Agora" em hora de Lisboa — é o fuso da página das estatísticas OMIE.
+// "Agora" em hora de Lisboa (o fuso em que a página agrupa os dias).
 export function lisbonNow(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -60,9 +54,9 @@ export function lisbonNow(now = new Date()) {
 const avg = (v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : null);
 const round2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
 
-// Um agregado: média simples e as duas séries por ciclo horário.
-// Guarda também a soma e quantos quarters são estimativa OMIP — é o que as
-// tooltips de validação mostram (a fórmula, não só o resultado).
+// Um "balde" onde vais deitando quartos para depois tirar médias: todos,
+// vazio/fora no ciclo semanal (semV/semF) e no diário (diaV/diaF), o
+// primeiro e o último dia vistos e quantos eram estimativas.
 function bucket() {
   return { all: [], semV: [], semF: [], diaV: [], diaF: [], dnMin: Infinity, dnMax: -Infinity, est: 0 };
 }
@@ -75,6 +69,8 @@ function push(b, row) {
   if (row.dn > b.dnMax) b.dnMax = row.dn;
 }
 const sum = (v) => v.reduce((a, b) => a + b, 0);
+// Passa um balde ao formato da API (médias arredondadas a 2 casas, contagens
+// e soma, para as tooltips mostrarem a conta).
 function shape(b) {
   return {
     media: round2(avg(b.all)),
@@ -87,9 +83,9 @@ function shape(b) {
     sum: Math.round(sum(b.all) * 100) / 100,
   };
 }
-// Um mês está truncado se não cobre todos os dias do calendário: ou porque
-// a janela de 366 dias não começou no dia 1 (o primeiro mês), ou porque o
-// mês ainda não acabou (o mês corrente). `cut` diz qual dos dois é.
+// Um mês está incompleto se não tem todos os dias: o primeiro mês da janela
+// pode começar a meio (cut: 'start') e o mês corrente ainda não acabou
+// (cut: 'end').
 function partialOf(mk, b) {
   const [y, m] = mk.split('-').map(Number);
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -100,23 +96,15 @@ function partialOf(mk, b) {
   return { partial: false, cut: null };
 }
 
-// Agrega os quartos-horários no payload da página.
-//
-// As linhas vêm do store (já reconciliadas): cada uma tem o dia civil de
-// LISBOA (`dn`), os minutos desde a meia-noite local (`min`), a mesma
-// leitura em `lisbonDn`/`lisbonMin`, a classificação do período (`bd`/`bs`),
-// o preço e — quando o preço é uma estimativa OMIP e não um preço de
-// mercado — a marca `est`.
-//
-// `cutoff` é o último dia de mercado ('YYYY-MM-DD'); `fpbDaily` são os
-// futuros diários FPB D do TF ({ 'YYYY-MM-DD': €/MWh }), a única fonte de
-// futuro admitida — e só na previsão do mês e no cartão de amanhã.
+// Monta o payload da página.
+//   rows:     [{ dn, mk, min, lisbonDn, lisbonMin, bd, bs, price, est, utc }]
+//             (vê rebuildDerived em pipeline.js)
+//   cutoff:   último dia com preço real ('AAAA-MM-DD')
+//   fpbDaily: futuros diários { 'AAAA-MM-DD': €/MWh }
 export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {} } = {}) {
   if (!rows.length) throw new Error('sem dados de quartos-horários');
   const cutDn = cutoff ? dayNum(Number(cutoff.slice(0, 4)), Number(cutoff.slice(5, 7)), Number(cutoff.slice(8, 10))) : Infinity;
-  // Uma linha é de mercado se o dia está dentro do corte E não está
-  // marcada como estimativa (um dia pode ter preços de mercado e estimativas
-  // ao mesmo tempo — é o que acontece no dia em que a OMIE publica).
+  // Preços reais: até ao `cutoff` e sem a marca de estimativa.
   const real = rows.filter(r => r.dn <= cutDn && !r.est);
   if (!real.length) throw new Error('sem preços de mercado');
 
@@ -137,25 +125,17 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
     ...shape(b),
   })).sort((a, b) => (a.key < b.key ? 1 : -1));
 
-  // "Total geral": a média de toda a janela, não a média das médias.
+  // "Total geral": média de TODOS os quartos da janela (não a média das
+  // médias mensais; um mês com mais quartos pesa mais).
   const win = bucket();
   for (const r of real) if (r.dn >= fromDn) push(win, r);
 
-  // Cartões da esquerda. A "âncora" é o último quarto de mercado: é a
-  // partir dele que contam os 30 dias e o mês em curso (é o que a folha
-  // fazia). Já o "hoje" e o "amanhã" são dias de calendário — o "hoje" usa
-  // o que houver no ficheiro para esse dia (preço de mercado se já foi
-  // publicado, estimativa OMIP se ainda não), e o "amanhã" é a estimativa.
+  // Cartões. A "âncora" é o último quarto com preço real: os "últimos 30
+  // dias" e o "mês até agora" contam até ele. "Hoje" e "amanhã" são dias
+  // de calendário de Lisboa.
   const anchor = real[real.length - 1];
-  // Médias por dia: SÓ mercado. As estimativas OMIP não entram em nenhuma
-  // média — excepto na previsão do mês (ver abaixo), que é o único cartão
-  // que as usa, e aí vindas dos futuros diários FPB D do TF (números
-  // publicados, sem contas nossas sobre quarters).
-  //
-  // O dia de hoje tem quase sempre mercado (o dia de mercado publica-se na
-  // véspera às ~13h; só os 4 quarters das 23:00-23:45, do dia de mercado
-  // seguinte, ficam por publicar até às 13h). Quando o dia ainda não tem
-  // nenhum quarter publicado, o cartão fica vazio em vez de inventar.
+  // Um balde por dia, só com preços reais. Se hoje ainda não tiver nenhum
+  // quarto publicado, o cartão "hoje" mostra o último dia com dados.
   const dayBuckets = new Map();
   for (const r of rows) {
     if (r.est || r.dn > cutDn) continue;
@@ -169,22 +149,21 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
   const tomorrowDn = lis.dayNum + 1;
   const tomorrowIso = isoOf(tomorrowDn);
   const tomorrowB = marketOf(tomorrowDn);
-  // Amanhã sem mercado publicado: vale o futuro diário FPB D do TF para essa
-  // data (um número publicado, sem médias nossas) — assinalado como futuro,
-  // não como mercado.
+  // Se amanhã ainda não tem preços reais, usa-se o futuro diário dessa data
+  // (marcado como futuro na resposta).
   const fpb = fpbDaily || {};
   const fpbTomorrow = fpb[tomorrowIso] != null && Number.isFinite(Number(fpb[tomorrowIso]))
     ? Number(fpb[tomorrowIso]) : null;
   const last30 = bucket();
   for (const r of real) if (r.dn >= anchor.dn - 30) push(last30, r);
-  // Mês em curso: o que o calendário já viu, contado até ao último quarto
-  // de mercado (é a mesma figura que a última linha da tabela).
+  // Mês corrente até ao último preço real (igual à primeira linha da tabela).
   const monthKeyNow = monthKey(lis.dayNum);
   const monthB = bucket();
   for (const r of real) if (r.mk === monthKeyNow) push(monthB, r);
-  // Previsão do mês: o que já é mercado (mês em curso) mais os futuros
-  // diários FPB D do TF para os restantes dias com futuro publicado — sem
-  // misturar quarters estimados. A cobertura vai só até onde há dados.
+  // Previsão do mês: média ponderada por quartos de
+  //   (preços reais do mês até agora) + (futuro diário × quartos de cada dia
+  //   que falta e tem futuro publicado).
+  // Dias sem futuro ficam de fora; `coverageTo` diz até onde chega.
   const [fy, fm] = monthKeyNow.split('-').map(Number);
   const dim = new Date(Date.UTC(fy, fm, 0)).getUTCDate();
   const fpbUsed = [];
@@ -193,8 +172,7 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
     const iso = `${fy}-${String(fm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
     const v = fpb[iso];
     if (dayNum(fy, fm, dd) > cutDn && v != null && Number.isFinite(Number(v))) {
-      // O peso de um dia é o nº de quartos DESSE dia: 92/100 nos dias de
-      // mudança de hora (o último domingo de Outubro tem 25 horas).
+      // Cada dia pesa o número de quartos que tem (92/96/100).
       const n = expectedQuartersForLisbonDay(iso);
       fpbUsed.push({ date: iso, value: Number(v), quarters: n });
       fpbSum += Number(v) * n;
@@ -208,20 +186,15 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
   const fcastQuarters = monthB.all.length + fpbUsed.reduce((a, d) => a + d.quarters, 0);
   const fcastSum = sum(monthB.all) + fpbSum;
 
-  // Preço "à hora actual": o quarter que está a correr AGORA, em hora de
-  // Lisboa (é o fuso da página; os instantes guardados já estão alinhados).
+  // Formatação de (dia, minutos) de Lisboa como 'AAAA-MM-DDTHH:MM'.
   const stamp = (dn, min) => `${isoOf(dn)}T${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
-  // O mesmo instante, em UTC ISO-8601 — é o que a página converte para o
-  // fuso de quem a vê (o backend não sabe o fuso do utilizador). Atenção:
-  // a meia-noite é a de LISBOA (lisbonMidnightUtc), não a de UTC — usar a
-  // meia-noite UTC aqui fazia a página mostrar 01:00 no Verão.
+  // O mesmo, como instante UTC: a página converte-o para o fuso de quem vê.
+  // Parte-se da meia-noite de LISBOA, não da de UTC.
   const stampUtc = (dn, min) => new Date(lisbonMidnightUtc(isoOf(dn)) + min * 60000).toISOString();
-  // O dia civil de Lisboa começa à meia-noite local.
   const dayStart = (dn) => ({ dn, min: 0 });
 
-  // Os últimos quartos (dia de mercado + o dia seguinte), para o preço "à
-  // hora actual" poder ser recalculado a cada pedido em vez de ficar
-  // preso no que foi calculado quando o cache foi feito.
+  // Os últimos quartos, guardados no payload para currentPrice() poder
+  // recalcular o preço "agora" a cada pedido.
   const recent = rows
     .filter(r => r.dn <= lastDn + 1)
     .slice(-TAIL_ROWS)
@@ -231,7 +204,6 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
   return {
     generatedAt: now.toISOString(),
     cutoff: cutoffIso,
-    // Tudo o que se mostra com hora é hora de Lisboa.
     dataThrough: stamp(anchor.lisbonDn, anchor.lisbonMin),
     dataThroughUtc: anchor.utc || stampUtc(anchor.lisbonDn, anchor.lisbonMin),
     window: { from: isoOf(fromDn), to: isoOf(lastDn) },
@@ -277,16 +249,14 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
       },
       forecast: {
         month: monthKeyNow,
-        // Sem dias por publicar, é o mês fechado; com dias por publicar mas
-        // sem futuro publicado para eles, fica vazio em vez de inventar.
+        // null se faltam dias e nenhum tem futuro publicado.
         value: (!fcastQuarters || (hasRemaining && !fpbUsed.length)) ? null : round2(fcastSum / fcastQuarters),
         quarters: fcastQuarters,
         mtdQuarters: monthB.all.length,
         mtdSum: Math.round(sum(monthB.all) * 100) / 100,
         fpbDays: fpbUsed,
         sum: Math.round(fcastSum * 100) / 100,
-        // Até onde chega a cobertura: fim do mês (completo) ou o último dia
-        // com futuro publicado (parcial).
+        // Último dia coberto: fim do mês, ou o último com futuro publicado.
         coverageTo: !hasRemaining ? monthEndIso
           : fpbUsed.length ? fpbUsed[fpbUsed.length - 1].date : null,
       },
@@ -314,26 +284,18 @@ export function aggregate(rows, { cutoff = null, now = new Date(), fpbDaily = {}
   };
 }
 
-// O preço "à hora actual": o quarter de mercado que está a correr AGORA.
-// Calculado a cada pedido a partir da cauda guardada no cache — o cache
-// é de horas, mas a hora que está a correr muda a cada 15 minutos.
-//
-// Nota: o mercado à vista de dia publica a curva inteira do dia de uma
-// vez, por isso este preço não é um "tick" — muda quando a OMIE publica
-// (e quando o TF vai buscar o ficheiro). O que muda a cada 15 minutos é o
-// quarter em que estamos.
+// O preço do quarto de hora que está a decorrer agora (ou do último com
+// preço real, se o actual ainda não foi publicado; nesse caso live: false).
+// Chama-se a cada pedido, porque o payload guardado tem horas e o quarto
+// muda a cada 15 minutos. O preço em si só muda quando o OMIE publica: ele
+// publica o dia inteiro de uma vez.
 export function currentPrice(payload, now = new Date()) {
   const nowMs = now.getTime();
   const cut = payload.cutoff ? dayNum(Number(payload.cutoff.slice(0, 4)), Number(payload.cutoff.slice(5, 7)), Number(payload.cutoff.slice(8, 10))) : Infinity;
-  // Só mercado: os quarters estimados (para além do corte) nunca alimentam
-  // o preço actual — quando o quarter em curso ainda não foi publicado,
-  // fica o último publicado.
+  // Só preços reais (até ao cutoff).
   const pool = (payload.recent || []).filter(r => r.dn <= cut);
-  // Quando o instante real está disponível (produção), selecciona-se por ele —
-  // é a única coisa que não se repete e não depende de fusos. Caso contrário
-  // (testes/fallback), usa-se a leitura em hora de Lisboa.
-  // (O fallback parte da meia-noite de LISBOA — não da de UTC, que punha
-  // tudo uma hora ao lado no Verão.)
+  // O instante de cada linha: `utc` se existir; senão, calcula-se a partir
+  // do dia e minutos de Lisboa.
   const rowMs = (r) => r.utc ? new Date(r.utc).getTime() : (lisbonMidnightUtc(isoOf(r.lisbonDn)) + (r.lisbonMin || 0) * 60000);
   const sorted = [...pool].sort((a, b) => rowMs(a) - rowMs(b));
   let best = null;
