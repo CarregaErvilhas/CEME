@@ -128,13 +128,6 @@ CREATE TABLE IF NOT EXISTS omie_meta (
   key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Por usar (vê docs/06): perfis de perdas por quarto de hora. Hoje as perdas
--- vêm de engine/losses-<ano>.json.
-CREATE TABLE IF NOT EXISTS loss_profile (
-  year INTEGER NOT NULL, ts_lisbon TIMESTAMP NOT NULL, voltage TEXT NOT NULL,
-  factor REAL NOT NULL, PRIMARY KEY (year, ts_lisbon, voltage)
-);
-
 -- Por usar (vê docs/06): sugestões de correcção enviadas pela comunidade.
 CREATE TABLE IF NOT EXISTS suggestion (
   id SERIAL PRIMARY KEY, tariff_id TEXT,

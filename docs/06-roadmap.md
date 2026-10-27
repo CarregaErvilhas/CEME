@@ -21,8 +21,10 @@ documentos. Quando acabares um item, tira-o daqui.
   transitório do DL 93/2025, até 31-12-2027. É preciso saber o que a
   substitui antes de Janeiro. A de um ano novo entra como uma entrada nova
   em `TAR` (`backend/src/db/tar.js`).
-- **Perdas na BD:** a tabela `loss_profile` existe mas não se usa; os
-  perfis de perdas vêm de `engine/losses-<ano>.json`.
+- **Perdas de 2027:** os perfis vêm de `engine/losses-<ano>.json`, um
+  ficheiro por ano. Antes de Janeiro, corre `scripts/etl-perdas.py` com a
+  publicação de 2027 e junta o ano a `YEARS` em `engine/losses.js`; sem isso
+  o motor cai em silêncio no `LOSS_PLACEHOLDER`.
 
 ## Motor
 
@@ -48,7 +50,6 @@ documentos. Quando acabares um item, tira-o daqui.
 ## Produto
 
 - Frontend com Vite + React + Tailwind.
-- Portal para cada CEME actualizar os seus tarifários, e administração.
 - Sugestões de correcção da comunidade (`suggestion`), com moderação.
 - Emissão e gestão de API keys (hoje há uma só, pela variável de ambiente;
   [04](04-api-auth.md)).

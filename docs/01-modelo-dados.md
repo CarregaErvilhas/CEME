@@ -51,7 +51,6 @@ para funcionalidades do [roadmap](06-roadmap.md):
 
 | tabela | para quê |
 |---|---|
-| `loss_profile` | perfis de perdas na BD (hoje vêm de um ficheiro JSON) |
 | `suggestion` | sugestões de correcção enviadas pela comunidade |
 | `audit_log` | registo de quem mudou o quê |
 
