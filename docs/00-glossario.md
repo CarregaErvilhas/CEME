@@ -6,13 +6,28 @@ falar de OMIE, começa aqui. Os outros documentos assumem que já leste isto.
 ## A ideia em 30 segundos
 
 Quando carregas o carro num posto público em Portugal, pagas a várias
-entidades ao mesmo tempo, numa só conta. O simulador calcula **a parte da
-energia** dessa conta, para todos os tarifários que existem, e ordena-os do
+entidades ao mesmo tempo, numa só conta. O simulador calcula **a parte do
+Comercializador de Energia (CEME)** dessa conta, para todos os tarifários que existem, e ordena-os do
 mais barato para o mais caro. Assim percebes qual te compensa.
 
 O que **não** calculamos é o que o dono do posto cobra pelo uso do posto
 (a tarifa OPC, já explicamos). Por isso o valor que mostramos é sempre o
 mínimo: a conta final é maior.
+
+## O modelo legal: está a acabar
+
+Tudo o que este simulador faz assenta no modelo Mobi.E: todos os postos
+públicos tinham de estar ligados à rede Mobi.E, e a conta de cada carregamento
+divide-se entre o CEME (a energia) e o OPC (o posto).
+
+O **Decreto-Lei 93/2025** acaba com esse modelo. Deixa de ser obrigatório
+ligar os postos à Mobi.E e deixa de haver CEME: o **OPC passa a cobrar o
+carregamento todo**, energia incluída, e o preço é o que ele afixar no
+posto. Até **31-12-2027** vale um regime transitório, em que o modelo
+antigo continua a funcionar.
+
+Ou seja: os tarifários CEME que comparamos só fazem sentido enquanto durar
+esse regime. O que fazer depois está em [06-roadmap.md](06-roadmap.md).
 
 ## Quem é quem
 
@@ -31,7 +46,7 @@ CEME é uma linha da tabela `ceme`.
 
 **OPC** — Operador do Ponto de Carregamento. É o dono do posto (o
 supermercado, a câmara, a empresa da auto-estrada). Cobra uma tarifa pelo
-uso do posto, que pode ser por kWh, por minuto ou por sessão. **Não está no
+uso do posto, que pode ser por kWh, por minuto, por sessão, ou qualquer combinação destes. **Não está no
 simulador**: cada OPC tem a sua e muda de posto para posto.
 
 **DPC** — Detentor de Ponto de Carregamento. Quem tem um posto privado
@@ -47,10 +62,34 @@ Continente. Publica os perfis de perdas (já lá vamos).
 **EDA / EEM** — as empresas de electricidade dos Açores e da Madeira. As
 ilhas têm redes isoladas, que não estão ligadas ao mercado ibérico.
 
+## O carregamento
+
+**Sessão (ou carregamento)** — desde que ligas o carro ao posto até
+desligares. É a unidade de cobrança: a taxa EGME é paga uma vez por sessão,
+seja ela de 5 ou de 50 kWh.
+
+**AC / DC** — corrente alternada e corrente contínua. Nos postos **AC** (os
+"normais", até 22 kW) é o carregador de bordo do carro que converte para
+DC, e é ele que limita a potência. Nos postos **DC** a conversão é feita no
+posto, e a energia entra directamente na bateria.
+
+**Carregamento rápido** — os postos DC de potência alta (50 kW ou mais; os
+ultra-rápidos passam dos 150 kW). Costumam estar em MT (média tensão) e ter tarifas OPC
+mais altas.
+
+**Pagamento ad hoc** — pagar no próprio posto, com cartão bancário ou QR
+code, sem cartão de nenhum CEME. O regulamento europeu **AFIR** (Alternative
+Fuels Infrastructure Regulation) obriga os postos novos e os rápidos a
+aceitá-lo. Nesse caso quem vende a energia é o CEME escolhido pelo posto,
+não um tarifário que tu escolheste.
+
+**Roaming** — usar na Mobi.E um cartão de um comercializador estrangeiro
+(ou um cartão português lá fora). O preço é o que esse comercializador
+define, não um tarifário CEME, por isso fica fora do simulador.
+
 ## As parcelas da conta (o que calculamos)
 
-**Energia** — o preço que o CEME cobra por cada kWh. É o que muda de
-tarifário para tarifário.
+**Energia** — o preço que o CEME cobra por cada kWh. É o que muda de tarifário para tarifário.
 
 **TAR** — Tarifas de Acesso às Redes. Pagas pelo uso da rede eléctrica. É
 igual para todos os CEME e fixada pela ERSE todos os anos, por região,
@@ -60,7 +99,7 @@ TAR somada**: é a esse valor que chamamos "preço final".
 **IEC** — Imposto Especial de Consumo sobre a electricidade. Um valor fixo
 por kWh.
 
-**EGME / taxa de activação** — uma taxa fixa por cada carregamento (não
+**EGME / taxa de activação** — uma taxa fixa por cada sessão (não
 por kWh). Há um valor legal fixado pela ERSE, mas cada CEME publica o seu e
 é esse que usamos.
 
@@ -70,7 +109,14 @@ Açores têm taxas diferentes.
 ## Unidades
 
 **kWh** (quilowatt-hora) — a unidade de energia. Uma bateria de 60 kWh leva
-60 kWh do vazio ao cheio. Os preços dos CEME são em €/kWh.
+60 kWh de 0% a 100% (mais algumas perdas de carregamento). Os preços dos CEME são em €/kWh.
+
+**kW** (quilowatt) — a unidade de **potência**: a que velocidade a energia
+entra. Não confundas com kWh: um posto de 50 kW a carregar durante meia
+hora mete 25 kWh (na prática menos, porque o carro abranda perto dos 80%).
+Importa para a conta porque uma tarifa OPC por minuto sai mais cara por kWh
+num posto (ou num carro) de potência baixa: pagas os mesmos minutos por
+menos energia.
 
 **MWh** (megawatt-hora) — 1000 kWh. O mercado grossista fala em €/MWh. Para
 passar para €/kWh, divides por 1000 (100 €/MWh = 0,10 €/kWh).
@@ -81,12 +127,12 @@ diferente nas duas, por isso cada tarifário existe no seed em duas variantes.
 
 ## Horários: vazio e fora de vazio
 
-A electricidade é mais barata quando há menos procura (de noite, ao
+A electricidade é mais barata quando há menos procura (maior produção de renováveis, ao
 fim-de-semana). Um tarifário pode ter:
 
 - **Simples** — um preço só, a qualquer hora. No código, período `UNICO`.
-- **Bi-horário** — dois preços: **vazio** (mais barato, `VAZIO`) e **fora
-  de vazio** (às vezes chamado "cheia", `FORA_VAZIO`).
+- **Bi-horário** — dois preços: **vazio** (menos procura, `VAZIO`) e **fora
+  de vazio** (às vezes chamado "ponta + cheia" nos tri-horário, `FORA_VAZIO`).
 
 Que horas são vazio depende do **ciclo**, definido pela ERSE:
 
@@ -104,9 +150,9 @@ As horas exactas mudam também com a região e, no caso do sábado, com a
 vendem electricidade num mercado comum.
 
 **OMIE** — Operador do Mercado Ibérico de Energia. É quem gere o mercado
-diário do MIBEL. Todos os dias, por volta das 13:00 de Lisboa, publica o
+diário do MIBEL. Todos os dias, por volta das 13:00 de Madrid, publica o
 preço da electricidade para **cada quarto de hora** do dia seguinte
-(96 preços por dia). No código e nos docs, "o OMIE" quer quase sempre dizer
+(96 preços por dia, fora mudanças de DST). No código e nos docs, "o OMIE" quer quase sempre dizer
 "o preço publicado pelo OMIE". Site: <https://www.omie.es>.
 
 **Tarifário fixo** — o CEME publica um €/kWh que não muda com o mercado.
@@ -121,7 +167,7 @@ transformadores. Nos indexados pagas essas perdas: o OMIE é multiplicado
 por (1 + perdas). A E-REDES publica o valor das perdas para cada quarto de
 hora do ano.
 
-**K e CGS** — as duas parcelas que os CEME indexados somam ao OMIE: K é a
+**K e CGS** — duas das parcelas (para além das perdas e TAR) que os CEME indexados somam ao OMIE: K é a
 margem do comercializador e CGS os custos de gestão do sistema.
 
 **OMIP** — o mercado de futuros ibérico, onde se compra energia hoje para

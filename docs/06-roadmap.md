@@ -18,7 +18,7 @@ documentos. Quando acabares um item, tira-o daqui.
   períodos em `engine/regions.js` não têm datas: é preciso versioná-los
   antes de a primeira fase entrar em vigor.
 - **TAR de 2027:** a tabela de TAR da mobilidade da ERSE aplica-se no regime
-  transitório do DL 93/2025, até 31-12-2026. É preciso saber o que a
+  transitório do DL 93/2025, até 31-12-2027. É preciso saber o que a
   substitui antes de Janeiro. A de um ano novo entra como uma entrada nova
   em `TAR` (`backend/src/db/tar.js`).
 - **Perdas na BD:** a tabela `loss_profile` existe mas não se usa; os
