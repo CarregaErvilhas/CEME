@@ -79,7 +79,7 @@ directo à BD do preview) em vez de descarregar e enviar ficheiros.
 ```sh
 export PR_NUMBER=42
 export PROJECT_NAME="ceme-v2-pr-${PR_NUMBER}"
-export DOMAIN="pr-${PR_NUMBER}.ceme-beta.ocarroeletrico.com"   # opcional
+export DOMAIN="pr-${PR_NUMBER}.ceme.ocarroeletrico.com"   # opcional
 export PROD_DB_URL="postgres://readonly:...@host:5432/db"      # só para snapshot
 export USE_SNAPSHOT=1                                          # 0 = seed
 export CEME_READONLY=0                                         # 1 = DB prod readonly
@@ -165,7 +165,7 @@ Se preferires não copiar dados (só leitura da BD de produção):
 
 ### 6. Registar domínio (opcional)
 
-Se quiseres `pr-<N>.ceme-beta.ocarroeletrico.com` em vez do URL default do
+Se quiseres `pr-<N>.ceme.ocarroeletrico.com` em vez do URL default do
 Zerops:
 
 1. Registar o hostname no L7 balancer do projecto preview (API Zerops,

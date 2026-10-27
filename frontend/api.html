@@ -47,8 +47,8 @@
 <main>
   <article>
     <h2>Quick start</h2>
-    <p>The API is JSON over HTTPS. Use the site's origin as the base URL (for example, <code>https://ceme-beta.ocarroeletrico.com</code>). All data routes under <code>/v1/</code> require authentication. For an app or backend integration, request an API key from the site operator and send it in the <code>X-API-Key</code> header. Do not put a private API key in browser code, a mobile app bundle, a public repository, or an LLM prompt.</p>
-    <pre><code>curl 'https://ceme-beta.ocarroeletrico.com/v1/cemes' \
+    <p>The API is JSON over HTTPS. Use the site's origin as the base URL (for example, <code>https://ceme.ocarroeletrico.com</code>). All data routes under <code>/v1/</code> require authentication. For an app or backend integration, request an API key from the site operator and send it in the <code>X-API-Key</code> header. Do not put a private API key in browser code, a mobile app bundle, a public repository, or an LLM prompt.</p>
+    <pre><code>curl 'https://ceme.ocarroeletrico.com/v1/cemes' \
   -H 'X-API-Key: YOUR_API_KEY'</code></pre>
     <p>Responses are JSON. Successful list endpoints generally wrap results in <code>{"data": [...]}</code>. Errors use <code>{"error":{"code":"...","message":"..."}}</code>. Prices are in EUR; energy prices are EUR/kWh unless a field says otherwise.</p>
     <div class="note"><b>Read-only:</b> all documented endpoints only read or calculate data. <code>POST /v1/simulate</code> is still a calculation request; it does not change site data. Never call undocumented write routes.</div>
@@ -61,10 +61,10 @@
     <h2>Authentication</h2>
     <p><b>Recommended for integrations:</b> an operator-provisioned API key. Send it as <code>X-API-Key</code> on every <code>/v1/*</code> request except session creation. Keys can be expired or revoked; a rejected key returns HTTP 401.</p>
     <p><code>POST /v1/session</code> issues an anonymous web-session JWT valid for 24 hours. It is intended for the website's browser, not as a substitute for an app API key. If used, send <code>Authorization: Bearer TOKEN</code>. Session creation is rate-limited and production requires the server's JWT secret to be configured.</p>
-    <pre><code>curl -X POST 'https://ceme-beta.ocarroeletrico.com/v1/session'
+    <pre><code>curl -X POST 'https://ceme.ocarroeletrico.com/v1/session'
 
 # Then use the returned token:
-curl 'https://ceme-beta.ocarroeletrico.com/v1/health' \
+curl 'https://ceme.ocarroeletrico.com/v1/health' \
   -H 'Authorization: Bearer TOKEN_FROM_RESPONSE'</code></pre>
     <p>Use one authentication method per request. Never log or commit credentials. HTTPS is required outside local development.</p>
   </article>
@@ -86,7 +86,7 @@ curl 'https://ceme-beta.ocarroeletrico.com/v1/health' \
   <article id="simulate">
     <h2>Calculate a comparison</h2>
     <p><code>POST /v1/simulate</code> accepts a JSON object. All fields are optional; defaults are shown.</p>
-    <pre><code>curl -X POST 'https://ceme-beta.ocarroeletrico.com/v1/simulate' \
+    <pre><code>curl -X POST 'https://ceme.ocarroeletrico.com/v1/simulate' \
   -H 'X-API-Key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   --data '{
@@ -116,7 +116,7 @@ curl 'https://ceme-beta.ocarroeletrico.com/v1/health' \
       <li><code>fixed</code>: optional fixed tariff ID to compare against.</li>
       <li><code>tz</code>: optional IANA timezone for displayed start/end times, for example <code>Europe/Lisbon</code>; defaults to UTC.</li>
     </ul>
-    <pre><code>curl 'https://ceme-beta.ocarroeletrico.com/v1/indexed/quarters?tariff=INDEXED_ID&amp;region=CONT&amp;date=2026-10-18&amp;fixed=FIXED_ID&amp;tz=Europe%2FLisbon' \
+    <pre><code>curl 'https://ceme.ocarroeletrico.com/v1/indexed/quarters?tariff=INDEXED_ID&amp;region=CONT&amp;date=2026-10-18&amp;fixed=FIXED_ID&amp;tz=Europe%2FLisbon' \
   -H 'X-API-Key: YOUR_API_KEY'</code></pre>
     <p>The response includes quarter records, source/estimate metadata, and winner counts. With no valid <code>fixed</code> comparison, winner values are null. The response's UTC timestamp fields remain UTC; displayed clock labels use the requested timezone.</p>
   </article>

@@ -200,7 +200,11 @@ o site dá 502. O procedimento está em `docs/08-sqlite-postgres.md`
 
 Domínios em produção:
 
-- **`https://ceme-beta.ocarroeletrico.com`** — o site e a API.
+- **`https://ceme.ocarroeletrico.com`** — o site e a API.
+- **`https://ceme-beta.ocarroeletrico.com`** — domínio antigo: o servidor
+  redirecciona (301, ou 308 fora de GET/HEAD) para o mesmo caminho em
+  `ceme.ocarroeletrico.com`. Precisa de continuar associado ao routing
+  enquanto o redirect for útil.
 - **`https://omie.cocofree.dev`** — a página de estatísticas OMIE
   (`docs/09-omie-estatisticas.md`). Mesmo balanceador e mesmo serviço
   `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a
@@ -234,7 +238,7 @@ São dois registos em sistemas diferentes, e o Zerops vem primeiro:
    ```bash
    POST /api/rest/public/project/<project-id>/public-http-routing
    {
-     "domains": ["ceme-beta.ocarroeletrico.com"],
+     "domains": ["ceme.ocarroeletrico.com"],
      "locations": [{ "path": "/", "port": 3001, "serviceStackId": "<api-service-id>" }],
      "sslEnabled": true,
      "cdnEnabled": false
@@ -326,7 +330,7 @@ Diagnóstico rápido:
 
 ```bash
 # a origem responde com o Host certo? (usa o IP obtido pela API)
-curl -sk -H "Host: ceme-beta.ocarroeletrico.com" "https://[<IPv6 do projecto>]/" -o /dev/null -w '%{http_code}\n'
+curl -sk -H "Host: ceme.ocarroeletrico.com" "https://[<IPv6 do projecto>]/" -o /dev/null -w '%{http_code}\n'
 # 200 = origem OK; 404 = domínio não registado no balanceador; 502 = certificado/origem
 # 403 = accessPolicy a bloquear (o pedido não veio da Cloudflare)
 ```

@@ -1,6 +1,6 @@
 # CEME v2 — simulador de custos de carregamento na rede Mobi.E
 
-Site: <https://ceme-beta.ocarroeletrico.com> · Estatísticas OMIE: <https://omie.cocofree.dev> · Código: <https://github.com/CarregaErvilhas/CEME>
+Site: <https://ceme.ocarroeletrico.com> · Estatísticas OMIE: <https://omie.cocofree.dev> · Código: <https://github.com/CarregaErvilhas/CEME>
 
 Um projecto da comunidade, sem fins lucrativos. Dizes quanta energia vais
 carregar, onde e quando, e o simulador mostra-te quanto custa em cada
@@ -124,7 +124,7 @@ Depois, os documentos em `docs/` aprofundam cada parte.
 ## API
 
 O guia completo, em inglês, está em
-<https://ceme-beta.ocarroeletrico.com/api> (ou `/api` localmente).
+<https://ceme.ocarroeletrico.com/api> (ou `/api` localmente).
 
 Todas as rotas `/v1/*` pedem `Authorization: Bearer <jwt>` ou
 `X-API-Key: <chave>`. A excepção é `POST /v1/session`, que é quem te dá o
