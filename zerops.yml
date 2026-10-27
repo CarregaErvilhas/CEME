@@ -43,13 +43,26 @@ zerops:
         failureTimeout: "120s"
         retryPeriod: "10s"
     run:
-      base: nodejs@24
+      # Alpine explícito (é o que `nodejs@24` já dava): os comandos de
+      # `prepareCommands` usam o `adduser` do BusyBox.
+      base: alpine/nodejs@24
+      # Utilizador próprio para o processo, sem sudo, sem shell e sem casa.
+      # O `zerops` (o utilizador por omissão) tem sudo, por isso quem
+      # conseguisse correr código no processo ficava root no container.
+      # O `ceme` só lê o código (que é do `zerops`) e só escreve em /tmp.
+      # Vê infra.md, «Privilégios do processo».
+      prepareCommands:
+        - sudo addgroup -S ceme
+        - sudo adduser -S -D -H -s /sbin/nologin -G ceme ceme
       # `run.start` corre sem shell, por isso `cd backend && …` não funciona.
-      # A pasta vai em `workingDir`.
+      # A pasta vai em `workingDir`. `node` directo em vez de `npm start`:
+      # menos um processo, e o npm queria escrever logs numa casa que o
+      # `ceme` não tem.
       startCommands:
-        - command: npm start
+        - command: node src/server.js
           name: api
           workingDir: /var/www/backend
+          user: ceme
       ports:
         - port: 3001
           httpSupport: true
@@ -77,3 +90,5 @@ zerops:
         # gera connectionString, hostname, user, password e port
         # automaticamente (ref: docs.zerops.io/features/env-variables).
         DATABASE_URL: ${db_connectionString}
+        # Cache dos CSV do TF: o `ceme` não pode escrever em /var/www.
+        CEME_CACHE_DIR: /tmp/ceme-cache
