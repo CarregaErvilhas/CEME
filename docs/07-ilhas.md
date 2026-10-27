@@ -99,5 +99,5 @@ A ERSE publica à parte, para as ilhas, a **TE/Com** (tarifa de energia e
 comercialização que a EDA e a EEM cobram aos CEME). Não é TAR, não entra na
 tabela `tar` e não se soma à TAR.
 
-Estas tarifas valem no regime transitório do DL 93/2025, até 31-12-2026
+Estas tarifas valem no regime transitório do DL 93/2025, até 31-12-2027
 (vê o [roadmap](06-roadmap.md)).
