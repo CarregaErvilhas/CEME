@@ -25,7 +25,7 @@ const makeEl = (tag = 'div') => {
     classList: { toggle: noop, add: noop, remove: noop, contains: () => false },
     addEventListener: noop, removeEventListener: noop, focus: noop, blur: noop,
     appendChild: (c) => { e.children.push(c); return c; }, removeChild: noop,
-    scrollIntoView: noop, showModal: noop, close: noop, closest: () => null,
+    scrollIntoView: noop, showModal: noop, close: noop, closest: () => null, setAttribute: noop,
     querySelectorAll: () => [], querySelector: () => null,
     set innerHTML(v) { e._html = v; }, get innerHTML() { return e._html; },
   };
@@ -40,7 +40,7 @@ ctx.window = ctx;
 ctx.addEventListener = noop;
 ctx.console = { log: noop, warn: noop, error: noop };
 ctx.document = {
-  hidden: false, documentElement: {}, body: makeEl('body'),
+  hidden: false, documentElement: { dataset: {} }, body: makeEl('body'),
   getElementById: (id) => (ctx.__els[id] ||= makeEl()),
   querySelector: () => null, querySelectorAll: () => [],
   addEventListener: noop, createElement: () => makeEl(),
@@ -343,5 +343,16 @@ describe('smoke do frontend', () => {
       assert.ok(!h.includes(needle), `payload não escapado encontrado: ${needle}`);
     }
     delete store.v['ceme:S'];
+  });
+
+  it('o botão de tema troca claro/escuro e mostra o ícone do outro tema', () => {
+    const html = ctx.document.documentElement;
+    html.dataset.theme = 'light';
+    vm.runInContext('toggleTheme()', ctx);
+    assert.equal(html.dataset.theme, 'dark');
+    assert.match(ctx.__els.themeBtn.innerHTML, /circle/);   // sol: volta ao claro
+    vm.runInContext('toggleTheme()', ctx);
+    assert.equal(html.dataset.theme, 'light');
+    assert.doesNotMatch(ctx.__els.themeBtn.innerHTML, /circle/);
   });
 });

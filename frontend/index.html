@@ -12,6 +12,21 @@
 <meta name="twitter:card" content="summary">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#22c55e">
+<script>
+// Tema antes do primeiro desenho, para não piscar em claro: a escolha feita
+// no botão (aqui ou no assistente) nesta sessão, senão o tema do sistema (e
+// segue-o se mudar).
+(function () {
+  var mq = window.matchMedia && matchMedia('(prefers-color-scheme: dark)');
+  function apply() {
+    var t = null;
+    try { t = sessionStorage.getItem('ceme:theme'); } catch (e) {}
+    document.documentElement.dataset.theme = t === 'dark' || t === 'light' ? t : (mq && mq.matches ? 'dark' : 'light');
+  }
+  apply();
+  if (mq && mq.addEventListener) mq.addEventListener('change', apply);
+})();
+</script>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -23,7 +38,39 @@
     --ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f1f5f9;
     --acc:#22c55e;--accD:#15803d;--gold:#f59e0b;--rose:#ef4444;
     --card:#ffffff;--soft:#f8fafc;
+    /* superfícies e realces que mudam com o tema */
+    --field:#fff;--seg:#e9eef3;--track:#edf0f3;--hi:#f0fdf4;--th:#f8fafc;
+    --link:#166534;--yes:#15803d;--no:#b91c1c;--star:#cbd5e1;
+    --cIdx:#1d4ed8;--cIdxOff:#93c5fd;--cFix:#16a34a;--cFixOff:#86efac;--cWarn:#b45309;--grid:#eef2f5;
   }
+  /* Tema escuro: segue o sistema (prefers-color-scheme), ou a escolha feita no
+     botão de tema nesta sessão (sessionStorage `ceme:theme`, partilhada com o
+     assistente). Quem decide é o
+     script no <head>, que põe data-theme no <html>. A header e o hero já são
+     escuros nos dois temas. */
+  :root[data-theme="dark"]{color-scheme:dark;
+    --ink:#e2e8f0;--mut:#94a3b8;--line:#253147;--bg:#0b1120;
+    --accD:#4ade80;--card:#131c2e;--soft:#1b2639;
+    --field:#0f1729;--seg:#0b1120;--track:#253147;--hi:#12271f;--th:#18223a;
+    --link:#4ade80;--yes:#4ade80;--no:#f87171;--star:#475569;
+    --cIdx:#60a5fa;--cIdxOff:#2563eb;--cFix:#4ade80;--cFixOff:#16a34a;--cWarn:#fbbf24;--grid:#253147;
+  }
+  :root[data-theme="dark"] .badge{background:#1f2a3e;color:#cbd5e1}
+  :root[data-theme="dark"] .idx{background:#172554;color:#93c5fd}
+  :root[data-theme="dark"] .grn,:root[data-theme="dark"] .tag-aplicado{background:#14321f;color:#86efac}
+  :root[data-theme="dark"] .bnd,:root[data-theme="dark"] .est{background:#3b2a0a;color:#fcd34d}
+  :root[data-theme="dark"] .ac{background:#2e1f5e;color:#c4b5fd}
+  :root[data-theme="dark"] .note-ac{background:#1e1838;border-left-color:#8b5cf6}
+  :root[data-theme="dark"] .wr{background:#3f1515;color:#fca5a5}
+  :root[data-theme="dark"] table.q tr.win-idx{background:#132040}
+  :root[data-theme="dark"] table.q tr.win-idx td.w{color:#93c5fd}
+  :root[data-theme="dark"] table.q tr.win-fix{background:#1b2230}
+  :root[data-theme="dark"] table.q tr.win-fix td.w{color:#a1a1aa}
+  :root[data-theme="dark"] .scope .warn{background:#2a2108;border-color:#713f12}
+  :root[data-theme="dark"] .mg .mi.fav{background:#2a2508}
+  :root[data-theme="dark"] footer a{color:#93c5fd}
+  :root[data-theme="dark"] .seg button.on{box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  :root[data-theme="dark"] .card,:root[data-theme="dark"] .favside .fs-card{box-shadow:0 4px 20px rgba(0,0,0,.25)}
   *{box-sizing:border-box;margin:0}
   html,body{height:100%}
   body{font-family:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
@@ -57,6 +104,10 @@
   .langs button.on{opacity:1;background:none;color:inherit;border:0}
   .langs button.on svg{box-shadow:0 0 0 1.5px #fff}
   nav a.on{background:#22c55e;color:#052e16;font-weight:800}
+  /* botão de tema: na header, que é escura nos dois temas */
+  .themebtn{flex:0 0 auto;width:32px;height:32px;padding:0;margin-left:4px;border:0;border-radius:8px;background:none;color:#cbd5e1;display:grid;place-items:center}
+  .themebtn:hover{background:rgba(255,255,255,.08);color:#fff}
+  .themebtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 
   /* ---------- hero ---------- */
   .hero{position:relative;overflow:hidden;background:radial-gradient(1200px 400px at 15% -10%,#1f6f3a 0%,transparent 60%),radial-gradient(900px 300px at 95% 10%,#1e3a8a 0%,transparent 55%),linear-gradient(135deg,#052e16 0%,#0b3b20 45%,#0c2a4a 100%);color:#fff}
@@ -80,22 +131,22 @@
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .grow{flex:1}
   label.fl{display:flex;flex-direction:column;font-size:11px;color:var(--mut);gap:5px;font-weight:600}
-  input,select{padding:10px 12px;border-radius:11px;border:1px solid var(--line);font-size:14px;background:#fff;color:var(--ink);transition:border .15s,box-shadow .15s}
+  input,select{padding:10px 12px;border-radius:11px;border:1px solid var(--line);font-size:14px;background:var(--field);color:var(--ink);transition:border .15s,box-shadow .15s}
   input:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
   input[type=range]{padding:0;accent-color:var(--acc);cursor:pointer}
-  button{border-radius:11px;border:1px solid var(--line);padding:9px 15px;background:#fff;font-size:14px;cursor:pointer;color:var(--ink);font-weight:600;transition:.15s}
+  button{border-radius:11px;border:1px solid var(--line);padding:9px 15px;background:var(--field);font-size:14px;cursor:pointer;color:var(--ink);font-weight:600;transition:.15s}
   button:hover{background:var(--soft)}
-  button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .seg{display:flex;background:#e9eef3;border-radius:13px;padding:4px;gap:3px}
+  button.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
+  .seg{display:flex;background:var(--seg);border-radius:13px;padding:4px;gap:3px}
   .seg button{border:none;background:none;flex:1;padding:9px 6px;border-radius:10px;line-height:1.25;font-weight:600;color:var(--mut)}
   .seg button small{display:block;font-size:10px;font-weight:500}
-  .seg button.on{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(15,23,42,.12)}
+  .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 2px 8px rgba(15,23,42,.12)}
   small{color:var(--mut)}
   .sec{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--mut);margin:20px 2px 6px}
   /* ---------- ranking ---------- */
   .tcard{position:relative;overflow:hidden;border-left:none;padding:16px 16px 14px 18px}
   .tcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--brand,#666)}
-  .tcard.first{border:2px solid var(--acc);background:linear-gradient(180deg,#f0fdf4 0%,#fff 40%)}
+  .tcard.first{border:2px solid var(--acc);background:linear-gradient(180deg,var(--hi) 0%,var(--card) 40%)}
   .rank{font-size:12px;font-weight:800;color:#fff;background:#94a3b8;border-radius:9px;min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px}
   .tcard.first .rank{background:var(--acc);box-shadow:0 2px 8px rgba(34,197,94,.5)}
   .ribbon{display:inline-block;font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,#22c55e,#16a34a);border-radius:7px;padding:3px 9px;margin-left:8px;vertical-align:middle;box-shadow:0 2px 6px rgba(34,197,94,.4)}
@@ -107,30 +158,30 @@
 .ac{background:#ede9fe;color:#5b21b6}
 .note-ac{margin:.5em 0 0;padding:.5em .7em;border-left:3px solid #7c3aed;background:#f5f3ff;border-radius:0 6px 6px 0;font-size:.85em;line-height:1.45}
   .wr{background:#fee2e2;color:#b91c1c}.est{color:#a16207;background:#fef9c3}
-  .bar{height:8px;border-radius:99px;background:#edf0f3;margin-top:10px;overflow:hidden}
+  .bar{height:8px;border-radius:99px;background:var(--track);margin-top:10px;overflow:hidden}
   /* a cor segue o preço: verde (barato) -> vermelho (caro). O comprimento
      continua linear/proporcional; a cor é que carrega o "quente". */
   .bar>i{display:block;height:100%;border-radius:99px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);
     transition:background .2s}
-  .favbtn{border:none;font-size:22px;padding:2px 8px;background:none;color:#cbd5e1}
+  .favbtn{border:none;font-size:22px;padding:2px 8px;background:none;color:var(--star)}
   .favbtn.f{color:#f59e0b}
   details{font-size:13px;margin-top:10px}
   summary{cursor:pointer;color:var(--mut);font-weight:600;padding:4px 0}
   details table{border-collapse:collapse;width:100%;margin-top:8px}
   details td,details th{border-bottom:1px solid var(--line);padding:6px 2px;text-align:right;font-variant-numeric:tabular-nums}
   details td:first-child,details th:first-child{text-align:left}
-  details tr.aplicado{background:#f0fdf4}
+  details tr.aplicado{background:var(--hi)}
   details tr.aplicado td:first-child{box-shadow:inset 3px 0 0 #16a34a}
   details tr.sub td{font-size:12px;color:var(--mut)}
   details table.cost td:last-child{text-align:right;white-space:nowrap}
   .tag-aplicado{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#166534;background:#dcfce7;border-radius:999px;padding:2px 7px;white-space:nowrap}
-  a.src{font-size:12px;color:#166534;font-weight:600}
+  a.src{font-size:12px;color:var(--link);font-weight:600}
   .kpi{display:flex;gap:10px;flex-wrap:wrap}
-  .kpi>div{background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;flex:1;min-width:150px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+  .kpi>div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;flex:1;min-width:150px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
   .kpi b{font-size:20px}
-  svg.chart{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+  svg.chart{width:100%;height:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
   .legend{font-size:12px;color:var(--mut);margin-top:6px}
-  .qwrap{max-height:640px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+  .qwrap{max-height:640px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
   table.q td.p-idx{font-weight:600}
   table.q td.w{font-size:11px;text-transform:uppercase;letter-spacing:.03em}
   table.q tr.win-idx{background:#eef6ff}
@@ -141,8 +192,8 @@
   table.q{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
   table.q td,table.q th{border-bottom:1px solid var(--line);padding:6px 5px;text-align:right}
   table.q td:first-child,table.q th:first-child{text-align:left;white-space:nowrap}
-  table.q tr.cheap td{background:#f0fdf4;font-weight:700}
-  table.q th{background:#f8fafc;position:sticky;top:0;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)}
+  table.q tr.cheap td{background:var(--hi);font-weight:700}
+  table.q th{background:var(--th);position:sticky;top:0;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)}
   footer{max-width:820px;margin:0 auto;padding:0 16px 40px;font-size:12px;color:var(--mut)}
   .scope{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--acc);border-radius:14px;padding:13px 15px;margin-bottom:14px;box-shadow:0 2px 8px rgba(15,23,42,.04)}
   .scope h3{margin:0 0 6px;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;cursor:pointer}
@@ -154,15 +205,15 @@
   .scope table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0}
   .scope td{border-bottom:1px solid var(--line);padding:6px 4px;vertical-align:top}
   .scope td:last-child{text-align:right;white-space:nowrap;font-weight:700}
-  .scope .yes{color:#15803d}
-  .scope .no{color:#b91c1c}
+  .scope .yes{color:var(--yes)}
+  .scope .no{color:var(--no)}
   .scope .warn{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 11px;font-size:12.5px;line-height:1.5;margin:8px 0 0}
-  .scope a{color:#166534;font-weight:600}
+  .scope a{color:var(--link);font-weight:600}
   .scope .more{margin-top:9px;font-size:12.5px;display:flex;gap:14px;flex-wrap:wrap}
   .empty{padding:26px;text-align:center;color:var(--mut)}
   .modal{position:fixed;inset:0;background:rgba(15,23,42,.5);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
   .modal.on{display:flex}
-  .modal .mbox{background:#fff;border-radius:18px;max-width:720px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal .mbox{background:var(--card);border-radius:18px;max-width:720px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
   .modal .mhead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
   .modal .mbody{padding:14px 16px;overflow:auto;flex:1}
   .modal .mfoot{padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--mut)}
@@ -182,7 +233,7 @@
   .favside .fs-item:last-child{border-bottom:none}
   .favside .fs-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .favside .fs-item .pr{font-weight:700;color:var(--accD);white-space:nowrap}
-  .favside .fs-item button{border:none;background:none;cursor:pointer;color:#cbd5e1;font-size:16px;padding:0 2px}
+  .favside .fs-item button{border:none;background:none;cursor:pointer;color:var(--star);font-size:16px;padding:0 2px}
   .favside .fs-item button:hover{color:#ef4444}
   .favside .empty{font-size:12px;color:var(--mut);text-align:center;padding:14px}
   @media (min-width: 980px) {
@@ -219,7 +270,7 @@
     .bigkwh{font-size:26px}
   }
 </style>
-<header class="top"><div class="wrap"><a class="logo" href="#/"><span class="mark">⚡</span><span class="ttl" id="logoTxt">Comparador CEME <b>@ O Carro Elétrico</b></span></a><nav><a href="#/" id="nHome">Simular</a><a href="#/comparar" id="nCmp">Indexado vs fixo</a><a href="/assistente" id="nSimple">Assistente</a><a href="/sobre" id="nSobre">Sobre</a><a href="/contactos" id="nContactos">Contactos</a></nav><span class="langs" role="group" aria-label="Idioma / Language"><button data-lang="pt" class="on" title="Português" aria-label="Português"><svg viewBox="0 0 35 20" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="14" height="20" fill="#046A38"/><rect x="14" width="21" height="20" fill="#DA291C"/></svg></button><button data-lang="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="uJack"><path d="M0,0 H60 V30 H0 Z"/></clipPath></defs><g clip-path="url(#uJack)"><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" stroke-width="6"/><path d="M30,0 V30 M0,15 H60" stroke="#FFFFFF" stroke-width="10"/></g><path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V30 M0,15 H60" stroke="#C8102E" stroke-width="6"/></svg></button></span></div></header>
+<header class="top"><div class="wrap"><a class="logo" href="#/"><span class="mark">⚡</span><span class="ttl" id="logoTxt">Comparador CEME <b>@ O Carro Elétrico</b></span></a><nav><a href="#/" id="nHome">Simular</a><a href="#/comparar" id="nCmp">Indexado vs fixo</a><a href="/assistente" id="nSimple">Assistente</a><a href="/sobre" id="nSobre">Sobre</a><a href="/contactos" id="nContactos">Contactos</a></nav><span class="langs" role="group" aria-label="Idioma / Language"><button data-lang="pt" class="on" title="Português" aria-label="Português"><svg viewBox="0 0 35 20" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="14" height="20" fill="#046A38"/><rect x="14" width="21" height="20" fill="#DA291C"/></svg></button><button data-lang="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="uJack"><path d="M0,0 H60 V30 H0 Z"/></clipPath></defs><g clip-path="url(#uJack)"><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" stroke-width="6"/><path d="M30,0 V30 M0,15 H60" stroke="#FFFFFF" stroke-width="10"/></g><path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V30 M0,15 H60" stroke="#C8102E" stroke-width="6"/></svg></button></span><button id="themeBtn" class="themebtn" type="button"></button></div></header>
 <div class="hero"><div class="in" id="hero"><h1>Quanto custa <span>carregar agora?</span></h1><p>A ligar ao simulador…</p></div></div>
 <main id="app"></main>
 <div id="favModal" class="modal">
@@ -357,6 +408,24 @@ function setLang(l, persist = true) {
   document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === L));
   applyChrome();
 }
+// Tema: o <head> já o aplicou; o botão troca-o e guarda a escolha só nesta
+// sessão, como no assistente (mesma chave, por isso as duas páginas
+// concordam).
+const SUN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
+const isDark = () => document.documentElement.dataset.theme === 'dark';
+function paintThemeBtn() {
+  const b = document.getElementById('themeBtn');
+  if (!b) return;
+  b.innerHTML = isDark() ? SUN : MOON;
+  b.title = i18n('theme'); b.setAttribute('aria-label', i18n('theme'));
+}
+function toggleTheme() {
+  const t = isDark() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  try { sessionStorage.setItem('ceme:theme', t); } catch (e) {}
+  paintThemeBtn();
+}
 function initialLang() {
   try { const s = localStorage.getItem('ceme:lang'); if (s === 'pt' || s === 'en') return s; } catch (e) {}
   return (typeof window.__LANG__ === 'string' && window.__LANG__ === 'en') ? 'en' : 'pt';
@@ -368,6 +437,7 @@ function applyChrome() {
   const txt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   txt('fmPop', i18n('fmPop')); txt('fmBundle', i18n('tagBundle')); txt('fmGreen', i18n('fGreen'));
   document.title = i18n('docTitle');
+  paintThemeBtn();
   set('logoTxt', i18n('logoA') + ' <b class="lg2">' + i18n('logoB') + '</b>');
   set('nHome', i18n('navHome')); set('nCmp', i18n('navCmp')); set('nSimple', i18n('navAssistant'));
   set('nSobre', i18n('navSobre')); set('nContactos', i18n('navContactos'));
@@ -673,7 +743,7 @@ function vHome() {
   const max = Math.max(...prices, 1), lo = Math.min(...prices), hi = Math.max(...prices);
   heroHome(items);
   const kwhView = S.energyMode === 'kwh';
-  return scopeBox() + `<div class="card" style="background:linear-gradient(180deg,#f0fdf4 0%,#fff 60%)">
+  return scopeBox() + `<div class="card" style="background:linear-gradient(180deg,var(--hi) 0%,var(--card) 60%)">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">
       <div><small style="color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:1px">${i18n('kwhIn')}</small>
         <div class="bigkwh" style="font-size:34px;font-weight:800;letter-spacing:-1px;color:var(--accD)">${kwhTxt()} <span style="font-size:18px;color:var(--mut)">kWh</span></div></div>
@@ -780,18 +850,18 @@ function svgChart(days, a, b) {
   const lo = Math.min(...all), hi = Math.max(...all), span = (hi - lo) || 1;
   const X = i => P + i * (W - 2 * P) / Math.max(days.length - 1, 1);
   const Y = v => H - P - (v - lo) / span * (H - 2 * P);
-  const line = (f, c, dash) => `<polyline fill="none" stroke="${c}" stroke-width="2.2" ${dash ? `stroke-dasharray="${dash}"` : ''} points="${days.map((d, i) => `${X(i).toFixed(1)},${Y(f(d)).toFixed(1)}`).join(' ')}"/>`;
+  const line = (f, c, dash) => `<polyline fill="none" style="stroke:${c}" stroke-width="2.2" ${dash ? `stroke-dasharray="${dash}"` : ''} points="${days.map((d, i) => `${X(i).toFixed(1)},${Y(f(d)).toFixed(1)}`).join(' ')}"/>`;
   const wins = days.map((d, i) => d.fora < b.fora ? i : -1).filter(i => i >= 0);
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">
     <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1d4ed8" stop-opacity=".35"/><stop offset="1" stop-color="#1d4ed8" stop-opacity="0"/></linearGradient></defs>
-    <text x="${P}" y="15" font-size="11" fill="#64748b">${days[0].date} → ${days[days.length - 1].date} · ${cycName(a.cycle)}${i18n('chartDays', { n: days.length })}</text>
-    <text x="4" y="${Y(hi)}" font-size="10" fill="#64748b">${hi.toFixed(2)}</text>
-    <text x="4" y="${Y(lo) + 10}" font-size="10" fill="#64748b">${lo.toFixed(2)}</text>
-    ${[0.25, 0.5, 0.75].map(f => { const y = P + f * (H - 2 * P); return `<line x1="${P}" y1="${y}" x2="${W - 8}" y2="${y}" stroke="#eef2f5"/>`; }).join('')}
-    ${line(d => d.fora, '#1d4ed8')}${line(d => d.vaz, '#93c5fd')}
-    ${line(() => b.fora, '#16a34a', '7 4')}${line(() => b.vaz, '#86efac', '7 4')}
-    ${wins.map(i => `<circle cx="${X(i).toFixed(1)}" cy="${Y(days[i].fora).toFixed(1)}" r="3" fill="#1d4ed8"/>`).join('')}
-  </svg><div class="legend"><span style="color:#1d4ed8">━ ${i18n('legendIdxPeak')}</span> · <span style="color:#93c5fd">━ ${i18n('legendIdxOff')}</span> · <span style="color:#16a34a">┄ ${i18n('legendFixed')}</span> · <span style="color:#1d4ed8">●</span> ${i18n('legendWins')}</div>`;
+    <text x="${P}" y="15" font-size="11" style="fill:var(--mut)">${days[0].date} → ${days[days.length - 1].date} · ${cycName(a.cycle)}${i18n('chartDays', { n: days.length })}</text>
+    <text x="4" y="${Y(hi)}" font-size="10" style="fill:var(--mut)">${hi.toFixed(2)}</text>
+    <text x="4" y="${Y(lo) + 10}" font-size="10" style="fill:var(--mut)">${lo.toFixed(2)}</text>
+    ${[0.25, 0.5, 0.75].map(f => { const y = P + f * (H - 2 * P); return `<line x1="${P}" y1="${y}" x2="${W - 8}" y2="${y}" style="stroke:var(--grid)"/>`; }).join('')}
+    ${line(d => d.fora, 'var(--cIdx)')}${line(d => d.vaz, 'var(--cIdxOff)')}
+    ${line(() => b.fora, 'var(--cFix)', '7 4')}${line(() => b.vaz, 'var(--cFixOff)', '7 4')}
+    ${wins.map(i => `<circle cx="${X(i).toFixed(1)}" cy="${Y(days[i].fora).toFixed(1)}" r="3" style="fill:var(--cIdx)"/>`).join('')}
+  </svg><div class="legend"><span style="color:var(--cIdx)">━ ${i18n('legendIdxPeak')}</span> · <span style="color:var(--cIdxOff)">━ ${i18n('legendIdxOff')}</span> · <span style="color:var(--cFix)">┄ ${i18n('legendFixed')}</span> · <span style="color:var(--cIdx)">●</span> ${i18n('legendWins')}</div>`;
 }
 // Colapsa quartos em faixas contíguas: 10:30, 10:45, 11:00 -> "10:30–11:15".
 // A contiguidade e a ordem vêm do INSTANTE (`utc`), não da hora de relógio:
@@ -857,7 +927,7 @@ async function loadCmp() {
   document.getElementById('cmpKpi').innerHTML =
     `<div><small>${a.ceme} · ${i18n('kIdx')}</small><br><b>${eur(a.totalEur)}</b> <small>· ${kwhe(a.eurKwhNoIva)}</small></div>
      <div><small>${b.ceme} · ${i18n('kFix')}</small><br><b>${eur(b.totalEur)}</b> <small>· ${kwhe(b.eurKwhNoIva)}</small></div>
-     <div><small>${i18n('diffNow')}</small><br><b style="color:${d > 0 ? '#b45309' : '#16a34a'}">${d > 0 ? '+' + eur(d) : eur(d)}</b> <small>${d > 0 ? i18n('fixedWins') : i18n('idxWins')}</small></div>`;
+     <div><small>${i18n('diffNow')}</small><br><b style="color:${d > 0 ? 'var(--cWarn)' : 'var(--cFix)'}">${d > 0 ? '+' + eur(d) : eur(d)}</b> <small>${d > 0 ? i18n('fixedWins') : i18n('idxWins')}</small></div>`;
   try {
     const [daily] = await Promise.all([api('/v1/omie/daily?days=60')]);
     const cyc = a.cycle === 'DIARIO' ? ['bd_v', 'bd_f'] : ['bs_v', 'bs_f'];
@@ -1016,6 +1086,7 @@ async function init() {
     loadS();
     setLang(initialLang(), false);
     document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); route(); });
+    const tb = document.getElementById('themeBtn'); if (tb) tb.onclick = toggleTheme;
     await refresh();   // rápido: só o simulate, com o OMIE por omissão
   } catch (e) {
     // Se o primeiro pedido falhar, mostra o erro com um botão para tentar

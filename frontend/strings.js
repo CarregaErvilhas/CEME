@@ -38,6 +38,7 @@
       navSim: 'Simulador', navAssistant: 'Assistente',
       navSobre: 'Sobre', navContactos: 'Contactos', navPriv: 'Privacidade',
       footNote: 'Ferramenta comunitária, sem fins lucrativos.',
+      theme: 'Tema claro / escuro',
       // conceitos partilhados: a tarifa de preço único e a marca de
       // "estimativa OMIP" são as mesmas no simulador e na página de
       // estatísticas OMIE
@@ -55,6 +56,7 @@
       navSim: 'Simulator', navAssistant: 'Assistant',
       navSobre: 'About', navContactos: 'Contact', navPriv: 'Privacy',
       footNote: 'A community tool, non-profit.',
+      theme: 'Light / dark theme',
       simple: 'Simple rate',
       omipEst: 'OMIP estimate',
       omipFrom: 'OMIE; OMIP from {t}',
@@ -272,7 +274,7 @@
         lede: 'Três perguntas para comparar mais de 50 tarifários Mobi.E em Portugal.',
         start: 'Começar',
         community: 'Projeto comunitário, sem fins lucrativos.', fullSim: 'Abrir o simulador completo',
-        back: 'Voltar', next: 'Continuar', see: 'Ver resultados', theme: 'Tema claro / escuro',
+        back: 'Voltar', next: 'Continuar', see: 'Ver resultados',
         whereH: 'Onde vai carregar?', whereL: 'O IVA muda de região para região.',
         CONT: 'Continente', MAD: 'Madeira', AZO: 'Açores',
         howH: 'Quanto vai carregar?', howL: 'Arraste as pegas ou escreva os valores.',
@@ -296,7 +298,7 @@
         lede: 'Three questions to compare over 50 Mobi.E tariffs in Portugal.',
         start: 'Start',
         community: 'A non-profit community project.', fullSim: 'Open the full simulator',
-        back: 'Back', next: 'Continue', see: 'See results', theme: 'Light / dark theme',
+        back: 'Back', next: 'Continue', see: 'See results',
         whereH: 'Where are you charging?', whereL: 'VAT differs from region to region.',
         CONT: 'Mainland', MAD: 'Madeira', AZO: 'Azores',
         howH: 'How much will you charge?', howL: 'Drag the handles or type the values.',
