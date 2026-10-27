@@ -55,8 +55,13 @@ async function health({ res, who, headers }) {
   json(res, 200, { ok: true, as: who.kind, time: new Date().toISOString() }, headers);
 }
 
+// Lista fechada do que é público num CEME. Nunca `SELECT *`: uma coluna nova
+// na tabela não pode aparecer na API sem passar por aqui. A API não lê
+// `ceme_contact`.
+export const CEME_PUBLIC_COLS = ['id', 'name', 'brand_color', 'website', 'email', 'phone', 'whatsapp'];
+
 async function cemes({ res, headers }) {
-  json(res, 200, { data: await query('SELECT * FROM ceme ORDER BY name') }, headers);
+  json(res, 200, { data: await query(`SELECT ${CEME_PUBLIC_COLS.join(', ')} FROM ceme ORDER BY name`) }, headers);
 }
 
 async function tariffs({ res, headers }) {
