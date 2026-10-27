@@ -24,13 +24,15 @@ export async function seed(db) {
       [c.id, c.name, c.brand, c.website]);
   }
 
+  // Sem `url` próprio, o tarifário aponta para o website do CEME.
+  const websites = Object.fromEntries(CEMES.map(c => [c.id, c.website]));
   for (const t of TARIFFS) {
     const name = t.name + (t.est && t.kind === 'FIXED' ? ' ~' : '');
     await db.run(`INSERT INTO tariff
       (id, ceme_id, name, kind, voltage, schedule, cycle, green, access, popular, bundle, regions, source_url)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       ON CONFLICT (id) DO UPDATE SET ${updateAll(['ceme_id', 'name', 'kind', 'voltage', 'schedule', 'cycle', 'green', 'access', 'popular', 'bundle', 'regions', 'source_url'])}`,
-      [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url]);
+      [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url ?? websites[t.ceme]]);
 
     // Uma versão por tarifário, a começar em PRICES_VERIFIED_ON. `valid_to`
     // não entra no UPDATE: se alguém fechou uma versão à mão, o seed não a
