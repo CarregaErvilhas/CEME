@@ -33,7 +33,7 @@ e a [FAQ da Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 - **Estatísticas OMIE** (`/omie` e <https://omie.cocofree.dev>): médias
   mensais do preço do mercado, os preços de hoje e de amanhã e uma previsão
   do mês.
-- **Sobre** e **Contactos** (`/sobre`, `/contactos`).
+- **Sobre**, **Contactos** e **Privacidade** (`/sobre`, `/contactos`, `/privacidade`).
 - **Guia da API** (`/api`, em inglês) para quem quer usar os dados noutra app.
 
 Tudo em português e inglês, instalável como app no telemóvel (PWA).
@@ -196,6 +196,7 @@ Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
     index.html                # o simulador completo
     omie.html                 # estatísticas OMIE
     about.html, contact.html  # Sobre, Contactos
+    privacy.html              # Privacidade: o que fica no browser e nos servidores
     api.html                  # guia da API (EN)
     strings.js                # todos os textos PT/EN
     tz.js                     # horas de relógio por região

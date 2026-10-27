@@ -180,7 +180,7 @@ totais com 2, com o arredondamento por parcela da fatura.
 ## Língua das páginas
 
 As páginas bilingues (`/`, `/assistente`, `/simulador`, `/sobre`,
-`/contactos`, `/omie` e a raiz de `omie.cocofree.dev`) chegam ao
+`/contactos`, `/privacidade`, `/omie` e a raiz de `omie.cocofree.dev`) chegam ao
 browser já com a língua escolhida: o servidor troca o `<html lang>` e o
 marcador `window.__LANG__=null` por `"pt"` ou `"en"`. O guia `/api` é só em
 inglês.
