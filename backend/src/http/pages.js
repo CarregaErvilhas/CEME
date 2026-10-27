@@ -32,8 +32,24 @@ const STATIC = {
 };
 
 // robots.txt. A /tabela não aparece aqui: é escondida pelo cabeçalho
-// x-robots-tag (um Disallow aqui anunciava-a).
-const ROBOTS = 'User-agent: *\nDisallow: /v1/\n';
+// x-robots-tag (um Disallow aqui anunciava-a). O Sitemap tem de ser um URL
+// absoluto, por isso leva o domínio do pedido.
+const robots = origin => `User-agent: *\nDisallow: /v1/\nSitemap: ${origin}/sitemap.xml\n`;
+
+// Páginas no sitemap.xml. Só um caminho por página (sem /about, /contact,
+// /index.html) e sem a /tabela. No domínio OMIE só existe a raiz.
+const SITEMAP_PATHS = ['/', '/simulador', '/sobre', '/contactos', '/api', '/omie'];
+const sitemap = (origin, paths) => '<?xml version="1.0" encoding="UTF-8"?>\n'
+  + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+  + paths.map(p => `  <url><loc>${origin}${p}</loc></url>\n`).join('')
+  + '</urlset>\n';
+
+// https://<host> do pedido (http só se o proxy disser que veio por http).
+function originOf(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim() === 'http' ? 'http' : 'https';
+  const host = String(req.headers.host || '').replace(/[^a-zA-Z0-9.:-]/g, '');
+  return `${proto}://${host}`;
+}
 
 // Língua das páginas. Cada HTML traz `window.__LANG__=null`; o servidor
 // troca o null por "pt" ou "en" antes de enviar. (O regex aceita espaços à
@@ -130,13 +146,18 @@ export async function servePage(req, res, url) {
     } catch { fail(res, st.missing || 500, 'no_frontend', `frontend/${st.file} em falta`); }
     return true;
   }
-  if (p === '/robots.txt') {
-    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', ...NOSNIFF });
-    res.end(ROBOTS);
-    return true;
-  }
   // Página OMIE (vê OMIE_ROUTES). O cabeçalho Host diz por que domínio veio.
   const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  if (p === '/robots.txt') {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', vary: 'Host', ...NOSNIFF });
+    res.end(robots(originOf(req)));
+    return true;
+  }
+  if (p === '/sitemap.xml') {
+    res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600', vary: 'Host', ...NOSNIFF });
+    res.end(sitemap(originOf(req), host === OMIE_HOST ? ['/'] : SITEMAP_PATHS));
+    return true;
+  }
   if ((host === OMIE_HOST && p === '/') || Object.hasOwn(OMIE_ROUTES, p)) {
     await sendHtml(req, res, OMIE_ROUTES[p] || 'omie.html', { vary: 'Accept-Language, Host' });
     return true;
