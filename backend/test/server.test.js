@@ -264,6 +264,16 @@ it('HTML também leva nosniff', async () => {
       }
     });
 
+    it('/privacidade e /privacy servem a mesma página', async () => {
+      for (const caminho of ['/privacidade', '/privacy']) {
+        const { status, html, cookie } = await abrir(caminho);
+        assert.equal(status, 200, caminho);
+        assert.ok(html.includes('<title>Privacidade — Comparador CEME</title>'), `${caminho}: título em falta`);
+        assert.ok(html.includes("CEME_STR('privacy')"), `${caminho}: não pede o namespace certo`);
+        assert.equal(cookie, '', `${caminho}: não deve gravar cookie`);
+      }
+    });
+
     it('/api serve o guia de integração da API sem autenticação', async () => {
       const { status, html, cookie, r } = await abrir('/api');
       assert.equal(status, 200);

@@ -25,6 +25,7 @@ E ainda: as páginas **Sobre** e **Contactos** (texto, sem API), as
 | `GET /index.html` | o mesmo que `/` |
 | `GET /sobre`, `GET /about` | página Sobre |
 | `GET /contactos`, `GET /contact` | página Contactos |
+| `GET /privacidade`, `GET /privacy` | página Privacidade (actualiza-a se o site passar a guardar alguma coisa nova no browser) |
 | `GET /omie`, `GET /omie.html` | estatísticas OMIE (e a raiz de `omie.cocofree.dev`) |
 | `GET /api` | guia da API (EN) |
 | `GET /strings.js` | os textos PT/EN de todas as páginas |
