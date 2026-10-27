@@ -17,8 +17,12 @@ import { lisbonDayQuarters } from './convert.js';
 import { dmyToIso } from '../time.js';
 import { fetchWithRetry } from './fetch.js';
 
-// Pasta da cache em disco (backend/data/). Podes apagá-la: volta a encher-se.
-const DATA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
+// Pasta da cache em disco (backend/data/, ou CEME_CACHE_DIR). Podes apagá-la:
+// volta a encher-se. Em produção o processo não pode escrever na pasta do
+// código (vê infra.md, «Privilégios do processo»), por isso o zerops.yml
+// aponta CEME_CACHE_DIR para /tmp.
+const DATA_DIR = process.env.CEME_CACHE_DIR
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
 
 export const TF_BASE = 'https://dados.tiagofelicia.pt/data';
 export const TF_CURRENT_URL = `${TF_BASE}/omie/omie_dados_atuais.csv`;
@@ -50,7 +54,7 @@ export function fetchText(url) {
 // descarrega-o de `url` e guarda-o. Cada instância do servidor tem a sua
 // própria cache (é o disco dela); os dados que contam ficam na BD.
 export async function fetchCachedFile(name, url, ttlMs) {
-  mkdirSync(DATA_DIR, { recursive: true });
+  try { mkdirSync(DATA_DIR, { recursive: true }); } catch { /* cache é opcional */ }
   const file = path.join(DATA_DIR, name);
   if (existsSync(file)) {
     const st = statSync(file);

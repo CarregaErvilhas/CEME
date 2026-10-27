@@ -157,6 +157,34 @@ Notas: o Zerops aceita como bons os códigos `[200, 400)` (3xx passa;
 <https://docs.zerops.io/guides/readiness-health-checks> e
 <https://docs.zerops.io/guides/deployment-lifecycle>.
 
+### Privilégios do processo
+
+O processo da API corre como `cocofree`, um utilizador de sistema criado nos
+`prepareCommands`, sem shell, sem casa e **sem sudo**. O utilizador por
+omissão do Zerops (`zerops`) tem sudo, e é isso que queremos longe do
+processo: quem conseguisse executar código na app ficava root no container.
+
+O que o `cocofree` pode e não pode:
+
+- lê o código em `/var/www` (que é do `zerops`), mas não o escreve;
+- escreve em `/tmp`, onde fica a cache dos CSV do TF (`CEME_CACHE_DIR`);
+- chega à BD pela `DATABASE_URL`, que continua no ambiente do processo.
+
+O que isto **não** resolve: a `DATABASE_URL` e o `JWT_SECRET` estão no
+ambiente do processo, por isso quem executar código na app lê-os e fala com
+a BD. O que se ganha é não poder alterar o código nem a imagem, não poder
+instalar nada e não escalar para root. Para limitar o estrago da BD, o
+passo seguinte é um utilizador Postgres só com os privilégios de que a app
+precisa.
+
+Depois de um deploy que mexa nisto, confirma na consola do Zerops (terminal
+do container):
+
+```bash
+ps -o user,pid,args -C node   # user = cocofree
+curl -s localhost:3001/readyz # 200
+```
+
 ### Colunas novas e o schema
 
 O schema corre no arranque com `CREATE TABLE IF NOT EXISTS`, que **não
