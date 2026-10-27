@@ -662,7 +662,7 @@ function card(q, i, max, lo, hi) {
     <div class="row" style="justify-content:space-between;align-items:flex-start">
       <div style="display:flex;gap:12px;align-items:flex-start;flex:1"><span class="rank">${i + 1}</span>
       <div style="flex:1"><div><span class="total">${eur(q.totalEur)}</span>${first ? `<span class="ribbon">${i18n('cheapest')}</span>` : ''}</div>
-        <div class="per">${perWhen()} <b>${perName(q.period)}</b> · ${kwhe(q.eurKwhNoIva)} · ${kwhTxt()} kWh ${i18n('inclVat')}</div>
+        <div class="per">${perWhen()} <b>${perName(q.period)}</b> · ${kwhe(q.totalEur / effKwh())} ${i18n('inclVat')} · ${kwhTxt()} kWh</div>
         <div class="tname"${q.notes ? ` title="${noteText(q.notes)}"` : ''}><b>${esc(q.ceme)}</b> — ${tariffName(q.name)}</div>
         <div>${badges(q)}</div></div></div>
       <button class="favbtn ${on ? 'f' : ''}" data-id="${esc(q.id)}" onclick="toggleFav(this.dataset.id)" title="${i18n('saveFav')}">${on ? '★' : '☆'}</button>
@@ -926,8 +926,8 @@ async function loadCmp() {
   if (!a || !b) return;
   const d = a.totalEur - b.totalEur;
   document.getElementById('cmpKpi').innerHTML =
-    `<div><small>${a.ceme} · ${i18n('kIdx')}</small><br><b>${eur(a.totalEur)}</b> <small>· ${kwhe(a.eurKwhNoIva)}</small></div>
-     <div><small>${b.ceme} · ${i18n('kFix')}</small><br><b>${eur(b.totalEur)}</b> <small>· ${kwhe(b.eurKwhNoIva)}</small></div>
+    `<div><small>${a.ceme} · ${i18n('kIdx')}</small><br><b>${eur(a.totalEur)}</b> <small>· ${kwhe(a.totalEur / effKwh())} ${i18n('inclVat')}</small></div>
+     <div><small>${b.ceme} · ${i18n('kFix')}</small><br><b>${eur(b.totalEur)}</b> <small>· ${kwhe(b.totalEur / effKwh())} ${i18n('inclVat')}</small></div>
      <div><small>${i18n('diffNow')}</small><br><b style="color:${d > 0 ? 'var(--cWarn)' : 'var(--cFix)'}">${d > 0 ? '+' + eur(d) : eur(d)}</b> <small>${d > 0 ? i18n('fixedWins') : i18n('idxWins')}</small></div>`;
   try {
     const [daily] = await Promise.all([api('/v1/omie/daily?days=60')]);
