@@ -401,7 +401,7 @@ function vLanding() {
     <h1>${t('h1')}</h1>
     <p class="lede">${t('lede')}</p>
     <button class="btn" data-go="onde">${t('start')} ${ARROW}</button>
-    <p class="small">${t('community')}<br><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a></p>
+    <p class="small">${t('community')}<br><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a></p>
   </section>`;
 }
 function vWhere() {
@@ -503,7 +503,7 @@ function vResults() {
         <div class="p num">${price(r)}<small>${eur(r.totalEur / kwh())}/kWh</small></div></li>`).join('')}</ul>
       ${!P.all && rest.length > shown.length ? `<button class="btn wide more" data-act="all">${t('showAll', { n: items.length })}</button>` : ''}`
       : `<p class="empty">${t('none')}</p>`}
-    <p class="full"><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a></p>
+    <p class="full"><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a></p>
     ${foot}
   </section>`;
 }

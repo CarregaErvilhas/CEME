@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacidade — Comparador CEME</title>
+<meta name="description" content="O que o Comparador CEME guarda no teu browser e o que passa pelos servidores: sem contas, sem analytics, sem cookies de rastreio.">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#22c55e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="CEME">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" href="/icon-192.png">
+<link rel="stylesheet" href="/pages.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="logo" href="/"><span class="mark">⚡</span><span class="ttl" id="logoTxt"></span></a>
+  <nav>
+    <a href="/simulador" id="nSim"></a>
+    <a href="/assistente" id="nAssistant"></a>
+    <a href="/sobre" id="nSobre"></a>
+    <a href="/contactos" id="nContactos"></a>
+  </nav>
+  <span class="langs" role="group" aria-label="Idioma / Language">
+    <button data-lang="pt" title="Português" aria-label="Português"><svg viewBox="0 0 35 20" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="14" height="20" fill="#046A38"/><rect x="14" width="21" height="20" fill="#DA291C"/></svg></button>
+    <button data-lang="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="uJack"><path d="M0,0 H60 V30 H0 Z"/></clipPath></defs><g clip-path="url(#uJack)"><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" stroke-width="6"/><path d="M30,0 V30 M0,15 H60" stroke="#FFFFFF" stroke-width="10"/></g><path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V30 M0,15 H60" stroke="#C8102E" stroke-width="6"/></svg></button>
+  </span>
+</div></header>
+<div class="hero"><div class="in" id="hero"></div></div>
+<main id="app"></main>
+<footer id="foot"></footer>
+<script>window.__LANG__=null;</script>
+<script src="/strings.js"></script>
+<script src="/pwa.js"></script>
+<script>
+'use strict';
+/* Página "Privacidade": o que fica no browser, o que passa pelos servidores
+ * e a quem pedir o quê. Se mudares o que o site guarda (uma chave nova no
+ * localStorage, um cookie, um serviço novo à frente), actualiza esta página
+ * e a data em `updated`. */
+const STR = CEME_STR('privacy');
+// Mesma precedência do resto do site: bandeira escolhida > Accept-Language
+// injectado pelo servidor > português.
+let LANG = (function () {
+  try { const s = localStorage.getItem('ceme:lang'); if (s === 'pt' || s === 'en') return s; } catch (e) {}
+  return (typeof window.__LANG__ === 'string' && window.__LANG__ === 'en') ? 'en' : 'pt';
+})();
+const t = (k) => STR[LANG][k] ?? STR.pt[k] ?? k;
+const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+function chrome() {
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
+  document.title = t('docTitle');
+  set('logoTxt', t('logoA') + ' <b class="lg2">' + t('logoB') + '</b>');
+  set('nSim', t('navSim'));
+  set('nAssistant', t('navAssistant'));
+  set('nSobre', t('navSobre'));
+  set('nContactos', t('navContactos'));
+  document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === LANG));
+}
+
+function render() {
+  chrome();
+  set('hero', `<h1>${t('navPriv')}</h1><p>${t('lede')}</p>`);
+  set('app', `
+    <article>
+      <h2>${t('p1h')}</h2>
+      <p>${t('p1p1')}</p>
+    </article>
+    <article>
+      <h2>${t('p2h')}</h2>
+      <ul>
+        <li>${t('p2li1')}</li>
+        <li>${t('p2li2')}</li>
+        <li>${t('p2li3')}</li>
+        <li>${t('p2li4')}</li>
+      </ul>
+      <p>${t('p2p1')}</p>
+    </article>
+    <article>
+      <h2>${t('p3h')}</h2>
+      <ul>
+        <li>${t('p3li1')}</li>
+        <li>${t('p3li2')}</li>
+        <li>${t('p3li3')}</li>
+      </ul>
+      <p>${t('p3p1')}</p>
+    </article>
+    <article>
+      <h2>${t('p4h')}</h2>
+      <p>${t('p4p1')}</p>
+    </article>
+    <article>
+      <h2>${t('p5h')}</h2>
+      <p>${t('p5p1')}</p>
+      <p><small>${t('updated')}</small></p>
+    </article>`);
+  set('foot', `${t('footNote')} <a href="/sobre">${t('navSobre')}</a><span class="sep">·</span><a href="/contactos">${t('navContactos')}</a><span class="sep">·</span><a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">GitHub</a>`);
+}
+
+document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => {
+  LANG = b.dataset.lang === 'en' ? 'en' : 'pt';
+  try { localStorage.setItem('ceme:lang', LANG); } catch (e) {}
+  render();
+});
+render();
+</script>
+</body>
+</html>

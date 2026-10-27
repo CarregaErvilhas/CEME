@@ -16,6 +16,7 @@ const PAGES = {
   assistente: read('assistente.html'),
   about: read('about.html'),
   contact: read('contact.html'),
+  privacy: read('privacy.html'),
   omie: read('omie.html'),
   tabela: read('tabela.html'),
 };
@@ -25,7 +26,7 @@ const LANGS = ['pt', 'en'];
 const sandbox = { window: {} };
 vm.runInNewContext(STRINGS, sandbox, { filename: 'strings.js' });
 const I18N = sandbox.window.CEME_I18N;
-const NS = ['common', 'simulador', 'assistente', 'about', 'contact', 'omie', 'tabela'];
+const NS = ['common', 'simulador', 'assistente', 'about', 'contact', 'privacy', 'omie', 'tabela'];
 const chaves = (ns, lang) => Object.keys(I18N[ns][lang]);
 const placeholders = (ns, lang) => new Set(
   Object.values(I18N[ns][lang]).flatMap((v) => String(v).match(/\{\w+\}/g) || []));

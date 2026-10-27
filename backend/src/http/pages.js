@@ -80,10 +80,11 @@ const UI_COOKIE = 'ceme_ui';
 const UI_COOKIE_MAX_AGE = 31536000; // 1 ano
 
 // Outras páginas HTML, sem cookie. `/sobre` e `/about` são a mesma página
-// (o mesmo para contactos).
+// (o mesmo para contactos e privacidade).
 const INFO_ROUTES = {
   '/sobre': 'about.html', '/about': 'about.html',
   '/contactos': 'contact.html', '/contact': 'contact.html',
+  '/privacidade': 'privacy.html', '/privacy': 'privacy.html',
   '/api': 'api.html',
   // Tabela em bruto dos tarifários em vigor. Não tem links a apontar para
   // ela e não é indexada pelos motores de busca.
