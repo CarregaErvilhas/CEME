@@ -381,6 +381,16 @@ it('HTML também leva nosniff', async () => {
       assert.doesNotMatch(html, /tabela/);
     });
 
+    it('/robots.txt aponta para o sitemap e /sitemap.xml lista as páginas', async () => {
+      assert.match((await abrir('/robots.txt')).html, /^Sitemap: https?:\/\/[^/]+\/sitemap\.xml$/m);
+      const r = await fetch(`${BASE}/sitemap.xml`);
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get('content-type'), /xml/);
+      const xml = await r.text();
+      assert.match(xml, /<loc>https?:\/\/[^<]+\/sobre<\/loc>/);
+      assert.doesNotMatch(xml, /tabela/);
+    });
+
     it('/tabela leva X-Robots-Tag noindex', async () => {
       const r = await fetch(`${BASE}/tabela`);
       assert.match(r.headers.get('x-robots-tag') || '', /noindex/);
