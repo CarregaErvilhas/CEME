@@ -49,8 +49,5 @@ documentos. Quando acabares um item, tira-o daqui.
 
 ## Produto
 
-- Frontend com Vite + React + Tailwind.
-- Sugestões de correcção da comunidade (`suggestion`), com moderação.
-- Emissão e gestão de API keys (hoje há uma só, pela variável de ambiente;
-  [04](04-api-auth.md)).
+- Emissão e gestão de API keys (hoje há uma só, pela variável de ambiente; [04](04-api-auth.md)).
 - Os endpoints planeados estão em [04](04-api-auth.md#planos).

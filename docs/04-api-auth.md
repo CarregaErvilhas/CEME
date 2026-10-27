@@ -198,25 +198,14 @@ Nada disto existe ainda; está no [roadmap](06-roadmap.md):
 
 ```
 GET  /v1/tariffs/:id                    # versão em vigor + histórico
-GET  /v1/tariffs/:id/quote?at=&kwh=     # cotar um só tarifário
-POST /v1/suggestions                    # enviar uma sugestão de correcção
-GET  /v1/suggestions/mine
-# portal para cada CEME (só o seu ceme_id)
-GET  /v1/ceme/tariffs
-POST /v1/ceme/tariffs/:id/versions      # criar uma versão (campanha, preço futuro)
-# administração
-GET  /v1/admin/suggestions?status=
-POST /v1/admin/suggestions/:id/approve  # cria a tariff_version
-POST /v1/admin/suggestions/:id/reject
 ```
 
-Com eles, a autorização passaria a depender do tipo de credencial:
+- `POST /v1/simulate` com filtro opcional `tariffs` (lista de ids) ou
+  `ceme`, para cotar só alguns tarifários em vez de todos.
+- `ETag`/`Last-Modified` em `GET /v1/cemes`, `/v1/tariffs` e `/v1/tar`
+  (com `304` em `If-None-Match`/`If-Modified-Since`), para quem guarda em
+  cache não gastar pedidos nem rate limit.
 
-- `WEB_SESSION`: leitura e `POST /suggestions`;
-- utilizador `ceme_editor`: leitura e escrita só no seu CEME;
-- utilizador `admin`: tudo, incluindo moderação;
-- `THIRD_PARTY`: leitura, conforme o plano da chave.
-
-Hoje o `kind` do token é só informativo (aparece em `GET /v1/health`). O
+O `kind` do token é só informativo (aparece em `GET /v1/health`). O
 desenho permite trocar quem emite os JWT por um serviço externo (Auth0,
 Clerk, Cloudflare Access) sem mudar as rotas.
