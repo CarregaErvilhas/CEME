@@ -159,12 +159,12 @@ Notas: o Zerops aceita como bons os códigos `[200, 400)` (3xx passa;
 
 ### Privilégios do processo
 
-O processo da API corre como `ceme`, um utilizador de sistema criado nos
+O processo da API corre como `cocofree`, um utilizador de sistema criado nos
 `prepareCommands`, sem shell, sem casa e **sem sudo**. O utilizador por
 omissão do Zerops (`zerops`) tem sudo, e é isso que queremos longe do
 processo: quem conseguisse executar código na app ficava root no container.
 
-O que o `ceme` pode e não pode:
+O que o `cocofree` pode e não pode:
 
 - lê o código em `/var/www` (que é do `zerops`), mas não o escreve;
 - escreve em `/tmp`, onde fica a cache dos CSV do TF (`CEME_CACHE_DIR`);
@@ -181,7 +181,7 @@ Depois de um deploy que mexa nisto, confirma na consola do Zerops (terminal
 do container):
 
 ```bash
-ps -o user,pid,args -C node   # user = ceme
+ps -o user,pid,args -C node   # user = cocofree
 curl -s localhost:3001/readyz # 200
 ```
 

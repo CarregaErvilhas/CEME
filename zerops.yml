@@ -49,20 +49,20 @@ zerops:
       # Utilizador próprio para o processo, sem sudo, sem shell e sem casa.
       # O `zerops` (o utilizador por omissão) tem sudo, por isso quem
       # conseguisse correr código no processo ficava root no container.
-      # O `ceme` só lê o código (que é do `zerops`) e só escreve em /tmp.
+      # O `cocofree` só lê o código (que é do `zerops`) e só escreve em /tmp.
       # Vê infra.md, «Privilégios do processo».
       prepareCommands:
-        - sudo addgroup -S ceme
-        - sudo adduser -S -D -H -s /sbin/nologin -G ceme ceme
+        - sudo addgroup -S cocofree
+        - sudo adduser -S -D -H -s /sbin/nologin -G cocofree cocofree
       # `run.start` corre sem shell, por isso `cd backend && …` não funciona.
       # A pasta vai em `workingDir`. `node` directo em vez de `npm start`:
       # menos um processo, e o npm queria escrever logs numa casa que o
-      # `ceme` não tem.
+      # `cocofree` não tem.
       startCommands:
         - command: node src/server.js
           name: api
           workingDir: /var/www/backend
-          user: ceme
+          user: cocofree
       ports:
         - port: 3001
           httpSupport: true
