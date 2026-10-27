@@ -23,6 +23,7 @@ estão comentadas nos schemas, `backend/src/db/schema.sql` (SQLite) e
 | tabela | o que guarda |
 |---|---|
 | `ceme` | os comercializadores: nome, cor da marca, site |
+| `ceme_contact` | contactos internos de cada CEME. Sem seed: os dados ficam só na BD. A API não lê esta tabela e `/v1/cemes` só devolve `CEME_PUBLIC_COLS` (`http/api.js`) |
 | `tariff` | os tarifários: CEME, nome, fixo/indexado, tensão, ciclo, as etiquetas (verde, com condições, popular), as regiões onde é vendido e o URL onde o preço está publicado |
 | `tariff_version` | as versões de cada tarifário no tempo (vê abaixo), com os parâmetros dos indexados (K, CGS) |
 | `price_component` | os preços de cada versão, uma linha por período, para o Continente |

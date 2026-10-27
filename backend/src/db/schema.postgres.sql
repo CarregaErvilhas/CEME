@@ -14,6 +14,15 @@ CREATE TABLE IF NOT EXISTS ceme (
   created_at TIMESTAMP DEFAULT now(), updated_at TIMESTAMP
 );
 
+-- Contactos internos de cada CEME. Sem seed: os dados ficam só na BD.
+-- A API não lê esta tabela (ver CEME_PUBLIC_COLS em http/api.js).
+CREATE TABLE IF NOT EXISTS ceme_contact (
+  id SERIAL PRIMARY KEY,
+  ceme_id TEXT NOT NULL REFERENCES ceme(id),
+  name TEXT, role TEXT, email TEXT, phone TEXT, whatsapp TEXT, notes TEXT,
+  created_at TIMESTAMP DEFAULT now(), updated_at TIMESTAMP
+);
+
 -- Os tarifários de cada CEME.
 --   kind:     FIXED (preço fixo) ou INDEXED (segue o preço do OMIE);
 --   voltage:  BT (baixa tensão), MT (média tensão) ou BT_MT (os dois);

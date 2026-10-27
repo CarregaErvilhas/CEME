@@ -412,6 +412,27 @@ it('HTML também leva nosniff', async () => {
     });
   });
 
+  it('ceme_contact não sai na API e /v1/cemes só tem as colunas públicas', async () => {
+    const MARK = 'marcador-contacto-xyz@exemplo.pt';
+    const db = new DatabaseSync(path.join(dir, `ceme-${PORT}.db`));
+    db.prepare(`INSERT INTO ceme_contact (ceme_id, name, email, phone, whatsapp, notes)
+      VALUES ('acp', $s, $s, $s, $s, $s)`).run({ s: MARK });
+    db.close();
+    const auth = { Authorization: `Bearer ${token}` }; // o do 1.º teste: mais sessões batem no rate limit
+    const r = await fetch(`${BASE}/v1/cemes`, { headers: auth });
+    assert.equal(r.status, 200);
+    const body = await r.text();
+    assert.ok(!body.includes(MARK), 'ceme_contact apareceu em /v1/cemes');
+    const allowed = new Set(['id', 'name', 'brand_color', 'website', 'email', 'phone', 'whatsapp']);
+    for (const c of JSON.parse(body).data) {
+      for (const k of Object.keys(c)) assert.ok(allowed.has(k), `coluna não pública em /v1/cemes: ${k}`);
+    }
+    for (const p of ['/v1/tariffs']) {
+      const t = await fetch(`${BASE}${p}`, { headers: auth });
+      assert.ok(!(await t.text()).includes(MARK), `ceme_contact apareceu em ${p}`);
+    }
+  });
+
   it('401 sem auth', async () => {
     assert.equal((await fetch(`${BASE}/v1/cemes`)).status, 401);
   });
