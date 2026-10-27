@@ -74,6 +74,20 @@ async function serveHealth(req, res, url) {
   return false;
 }
 
+// O domínio antigo (beta) redirecciona para o de produção, no mesmo caminho.
+// 301 em GET/HEAD; 308 nos restantes métodos, para o cliente repetir o pedido
+// com o mesmo método e corpo (chamadas à API).
+const BETA_HOST = 'ceme-beta.ocarroeletrico.com';
+const PROD_HOST = 'ceme.ocarroeletrico.com';
+function redirectBeta(req, res) {
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  if (host !== BETA_HOST) return false;
+  const status = req.method === 'GET' || req.method === 'HEAD' ? 301 : 308;
+  res.writeHead(status, { location: `https://${PROD_HOST}${req.url}`, 'cache-control': 'public, max-age=3600', vary: 'Host' });
+  res.end();
+  return true;
+}
+
 // O router: health → site → API. Cada um responde e devolve true, ou deixa
 // passar para o seguinte. A API é a última e responde sempre.
 async function handle(req, res) {
@@ -81,6 +95,7 @@ async function handle(req, res) {
   try { url = new URL(req.url, 'http://x'); }
   catch { return fail(res, 400, 'bad_request', 'alvo do pedido inválido'); }
   if (await serveHealth(req, res, url)) return;
+  if (redirectBeta(req, res)) return;
   if (await servePage(req, res, url)) return;
   await serveApi(req, res, url);
 }

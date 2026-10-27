@@ -324,6 +324,14 @@ it('HTML também leva nosniff', async () => {
       req.on('error', reject);
       req.end();
     });
+    const localizacaoComHost = (caminho, host) => new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: PORT, path: caminho, method: 'GET', headers: { host } }, (res) => {
+        res.resume();
+        res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location }));
+      });
+      req.on('error', reject);
+      req.end();
+    });
 
     it('/omie serve a página das estatísticas', async () => {
       const { status, html } = await abrir('/omie');
@@ -345,9 +353,15 @@ it('HTML também leva nosniff', async () => {
     });
 
     it('a raiz do site principal continua a ser o assistente', async () => {
-      const { status, html } = await abrirComHost('/', 'ceme-beta.ocarroeletrico.com');
+      const { status, html } = await abrirComHost('/', 'ceme.ocarroeletrico.com');
       assert.equal(status, 200);
       assert.ok(!html.includes("CEME_STR('omie')"), 'o site principal não deve servir a página OMIE');
+    });
+
+    it('o domínio beta redirecciona para produção, no mesmo caminho', async () => {
+      const r = await localizacaoComHost('/simulador?x=1', 'ceme-beta.ocarroeletrico.com');
+      assert.equal(r.status, 301);
+      assert.equal(r.location, 'https://ceme.ocarroeletrico.com/simulador?x=1');
     });
 
     it('/v1/omie/stats exige auth', async () => {
