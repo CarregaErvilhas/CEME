@@ -2,7 +2,8 @@
 //
 // O resto do código só chama query/get/run/close (todas assíncronas) e não
 // sabe que BD está por trás:
-//   - com a variável de ambiente DATABASE_URL, liga ao PostgreSQL (produção),
+//   - com DATABASE_APP_URL ou DATABASE_URL (db/url.js), liga ao PostgreSQL
+//     (produção),
 //     através de db/pg.js, que é o único sítio onde existe o pool de ligações;
 //   - sem ela, usa um ficheiro SQLite local (node:sqlite), para dev e testes.
 //
@@ -15,11 +16,14 @@
 // também usam directamente com BDs em memória.
 
 import { sqliteApi } from './db/sqlite.js';
+import { runtimeUrl } from './db/url.js';
+
+const DATABASE_URL = runtimeUrl(process.env);
 
 let impl;
 let dbInstance = null; // só em SQLite: alguns testes mexem directamente na BD
 
-if (process.env.DATABASE_URL) {
+if (DATABASE_URL) {
   const pg = await import('./db/pg.js');
   impl = { query: pg.query, get: pg.get, run: pg.run, exec: (sql) => pg.run(sql), close: pg.close };
 } else {
@@ -47,7 +51,7 @@ const guardedRun = READONLY ? refuse : impl.run;
 const guardedExec = READONLY ? refuse : impl.exec;
 
 // true quando estás ligado ao PostgreSQL (há DATABASE_URL).
-export const USE_PG = !!process.env.DATABASE_URL;
+export const USE_PG = !!DATABASE_URL;
 
 // Quantas linhas um `run()` mudou. O SQLite chama-lhe `changes` e o pg
 // `rowCount`; isto dá-te o número nos dois casos.

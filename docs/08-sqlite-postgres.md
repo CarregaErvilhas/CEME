@@ -11,7 +11,8 @@ O mesmo código corre contra duas bases de dados:
 ## Quem escolhe
 
 O **ambiente**, não o código. `backend/src/db.js` usa o PostgreSQL quando
-existe a variável `DATABASE_URL`, e o `node:sqlite` (ficheiro `DB_PATH`, por
+existe a variável `DATABASE_APP_URL` ou `DATABASE_URL` (a primeira ganha;
+`db/url.js`), e o `node:sqlite` (ficheiro `DB_PATH`, por
 omissão `backend/data/ceme.db`) quando não existe. O resto do código só vê
 `query` / `get` / `run` / `exec` (assíncronas) e escreve SQL num dialecto
 comum.
@@ -64,6 +65,13 @@ Por isso o arranque (`boot.js`) faz, por esta ordem:
    nova do schema está na lista da migração»), que procura as colunas pelo
    nome e não descobre sozinho uma coluna nova.
 
+Em produção os passos 1 e 2 não correm no processo da API: a role do
+runtime não faz DDL. Correm em `db/migrate-cli.js`, com a role dona, e o
+arranque só verifica que estão feitos (`CEME_SCHEMA_EXTERNAL=1`; vê
+`infra.md`, «Privilégios da base de dados»). A regra para ti é a mesma: um
+`ALTER TABLE` só pode estar em `migrate.js`, e uma tabela nova tem de entrar
+em `db/grants.postgres.sql`.
+
 Se te esqueceres do passo 2, o deploy falha: o seed tenta escrever numa
 coluna que não existe na BD de produção, o serviço não arranca e o site dá
 502.
@@ -74,13 +82,17 @@ preenche depois o que souber. No Postgres, as colunas lêem-se com
 normais usam.
 
 O `migrate.test.js` cobre tudo isto em SQLite. Os caminhos só do Postgres
-não têm teste ([06](06-roadmap.md)).
+não têm teste ([06](06-roadmap.md)); os scripts de privilégios têm só testes
+estáticos (`grants.test.js`), porque não há servidor nos testes.
 
 ## Variáveis de ambiente
 
 | variável | o que é | onde se define |
 |---|---|---|
-| `DATABASE_URL` | liga ao PostgreSQL | `zerops.yml` (`${db_connectionString}`, do serviço `db`) |
+| `DATABASE_URL` | liga ao PostgreSQL (utilizador principal do `db`) | `zerops.yml` (`${db_connectionString}`, do serviço `db`) |
+| `DATABASE_APP_URL` | liga à role `ceme_app`, só com DML; ganha à `DATABASE_URL` | variável secreta do serviço `api` |
+| `DATABASE_MIGRATE_URL` | role dona, só para o `migrate-cli` (DDL) | `zerops.yml` (`${db_connectionString}`) |
+| `CEME_SCHEMA_EXTERNAL` | `1` = o arranque não faz DDL, só verifica | `zerops.yml` |
 | `DB_PATH` | ficheiro SQLite (só sem `DATABASE_URL`) | local |
 | `JWT_SECRET` | assina as sessões ([04](04-api-auth.md)) | variável secreta do serviço `api` |
 | `NODE_ENV` | `production` faz o servidor recusar o segredo de dev | `zerops.yml` |

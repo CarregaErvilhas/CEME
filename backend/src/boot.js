@@ -4,7 +4,8 @@
 // A ordem importa:
 //   1. o schema do dialecto em uso (seguro de repetir);
 //   2. colunas novas em tabelas que já existiam (antes do seed, que as usa;
-//      vê db/migrate.js);
+//      vê db/migrate.js). Com CEME_SCHEMA_EXTERNAL=1, 1 e 2 não correm aqui:
+//      só se confirma que estão feitos;
 //   3. a chave da API de terceiros (CEME_API_KEY);
 //   4. a TAR (db/tar.js);
 //   5. o seed (CEMEs, tarifários, preços);
@@ -16,14 +17,18 @@
 //                    Para ligares a uma BD que não é tua.
 //   CEME_SKIP_SEED=1 corre tudo menos o seed, para não pisar dados copiados
 //                    de outro ambiente.
-import { readFile } from 'node:fs/promises';
-import { query, run, exec, READONLY, USE_PG } from './db.js';
+import { query, run, READONLY, USE_PG } from './db.js';
 import { hashKey } from './auth/tokens.js';
 import { RATE_DEFAULT } from './http/ratelimit.js';
 import { rebuildDerived } from './omie/pipeline.js';
-import { migrateAddedColumns } from './db/migrate.js';
+import { applySchema, schemaProblems } from './db/migrate.js';
 import { syncTar } from './db/tar.js';
 import { seed } from './db/seed.js';
+
+// CEME_SCHEMA_EXTERNAL=1: o schema e as migrações correm fora do processo, com
+// outra role (db/migrate-cli.js); o arranque só confirma que estão feitos e
+// fala com a BD sem DDL. Vê infra.md, «Privilégios da base de dados».
+const SCHEMA_EXTERNAL = process.env.CEME_SCHEMA_EXTERNAL === '1';
 
 const log = (...a) => console.warn('[ceme-v2]', ...a);
 
@@ -32,9 +37,16 @@ export async function boot() {
   if (READONLY) log('modo READONLY: bootstrap de escrita desactivado.');
 
   if (!READONLY) {
-    const schemaFile = new URL(USE_PG ? './db/schema.postgres.sql' : './db/schema.sql', import.meta.url);
-    await exec(await readFile(schemaFile, 'utf8'));
-    for (const n of await migrateAddedColumns()) log(`migração: ${n}`);
+    if (SCHEMA_EXTERNAL) {
+      // Sem URL cairia num SQLite vazio e "passava" a verificação à mesma.
+      if (!USE_PG) throw new Error('CEME_SCHEMA_EXTERNAL=1 pede PostgreSQL (DATABASE_APP_URL/DATABASE_URL em falta)');
+      const em_falta = await schemaProblems();
+      if (em_falta.length) {
+        throw new Error(`schema em falta (${em_falta.join(', ')}): corre db/migrate-cli.js com a role dona (infra.md)`);
+      }
+    } else {
+      for (const n of await applySchema()) log(`migração: ${n}`);
+    }
     await syncEnvApiKey();
     await syncTar();
   }
