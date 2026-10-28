@@ -46,6 +46,11 @@ sobrevive aos reinícios, o arranque sincroniza nos dois sentidos:
   variável invalida a chave antiga;
 - **sem** `CEME_API_KEY`: revoga a chave que estiver na BD.
 
+`CEME_API_KEY_RATE_LIMIT` (pedidos por minuto, inteiro positivo) define o
+limite dessa chave a cada arranque. Sem ela, ou com um valor inválido (fica
+um aviso no log), o limite volta aos 60. Testado em `server.test.js`
+(«CEME_API_KEY_RATE_LIMIT»).
+
 Para revogar, tiras (ou trocas) a variável e reinicias. Testado em
 `server.test.js` («CEME_API_KEY — tirar a env revoga a chave»). Em modo
 `CEME_READONLY` isto não corre.
@@ -79,7 +84,8 @@ servidor.
 - `POST /v1/session`: por IP, à parte, 10 por minuto (é a única rota sem
   auth, por isso tem um limite mais apertado).
 - API key: pela chave (os primeiros 8 caracteres), 60 por minuto ou o
-  `api_client.rate_limit` da BD.
+  `api_client.rate_limit` da BD. Para a chave da env, quem manda nesse
+  valor é `CEME_API_KEY_RATE_LIMIT` (vê abaixo).
 
 Ao passar o limite recebes **429**, com os cabeçalhos
 `x-ratelimit-limit/remaining/reset` e `retry-after`. O mapa de contadores

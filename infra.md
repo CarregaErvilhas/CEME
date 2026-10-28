@@ -404,7 +404,8 @@ chegava ao Zerops e ia para produção.
 
 **Nenhum segredo do Zerops no GitHub.** O `JWT_SECRET` e o `CEME_API_KEY`
 (opcional; tirá-lo revoga a chave, `docs/04-api-auth.md`) são variáveis
-secretas do serviço `api` no Zerops. O DNS é configurado à mão na
+secretas do serviço `api` no Zerops. O `CEME_API_KEY_RATE_LIMIT` (pedidos por
+minuto dessa chave) não é segredo: pode ser uma variável normal. O DNS é configurado à mão na
 Cloudflare (o IPv6 do Zerops não muda).
 
 ### 4.5 Previews por PR
