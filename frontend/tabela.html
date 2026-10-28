@@ -123,6 +123,7 @@
     <th>${t('thOp')}</th><th>${t('thCycle')}</th>
     <th class="num">${t('thCheias')}</th><th class="num">${t('thVazio')}</th>
     <th class="num">${t('thAct')}</th>
+    <th>${t('thPop')}</th><th>${t('thBundle')}</th>
   </tr></thead>`;
     }
 
@@ -157,6 +158,7 @@
         else if (r.schedule === 'SIMPLES') cells.push(`<td colspan="2" class="num">${fmt('UNICO')}</td>`);
         else cells.push(`<td class="num">${fmt('FORA_VAZIO')}</td><td class="num">${fmt('VAZIO')}</td>`);
         cells.push(`<td class="num">${r.activation ? nf(r.activation) : '—'}</td>`);
+        cells.push(`<td>${r.popular ? t('yes') : t('no')}</td><td>${r.bundle ? t('yes') : t('no')}</td>`);
         return `<tr${region ? ' class="ilha"' : ''}>${cells.join('')}</tr>`;
       };
       const body = rows.map(r => rowHtml(r, null) +
