@@ -54,12 +54,19 @@ zerops:
       prepareCommands:
         - sudo addgroup -S cocofree
         - sudo adduser -S -D -H -s /sbin/nologin -G cocofree cocofree
+      # Schema, migrações e privilégios da role do runtime, com a role dona
+      # (DATABASE_MIGRATE_URL), antes de a API arrancar. Caminho absoluto: não
+      # depende de haver shell nem de um directório de trabalho. Se falhar, o
+      # readiness chumba e a versão anterior continua a servir.
+      initCommands:
+        - node /var/www/backend/src/db/migrate-cli.js
       # `run.start` corre sem shell, por isso `cd backend && …` não funciona.
       # A pasta vai em `workingDir`. `node` directo em vez de `npm start`:
       # menos um processo, e o npm queria escrever logs numa casa que o
       # `cocofree` não tem.
       startCommands:
-        - command: node src/server.js
+        # `env -u`: a role dona não chega ao ambiente do processo da API.
+        - command: env -u DATABASE_MIGRATE_URL node src/server.js
           name: api
           workingDir: /var/www/backend
           user: cocofree
@@ -89,6 +96,11 @@ zerops:
         # Referência às variáveis de sistema do serviço managed `db` — o pg
         # gera connectionString, hostname, user, password e port
         # automaticamente (ref: docs.zerops.io/features/env-variables).
-        DATABASE_URL: ${db_connectionString}
+        # Só o migrate-cli usa esta (DDL, role dona). O runtime da API liga
+        # com a DATABASE_APP_URL, variável secreta do serviço (role ceme_app,
+        # só DML). Vê infra.md, «Privilégios da base de dados».
+        DATABASE_MIGRATE_URL: ${db_connectionString}
+        # O arranque não faz DDL: só verifica o schema.
+        CEME_SCHEMA_EXTERNAL: 1
         # Cache dos CSV do TF: o `ceme` não pode escrever em /var/www.
         CEME_CACHE_DIR: /tmp/ceme-cache

@@ -283,7 +283,7 @@ Cada passo seguinte é seguro de interromper. Variáveis secretas ficam como
    ```yaml
        run:
          initCommands:
-           - cd /var/www/backend && node src/db/migrate-cli.js
+           - node /var/www/backend/src/db/migrate-cli.js
          startCommands:
            - command: env -u DATABASE_MIGRATE_URL node src/server.js
              # (o resto igual: name, workingDir, user)
