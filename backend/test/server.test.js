@@ -583,6 +583,32 @@ describe('servidor: CEME_API_KEY — tirar a env revoga a chave', () => {
   });
 });
 
+// CEME_API_KEY_RATE_LIMIT manda no limite da chave da env, nos dois sentidos:
+// pô-la sobe (ou desce) o limite, tirá-la volta ao RATE_DEFAULT.
+describe('servidor: CEME_API_KEY_RATE_LIMIT', () => {
+  const P = PORT + 3, URL_ = `http://127.0.0.1:${P}`;
+  const KEY = 'test-key-ratelimit-0123456789';
+  const stop = (p) => new Promise(r => { p.once('exit', r); p.kill('SIGTERM'); });
+  const limitOf = () => fetch(`${URL_}/v1/health`, { headers: { 'X-API-Key': KEY } })
+    .then(r => ({ status: r.status, limit: r.headers.get('x-ratelimit-limit') }));
+
+  it('com a env: o limite da chave é o da env; sem ela: volta ao de omissão', async () => {
+    const { CEME_API_KEY, CEME_API_KEY_RATE_LIMIT, ...base } = process.env;
+    void CEME_API_KEY; void CEME_API_KEY_RATE_LIMIT;
+    let p = spawnServer({ ...base, CEME_API_KEY: KEY, CEME_API_KEY_RATE_LIMIT: '2' }, P);
+    await waitUp(`${URL_}/`);
+    assert.deepEqual(await limitOf(), { status: 200, limit: '2' });
+    assert.equal((await limitOf()).status, 200);
+    assert.equal((await limitOf()).status, 429, 'o terceiro pedido no mesmo minuto passa o limite');
+    await stop(p);
+
+    p = spawnServer({ ...base, CEME_API_KEY: KEY }, P);
+    await waitUp(`${URL_}/`);
+    assert.deepEqual(await limitOf(), { status: 200, limit: '60' });
+    await stop(p);
+  });
+});
+
 // No comparador, indexado DIÁRIO (ynerluz) vs fixo SEMANAL (miio)
 // não partilham fronteiras. Sábado 24/10/2026 (ainda hora de Verão): o
 // indexado passa a fora-de-vazio às 08:00, o fixo semanal só às 09:00.

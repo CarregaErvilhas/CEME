@@ -19,6 +19,7 @@
 import { readFile } from 'node:fs/promises';
 import { query, run, exec, READONLY, USE_PG } from './db.js';
 import { hashKey } from './auth/tokens.js';
+import { RATE_DEFAULT } from './http/ratelimit.js';
 import { rebuildDerived } from './omie/pipeline.js';
 import { migrateAddedColumns } from './db/migrate.js';
 import { syncTar } from './db/tar.js';
@@ -55,14 +56,23 @@ export async function boot() {
 //   - definida: grava o hash e reactiva a chave (trocar o valor invalida a
 //     antiga);
 //   - ausente: revoga a chave que estiver na BD.
+// CEME_API_KEY_RATE_LIMIT (pedidos por minuto) manda no limite dessa chave;
+// sem ela, fica o RATE_DEFAULT.
 async function syncEnvApiKey() {
   const key = process.env.CEME_API_KEY;
   if (!key) {
     await run(`UPDATE api_key SET revoked_at = CURRENT_TIMESTAMP WHERE id = 'env-key' AND revoked_at IS NULL`);
     return;
   }
-  await run(`INSERT INTO api_client (id, name, kind) VALUES ('env-key', 'chave da env', 'THIRD_PARTY')
-    ON CONFLICT (id) DO NOTHING`);
+  const raw = process.env.CEME_API_KEY_RATE_LIMIT;
+  let limit = RATE_DEFAULT;
+  if (raw != null && raw !== '') {
+    const n = Number(raw);
+    if (Number.isInteger(n) && n > 0) limit = n;
+    else log(`CEME_API_KEY_RATE_LIMIT inválido (${raw}); a usar ${RATE_DEFAULT}/min`);
+  }
+  await run(`INSERT INTO api_client (id, name, kind, rate_limit) VALUES ('env-key', 'chave da env', 'THIRD_PARTY', $1)
+    ON CONFLICT (id) DO UPDATE SET rate_limit = $1`, [limit]);
   await run(`INSERT INTO api_key (id, client_id, hash, prefix) VALUES ('env-key', 'env-key', $1, $2)
     ON CONFLICT (id) DO UPDATE SET hash = $1, prefix = $2, revoked_at = NULL`,
     [hashKey(key), key.slice(0, 8)]);
