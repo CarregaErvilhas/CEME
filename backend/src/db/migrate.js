@@ -9,9 +9,8 @@
 // dialectos (SQLite e Postgres), e acrescenta as colunas de ADDED_COLUMNS
 // que faltem. Sem isto, o seed escrevia numa coluna que não existe e o
 // arranque falhava.
-import { query, run } from '../db.js';
-
-const USE_PG = !!process.env.DATABASE_URL;
+import { readFile } from 'node:fs/promises';
+import { query, run, exec, USE_PG } from '../db.js';
 
 // Os nomes das colunas de uma tabela (lista vazia se a tabela não existir).
 //
@@ -69,4 +68,32 @@ export async function migrateAddedColumns() {
     notes.push(`${table}.${column} acrescentada`);
   }
   return notes;
+}
+
+// O ficheiro de schema do dialecto em uso.
+const schemaUrl = () => new URL(USE_PG ? './schema.postgres.sql' : './schema.sql', import.meta.url);
+
+// O schema inteiro: `CREATE TABLE IF NOT EXISTS` e depois as colunas novas.
+// Precisa de DDL, por isso em produção corre com a role dona
+// (db/migrate-cli.js), não com a do runtime. Devolve as notas da migração.
+export async function applySchema() {
+  await exec(await readFile(schemaUrl(), 'utf8'));
+  return migrateAddedColumns();
+}
+
+// Com o schema tratado fora do processo (CEME_SCHEMA_EXTERNAL=1), o arranque
+// só confirma que ele lá está: cada tabela do schema e cada coluna de
+// ADDED_COLUMNS. Devolve o que falta (lista vazia = tudo bem), para falhar
+// já com uma mensagem clara em vez de um erro obscuro a meio do seed.
+export async function schemaProblems() {
+  const sql = await readFile(schemaUrl(), 'utf8');
+  const problems = [];
+  for (const [, table] of sql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)) {
+    if (!(await tableExists(table))) problems.push(`tabela ${table}`);
+  }
+  for (const [table, column] of ADDED_COLUMNS) {
+    if (!(await tableExists(table))) continue;
+    if (!(await columns(table)).includes(column)) problems.push(`coluna ${table}.${column}`);
+  }
+  return problems;
 }

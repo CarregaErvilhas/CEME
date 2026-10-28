@@ -1,10 +1,11 @@
-// Ligação ao PostgreSQL (biblioteca `pg`), usada só quando há DATABASE_URL.
+// Ligação ao PostgreSQL (biblioteca `pg`), usada só quando há uma URL (db/url.js).
 //
 // É o único sítio do processo com um pool de ligações (só o db.js importa
 // daqui). O pool só nasce na primeira query: importar este ficheiro (os
 // testes fazem-no, em SQLite) não abre ligação nenhuma.
 // Os parâmetros escrevem-se $1, $2…
 import { Pool, types } from 'pg';
+import { runtimeUrl } from './url.js';
 
 // Conversões de tipos, para o Postgres devolver o mesmo que o SQLite:
 //   - DATE e TIMESTAMP (datas de calendário, como o início de validade de um
@@ -29,7 +30,7 @@ let pool = null;
 const getPool = () => {
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: runtimeUrl(process.env),
       // Até 10 ligações por instância da api.
       max: 10,
       idleTimeoutMillis: 30000,

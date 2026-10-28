@@ -173,9 +173,8 @@ O que o `cocofree` pode e não pode:
 O que isto **não** resolve: a `DATABASE_URL` e o `JWT_SECRET` estão no
 ambiente do processo, por isso quem executar código na app lê-os e fala com
 a BD. O que se ganha é não poder alterar o código nem a imagem, não poder
-instalar nada e não escalar para root. Para limitar o estrago da BD, o
-passo seguinte é um utilizador Postgres só com os privilégios de que a app
-precisa.
+instalar nada e não escalar para root. O estrago na BD limita-se com uma
+role só com os privilégios de que a app precisa (secção seguinte).
 
 Depois de um deploy que mexa nisto, confirma na consola do Zerops (terminal
 do container):
@@ -184,6 +183,136 @@ do container):
 ps -o user,pid,args -C node   # user = cocofree
 curl -s localhost:3001/readyz # 200
 ```
+
+### Privilégios da base de dados
+
+O `api` liga à BD com a `ceme_app`, uma role **só com DML**, e não com o
+utilizador principal do serviço `db`. O DDL (criar tabelas, acrescentar
+colunas) corre à parte, com a role dona, antes de o processo da API arrancar.
+
+| quem | role | ligação | o que faz |
+|---|---|---|---|
+| `db/migrate-cli.js` (`initCommands`) | dona (utilizador principal do `db`) | `DATABASE_MIGRATE_URL` | schema, `ALTER TABLE`, aplica `db/grants.postgres.sql` |
+| `server.js` (o processo `cocofree`) | `ceme_app` | `DATABASE_APP_URL` | seed, TAR, OMIE, chave da API, leituras |
+
+O que a `ceme_app` pode (`db/grants.postgres.sql`, que corre a cada deploy):
+
+- `SELECT`, `INSERT` e `UPDATE` nas tabelas que a app usa (todas fazem
+  upsert); `DELETE` só em `omie_meta` (o lock do OMIE);
+- `USAGE` no sequence de `tariff_version`;
+- nenhum acesso a `ceme_contact` (contactos internos), `suggestion` e
+  `audit_log`, que a API não usa;
+- sem `CREATE` no schema, sem `TRUNCATE`/`REFERENCES`/`TRIGGER`, sem
+  `SUPERUSER`/`CREATEDB`/`CREATEROLE`.
+
+Uma tabela nova nos schemas tem de entrar em `grants.postgres.sql` (ou na
+lista «sem acesso» de `test/grants.test.js`): o teste falha se ficar de fora.
+
+**O que isto fecha.** Uma injecção de SQL, ou código da app com a ligação
+aberta, deixa de poder apagar ou alterar tabelas (`DROP`, `TRUNCATE`,
+`ALTER`), ler os contactos internos, criar roles ou ler ficheiros do servidor.
+Só consegue o que a app já faz: ler e escrever nas tabelas dela.
+
+**O que não fecha.** Quem consegue **executar código** na app continua a
+poder ler e reescrever os dados de produção (tarifários, preços, chaves da
+API, `omie_meta`) com a `ceme_app`. Para a role dona o ganho depende de ela
+nunca chegar ao processo: o `DATABASE_MIGRATE_URL` só existe nos
+`initCommands`, e o arranque da API corre com `env -u DATABASE_MIGRATE_URL`,
+por isso não está nem no ambiente do `cocofree` nem em `/proc/self/environ`.
+Não impede, tão-pouco, o abuso de uma credencial da `ceme_app` que vaze por
+outro lado (logs, backups); limita-o ao mesmo que a app faz.
+
+Com `CEME_SCHEMA_EXTERNAL=1` o `boot.js` não faz DDL: só confirma que as
+tabelas e as colunas de `ADDED_COLUMNS` existem e recusa-se a arrancar se
+faltar alguma (com `migrate-cli` não corrido, o deploy falha no readiness e a
+versão anterior continua a servir). Sem a variável (dev, testes, SQLite) o
+arranque faz tudo, como dantes.
+
+#### Activar em produção (uma vez, à mão)
+
+Nada disto está feito só por fazer merge da PR: sem as variáveis novas, o
+`api` continua a ligar com `DATABASE_URL`, como antes.
+
+Cada passo seguinte é seguro de interromper. Variáveis secretas ficam como
+**Secret** na consola do Zerops; nunca as imprimas nem as cole em chats.
+
+1. **Criar a role** (no teu computador, com acesso à rede privada, por
+   exemplo `zcli vpn up`; troca o host `db` do URL pelo que a VPN resolver).
+   Copia o `connectionString` do serviço `db` da consola do Zerops:
+
+   ```bash
+   read -rs MAIN_URL            # cola o connectionString e Enter (não aparece)
+   APP_PW=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 40)
+   psql "$MAIN_URL" -Atc "SHOW log_statement"   # tem de ser none ou ddl sem passwords; ver nota
+   psql "$MAIN_URL" -v ON_ERROR_STOP=1 -v app_pw="$APP_PW" -f backend/src/db/role.postgres.sql
+   ```
+
+   Se o `CREATE ROLE` der `permission denied`, o utilizador principal não
+   tem `CREATEROLE`: repete com o `superUser` do serviço `db` (variáveis do
+   serviço na consola). Nota: com `log_statement = ddl` ou `all`, o Postgres
+   regista a palavra-passe em claro no log do `db`; se for o caso, roda-a
+   depois com `\password ceme_app` no `psql`.
+
+2. **Dar os privilégios** (idempotente; corre também em cada deploy):
+
+   ```bash
+   cd backend && DATABASE_URL="$MAIN_URL" node src/db/migrate-cli.js
+   ```
+
+   Tem de acabar com `privilégios de ceme_app aplicados`.
+
+3. **Testar a role antes de a ligar à app:**
+
+   ```bash
+   APP_URL=$(printf %s "$MAIN_URL" | sed -E "s#^(postgres(ql)?://)[^@]*@#\1ceme_app:${APP_PW}@#")
+   psql "$APP_URL" -Atc "SELECT count(*) FROM tariff"            # funciona
+   psql "$APP_URL" -Atc "CREATE TABLE _x(i int)"                 # permission denied
+   psql "$APP_URL" -Atc "SELECT count(*) FROM ceme_contact"      # permission denied
+   ```
+
+4. **Variável no serviço `api`** (consola → `api` → variáveis de ambiente
+   → Secret): `DATABASE_APP_URL` com o valor de `$APP_URL`.
+
+   ```bash
+   printf %s "$APP_URL" | pbcopy   # cola na consola e depois: pbcopy </dev/null
+   unset MAIN_URL APP_PW APP_URL
+   ```
+
+5. **Mudar o `zerops.yml`** (commit em `main`, o webhook faz o deploy):
+
+   ```yaml
+       run:
+         initCommands:
+           - cd /var/www/backend && node src/db/migrate-cli.js
+         startCommands:
+           - command: env -u DATABASE_MIGRATE_URL node src/server.js
+             # (o resto igual: name, workingDir, user)
+         envVariables:
+           CEME_SCHEMA_EXTERNAL: 1
+           DATABASE_MIGRATE_URL: ${db_connectionString}
+           # remover a linha DATABASE_URL: ${db_connectionString}
+   ```
+
+   O deploy é rolling: se a `ceme_app` ou o `initCommands` falharem, o
+   readiness chumba, a versão nova é apagada e a anterior continua a servir.
+
+6. **Verificar**, na consola do container do `api`:
+
+   ```bash
+   curl -s localhost:3001/readyz                  # 200, db: ok
+   ps -o user,pid,args -C node                    # user = cocofree
+   tr '\0' '\n' < /proc/$(pgrep -n node)/environ | cut -d= -f1 | grep -c DATABASE_MIGRATE_URL   # 0
+   ```
+
+   E no `psql` com a role dona: `SELECT usename, count(*) FROM
+   pg_stat_activity GROUP BY 1;` deve mostrar ligações da `ceme_app`.
+
+7. **Reverter**: repõe no `zerops.yml` a linha `DATABASE_URL:
+   ${db_connectionString}` e tira o `CEME_SCHEMA_EXTERNAL`, o
+   `initCommands` e o `env -u` (commit em `main`). A variável
+   `DATABASE_APP_URL` tem de sair, porque tem prioridade sobre a
+   `DATABASE_URL`. Para apagar a role: `REASSIGN OWNED BY ceme_app TO
+   <dono>; DROP OWNED BY ceme_app; DROP ROLE ceme_app;`.
 
 ### Colunas novas e o schema
 
