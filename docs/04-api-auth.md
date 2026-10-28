@@ -174,6 +174,33 @@ Notas:
 - Sem `useSpot`, com `omieCycles`, cada indexado usa o par vazio/fora **do
   seu ciclo**; sem `omieCycles`, `omieVazio`/`omieFora` valem para todos;
   sem nenhum, o `omie` único.
+- `profile` (opcional): o carregamento partido em fatias no tempo, para
+  quem sabe quanto tempo ele demora (um carregamento lento atravessa o
+  início do vazio, vários quartos de hora OMIE, a meia-noite ou a mudança
+  da hora):
+
+  ```json
+  { "region": "CONT", "useSpot": true, "detail": true,
+    "profile": [ { "at": "2026-10-21T20:30:00Z", "kwh": 9.6 },
+                 { "at": "2026-10-21T20:45:00Z", "kwh": 9.6 }, ... ] }
+  ```
+
+  Cada fatia é cotada no **seu** instante: período vazio/fora, OMIE do seu
+  quarto de hora (com `useSpot`), perdas desse quarto e TAR do seu dia. A
+  activação, o apoio e o IVA contam uma vez. Quando há `profile`, ele manda:
+  `kwh` é a soma das fatias e `at` a primeira. Parte o carregamento nas
+  fronteiras dos quartos de hora (:00, :15, :30, :45 UTC), porque uma
+  fatia que atravesse uma fronteira é cotada toda no início. Até 400
+  fatias, por ordem de tempo, `kwh` ≥ 0 em cada uma e a soma entre 0 e
+  1000; senão `400 bad_profile`.
+
+  A resposta traz `profile` (`{ slices, from, to, withSpot }`, quantas
+  fatias tiveram OMIE do quarto) e, em cada tarifário com mais de uma
+  fatia, `kwhByPeriod`. `period`, `prices` e `omieRef` continuam a ser os
+  do início. Com `detail: true`, cada tarifário traz também `slices`: o
+  instante, os kWh, o período e o preço final (sem IVA) de cada fatia, e,
+  nos indexados, o OMIE usado e se era do quarto (`omieSpot`). Sem
+  `detail`, as fatias não vêm (são N fatias × cada tarifário).
 - As **datas devolvidas são UTC** (`toISOString()`), seja qual for a região.
   Passar para a hora local é com o cliente. As datas que **envias** em `at`
   seguem o offset que escreveres.

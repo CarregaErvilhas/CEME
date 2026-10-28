@@ -245,8 +245,15 @@ function parseSimulate(body) {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     return { ok: false, code: 'bad_request', message: 'corpo deve ser um objecto JSON' };
   }
-  const { kwh = 40, at, region = 'CONT', omie = 0.20, omieVazio, omieFora, omieCycles, useSpot } = parsed;
+  const { region = 'CONT', omie = 0.20, omieVazio, omieFora, omieCycles, useSpot, detail } = parsed;
+  let { kwh = 40, at } = parsed;
   if (!REGIONS[region]) return { ok: false, code: 'bad_region', message: 'region ∈ CONT|MAD|AZO' };
+  // `profile` (opcional): o carregamento partido em fatias, [{ at, kwh }] por
+  // ordem de tempo. Quando vem, manda: kwh é a soma e at a primeira fatia.
+  const prof = parseProfile(parsed.profile);
+  if (prof && !prof.ok) return prof;
+  const profile = prof ? prof.value : null;
+  if (profile) { kwh = profile.reduce((a, p) => a + p.kwh, 0); at = profile[0].at; }
   if (typeof kwh !== 'number' || !Number.isFinite(kwh) || kwh <= 0 || kwh > 1000) {
     return { ok: false, code: 'bad_kwh', message: 'kwh deve ser um número maior que 0 e até 1000' };
   }
@@ -268,13 +275,41 @@ function parseSimulate(body) {
       return { ok: false, code: 'bad_omie', message: `${nome} deve ser um número (€/kWh) positivo` };
     }
   }
-  return { ok: true, value: { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot: useSpot === true } };
+  return { ok: true, value: { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot: useSpot === true, profile, detail: detail === true } };
+}
+
+// Valida o `profile` do /v1/simulate. Cada fatia é cotada no seu instante
+// `at` (período, quarto de hora OMIE, TAR do dia), por isso quem chama deve
+// partir o carregamento nas fronteiras dos quartos de hora (:00, :15, :30,
+// :45 UTC): uma fatia que atravesse uma fronteira é cotada toda no início.
+const MAX_SLICES = 400; // 100 horas em quartos de hora
+function parseProfile(profile) {
+  if (profile == null) return null;
+  const bad = (message) => ({ ok: false, code: 'bad_profile', message });
+  if (!Array.isArray(profile) || !profile.length || profile.length > MAX_SLICES) return bad(`profile deve ter 1 a ${MAX_SLICES} fatias { at, kwh }`);
+  const out = [];
+  for (const [i, p] of profile.entries()) {
+    if (typeof p !== 'object' || p === null) return bad(`profile[${i}] deve ser { at, kwh }`);
+    const d = new Date(p.at);
+    if (p.at == null || Number.isNaN(d.getTime())) return bad(`profile[${i}].at deve ser uma data ISO válida`);
+    if (typeof p.kwh !== 'number' || !Number.isFinite(p.kwh) || p.kwh < 0) return bad(`profile[${i}].kwh deve ser um número ≥ 0`);
+    if (out.length && d <= out.at(-1).at) return bad('as fatias do profile devem vir por ordem de tempo, sem repetir instantes');
+    out.push({ at: d, kwh: p.kwh });
+  }
+  const total = out.reduce((a, p) => a + p.kwh, 0);
+  if (!(total > 0) || total > 1000) return bad('a soma dos kwh do profile deve ser maior que 0 e até 1000');
+  return { ok: true, value: out };
 }
 
 // O OMIE do quarto de hora que contém `now`, ou null se não houver.
-async function spotAt(now) {
+//   days: Map opcional dia → Promise(getQuarters), para um profile não ler
+//   o mesmo dia uma vez por fatia.
+async function spotAt(now, days) {
   try {
-    const qs = await getQuarters(civilDay(now));
+    const day = civilDay(now);
+    let qp = days?.get(day);
+    if (!qp) { qp = getQuarters(day); days?.set(day, qp); }
+    const qs = await qp;
     const r = qs.rows.find(x => { const t0 = Date.parse(x.utc); return t0 <= now.getTime() && now.getTime() < t0 + 15 * 60000; });
     if (r && Number.isFinite(r.pt)) return { omieKwh: r.pt / 1000, utc: r.utc };
   } catch (e) { console.warn('[ceme-v2] simulate: sem OMIE do quarto, a usar médias:', e.message); }
@@ -288,20 +323,27 @@ async function simulate({ req, res, headers }) {
   if (body == null) return fail(res, 413, 'payload_too_large', `corpo > ${MAX_BODY} bytes`, headers);
   const p = parseSimulate(body);
   if (!p.ok) return fail(res, 400, p.code, p.message, headers);
-  const { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot } = p.value;
+  const { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot, detail } = p.value;
+  let { profile } = p.value;
   try {
     // O dia do carregamento na região escolhe a versão e a TAR em vigor.
     const day = civilDay(now, REGIONS[region].tz);
     const list = await allTariffs(day);
     // useSpot: usa o OMIE do quarto de hora do carregamento nos indexados.
     // Se não houver, ficam as médias.
-    const spot = useSpot ? await spotAt(now) : null;
+    const days = new Map();
+    const spot = useSpot ? await spotAt(now, days) : null;
+    // Com profile, cada fatia leva o OMIE do seu quarto (ou null: médias).
+    if (profile && useSpot) profile = await Promise.all(profile.map(async x => ({ ...x, spot: await spotAt(x.at, days) })));
     // Cota cada tarifário. Se um falhar (dados errados, falta de TAR), fica
     // de fora com um aviso no log e os outros seguem ("quarentena").
     const pricing = await loadPricing(region);
     const results = list.map(t => {
       try {
-        return quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) } }, pricing);
+        const q = quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) }, profile }, pricing);
+        // O detalhe por fatia só vai se for pedido (são N fatias × cada tarifário).
+        if (!detail) delete q.slices;
+        return q;
       } catch (e) {
         console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
         return null;
@@ -309,7 +351,9 @@ async function simulate({ req, res, headers }) {
     });
     const data = results.filter(Boolean).sort((x, y) => x.totalEur - y.totalEur);
     const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
-    json(res, 200, { at: now.toISOString(), kwh, region, omieRef: spot ? spot.omieKwh : omie, omieSpot: spot ? { utc: spot.utc, eurKwh: spot.omieKwh } : null, avg: Math.round(avg * 100) / 100, data }, headers);
+    json(res, 200, { at: now.toISOString(), kwh, region, omieRef: spot ? spot.omieKwh : omie, omieSpot: spot ? { utc: spot.utc, eurKwh: spot.omieKwh } : null,
+      ...(profile && { profile: { slices: profile.length, from: profile[0].at.toISOString(), to: profile.at(-1).at.toISOString(), withSpot: profile.filter(x => x.spot).length } }),
+      avg: Math.round(avg * 100) / 100, data }, headers);
   } catch (e) { fail(res, 400, 'quote_failed', e.message, headers); }
 }
 
