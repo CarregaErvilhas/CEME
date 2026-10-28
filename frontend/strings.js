@@ -125,7 +125,7 @@
         breakdownNote: '* o período assinalado é o que se aplica a esta conta · fixos: preço final publicado pelo CEME (inclui a TAR, quando não a separamos) · indexados: calculado agora.',
         confirmSrc: 'Confirmar na página do CEME ↗',
         // períodos
-        pVazio: 'vazio', pFora: 'fora de vazio', pUnico: 'preço único',
+        pVazio: 'vazio', pFora: 'fora de vazio', pUnico: 'preço único', pVazioS: 'V', pForaS: 'F', pUnicoS: 'U', thCyc: 'Ciclo idx·fixo', thCycTip: 'V = vazio, F = fora de vazio, U = preço único',
         // favoritos
         fmTitle: '★ Gerir favoritos', fmPh: 'pesquisar tarifário ou CEME…',
         fmPop: 'só populares',
@@ -144,7 +144,7 @@
         legendFixed: 'fixo', legendWins: 'dias em que o indexado ganha',
         byTime: 'por hora', cheapestQ: 'mais baratos',
         eightCheap: '8 quartos mais baratos:', thTime: 'Hora', thOmie: 'OMIE €/MWh',
-        thIdx: 'Indexado €/kWh', thFix: 'Fixo €/kWh', thPerIdx: 'Período indexado', thPerFix: 'Período fixo', thWin: 'Melhor',
+        thIdx: 'Idx €/kWh', thFix: 'Fixo €/kWh', thWin: 'Melhor',
         winIdx: 'indexado', winFix: 'fixo', winEq: 'empate',
         vsFixed: 'Indexado mais barato em {w} dos {n} quartos',
         vsFixedNone: 'Em nenhum quarto o indexado bate o fixo',
@@ -224,7 +224,7 @@
         breakdownNote: '* the marked period is the one applied to this calculation · fixed tariffs: the final price published by the retailer (it includes TAR when we do not split it) · indexed tariffs are priced live.',
         confirmSrc: 'Check on the retailer’s own page ↗',
         // períodos
-        pVazio: 'off-peak', pFora: 'peak', pUnico: 'single rate',
+        pVazio: 'off-peak', pFora: 'peak', pUnico: 'single rate', pVazioS: 'O', pForaS: 'P', pUnicoS: 'S', thCyc: 'Cycle idx·fix', thCycTip: 'O = off-peak, P = peak, S = single rate',
         // favoritos
         fmTitle: '★ Saved tariffs', fmPh: 'search a tariff or retailer…',
         fmPop: 'popular only',
@@ -243,7 +243,7 @@
         legendFixed: 'fixed tariff', legendWins: 'days the indexed tariff was cheaper',
         byTime: 'by time', cheapestQ: 'cheapest first',
         eightCheap: 'The 8 cheapest quarter-hour slots:', thTime: 'Time', thOmie: 'OMIE €/MWh',
-        thIdx: 'Indexed €/kWh', thFix: 'Fixed €/kWh', thPerIdx: 'Indexed period', thPerFix: 'Fixed period', thWin: 'Better',
+        thIdx: 'Idx €/kWh', thFix: 'Fixed €/kWh', thWin: 'Better',
         winIdx: 'indexed', winFix: 'fixed', winEq: 'tie',
         vsFixed: 'Indexed is cheaper in {w} of the {n} quarter-hour slots',
         vsFixedNone: 'The indexed tariff is not cheaper in any slot',

@@ -190,7 +190,8 @@
   table.q tr.win-fix td.w{color:#71717a;font-weight:700}
   table.q tr.win-idx.cheap td:first-child,table.q tr.win-fix.cheap td:first-child{box-shadow:inset 3px 0 0 #d97706}
   table.q{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
-  table.q td,table.q th{border-bottom:1px solid var(--line);padding:6px 5px;text-align:right}
+  table.q td,table.q th{border-bottom:1px solid var(--line);padding:6px 4px;text-align:right}
+  @media (max-width:520px){table.q{font-size:12px}table.q th{font-size:10px;letter-spacing:0}table.q td,table.q th{padding:5px 3px}table.q td.w{font-size:10px;letter-spacing:0}}
   table.q td:first-child,table.q th:first-child{text-align:left;white-space:nowrap}
   table.q tr.cheap td{background:var(--hi);font-weight:700}
   table.q th{background:var(--th);position:sticky;top:0;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)}
@@ -541,6 +542,7 @@ const esc = (s) => String(s == null ? '' : s)
 const eur = n => Number(n).toFixed(2) + '€';
 const kwhe = n => Number(n).toFixed(3) + '€/kWh';
 const cycName = c => (c === 'SIMPLES' ? i18n('cycSimple') : i18n(c === 'DIARIO' ? 'cycDaily' : 'cycWeekly'));
+const perShort = p => ({ VAZIO: i18n('pVazioS'), FORA_VAZIO: i18n('pForaS'), UNICO: i18n('pUnicoS') }[p] || p);
 const perName = p => ({ VAZIO: i18n('pVazio'), FORA_VAZIO: i18n('pFora'), UNICO: i18n('pUnico') }[p] || p);
 const effKwh = () => S.energyMode === 'bat' ? Math.max(0.1, S.batCap * Math.max(0, S.batMax - S.batMin) / 100) : S.kwh;
 // A energia só aparece impressa com uma casa (56,8 kWh). O valor bruto vai
@@ -910,8 +912,8 @@ async function loadQuarters(a, date) {
       </div>
       <small style="display:block;margin-top:6px">${i18n('eightCheap')} <b>${wins.join(' · ') || '—'}</b></small>
       <small style="display:block;margin-top:4px;color:${temFixo ? 'var(--ink)' : 'var(--mut)'}">${resumo}</small>
-      <div class="qwrap" style="margin-top:8px"><table class="q"><tr><th>${i18n('thTime')}</th><th>${i18n(temFixo ? 'thPerIdx' : 'period')}</th>${temFixo ? `<th>${i18n('thPerFix')}</th>` : ''}<th>${i18n('thOmie')}</th><th>${i18n('thIdx')}</th>${temFixo ? `<th>${i18n('thFix')}</th><th>${i18n('thWin')}</th>` : ''}</tr>
-      ${show.map(x => `<tr class="${x.winner === 'IDX' ? 'win-idx' : x.winner === 'FIX' ? 'win-fix' : ''}${x.cheap ? ' cheap' : ''}"><td>${x.start}–${x.end}${x.cheap ? ' ★' : ''}</td><td>${perName(x.period)}</td>${temFixo ? `<td>${perName(x.fixPeriod || x.period)}</td>` : ''}<td>${x.omieMwh.toFixed(1)}</td><td class="p-idx">${x.price.toFixed(4)}</td>${temFixo ? `<td class="p-fix">${x.fixed == null ? '—' : x.fixed.toFixed(4)}</td><td class="w">${x.winner === 'IDX' ? i18n('winIdx') : x.winner === 'FIX' ? i18n('winFix') : x.winner === 'EQ' ? i18n('winEq') : '—'}</td>` : ''}</tr>`).join('')}
+      <div class="qwrap" style="margin-top:8px"><table class="q"><tr><th>${i18n('thTime')}</th><th${temFixo ? ` title="${i18n('thCycTip')}"` : ''}>${i18n(temFixo ? 'thCyc' : 'period')}</th><th>${i18n('thOmie')}</th><th>${i18n('thIdx')}</th>${temFixo ? `<th>${i18n('thFix')}</th><th>${i18n('thWin')}</th>` : ''}</tr>
+      ${show.map(x => `<tr class="${x.winner === 'IDX' ? 'win-idx' : x.winner === 'FIX' ? 'win-fix' : ''}${x.cheap ? ' cheap' : ''}"><td>${x.start}–${x.end}${x.cheap ? ' ★' : ''}</td><td>${temFixo ? `${perShort(x.period)}·${perShort(x.fixPeriod || x.period)}` : perName(x.period)}</td><td>${x.omieMwh.toFixed(1)}</td><td class="p-idx">${x.price.toFixed(4)}</td>${temFixo ? `<td class="p-fix">${x.fixed == null ? '—' : x.fixed.toFixed(4)}</td><td class="w">${x.winner === 'IDX' ? i18n('winIdx') : x.winner === 'FIX' ? i18n('winFix') : x.winner === 'EQ' ? i18n('winEq') : '—'}</td>` : ''}</tr>`).join('')}
       </table></div>
       ${temFixo ? `<small style="display:block;margin-top:6px">${i18n('qCompareNote')}</small>` : ''}</div>`;
     document.getElementById('qTime').onclick = () => { window._qOrder = 'time'; loadQuarters(a, q.date); };
