@@ -27,11 +27,15 @@ const waitUp = async (url) => {
 };
 
 const spawnServer = (envOverride, port) => {
-  return spawn(process.execPath, ['src/server.js'], {
+  const proc = spawn(process.execPath, ['src/server.js'], {
     cwd: BACKEND, // backend/ é a cwd normal de `npm start`
     env: { ...envOverride, PORT: String(port), DB_PATH: path.join(dir, `ceme-${port}.db`) },
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
   });
+  // O stderr fica guardado para os testes verem os avisos (ex.: quarentena).
+  proc.stderrText = '';
+  proc.stderr.on('data', b => { proc.stderrText += b; });
+  return proc;
 };
 
 describe('servidor: hardening HTTP', () => {
@@ -553,6 +557,19 @@ it('HTML também leva nosniff', async () => {
   it('a API autenticada continua a responder depois do teto do /v1/session (buckets separados)', async () => {
     const r = await fetch(`${BASE}/v1/health`, { headers: { Authorization: `Bearer ${token}` } });
     assert.equal(r.status, 200);
+  });
+
+  it('campanha acabada: fica de fora sem ir para a quarentena', async () => {
+    // AB Energia (EZU) acabou a 2026-09-30 (CAMPAIGN_END no seed).
+    const r = await fetch(`${BASE}/v1/simulate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ kwh: 40, at: '2026-10-28T19:30:00.000Z' }),
+    });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(!j.data.find(x => x.id === 'ezu-bt-abenergia'), 'a campanha acabada não é cotada');
+    assert.ok(!/quarentena: ezu-(bt|mt)-abenergia/.test(proc.stderrText), 'e não enche o log');
   });
 
   it('quarentena: um tarifário com componentes divergentes não derruba os 128', async () => {
