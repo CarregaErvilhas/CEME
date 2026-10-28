@@ -338,7 +338,9 @@ async function simulate({ req, res, headers }) {
     // Cota cada tarifário. Se um falhar (dados errados, falta de TAR), fica
     // de fora com um aviso no log e os outros seguem ("quarentena").
     const pricing = await loadPricing(region);
-    const results = list.map(t => {
+    // Sem versão em vigor nesse dia (campanha acabada): fica de fora sem
+    // aviso. A quarentena é para dados errados, não para o calendário.
+    const results = list.filter(t => t.vid != null).map(t => {
       try {
         const q = quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) }, profile }, pricing);
         // O detalhe por fatia só vai se for pedido (são N fatias × cada tarifário).
