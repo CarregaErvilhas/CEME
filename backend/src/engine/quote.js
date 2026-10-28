@@ -34,24 +34,59 @@ const up2 = (v) => Math.ceil(v * 100 - 1e-9) / 100;
 //   base       = soma das anteriores (sem IVA)
 //   vatEur     = total − base
 export function quoteFixed({ schedule, cycle, at, kwh, price, activation = 0, support = 0, iec = 0, region = 'CONT', vatRate, split }) {
-  const period = periodForRegion({ schedule, cycle, at, region });
-  const key = period === 'UNICO' ? 'UNICO' : period;
-  const final = price[key];
-  if (final == null) throw new Error(`sem preço final para ${key}`);
+  return quoteSlices({ schedule, cycle, slices: [{ at, kwh, price, split }], activation, support, iec, region, vatRate });
+}
+
+// O mesmo, para um carregamento partido em fatias no tempo.
+//
+// Um carregamento de 2 horas pode começar fora de vazio e acabar em vazio,
+// apanhar oito quartos de hora com OMIE diferente, ou até atravessar a
+// mudança da hora. Cada fatia traz o seu instante, os seus kWh e o seu preço
+// final (`price`, e `split` se houver), e é cotada no período em que cai:
+//   slices: [{ at, kwh, price: { VAZIO, FORA_VAZIO } ou { UNICO }, split? }]
+// Tudo o resto é igual ao quoteFixed, e é por isso que o quoteFixed é só
+// isto com uma fatia:
+//   - energia+TAR: soma de kWh × preço de cada fatia, arredondada UMA vez
+//     (a fatura traz uma linha por carregamento, não uma por quarto de hora);
+//   - IEC sobre o total de kWh; activação e apoio uma vez; IVA no fim.
+// Com mais de uma fatia devolve também `kwhByPeriod` e `slices` (o período
+// e o preço final de cada fatia), para mostrar de onde vem o total.
+export function quoteSlices({ schedule, cycle, slices, activation = 0, support = 0, iec = 0, region = 'CONT', vatRate }) {
+  if (!slices?.length) throw new Error('sem fatias');
   const vat = vatRate ?? (REGIONS[region] || REGIONS.CONT).vat;
+  let kwh = 0, raw = 0, rawTar = 0, knownTar = true;
+  const kwhByPeriod = {};
+  const detail = slices.map(sl => {
+    const period = periodForRegion({ schedule, cycle, at: sl.at, region });
+    const final = sl.price[period];
+    if (final == null) throw new Error(`sem preço final para ${period}`);
+    kwh += sl.kwh;
+    raw += sl.kwh * final;
+    kwhByPeriod[period] = (kwhByPeriod[period] || 0) + sl.kwh;
+    const s = sl.split && sl.split[period];
+    if (s && Number.isFinite(s.tar)) rawTar += sl.kwh * s.tar;
+    else knownTar = false;
+    return { at: new Date(sl.at).toISOString(), kwh: sl.kwh, period, final };
+  });
+  // Com uma fatia é o preço dela; com várias, a média pesada pelos kWh.
+  const final = slices.length === 1 ? detail[0].final : (kwh > 0 ? raw / kwh : detail[0].final);
   const eurKwhNoIva = up2(final + iec);
-  const energyTar = up2(kwh * final);
+  const energyTar = up2(raw);
   const parts = { energyTar, energy: null, tar: null, iec: up2(kwh * iec), activation: up2(activation), support: up2(support) };
-  const s = split && split[key];
-  if (s && Number.isFinite(s.tar)) {
-    parts.tar = Math.round(kwh * s.tar * 100) / 100;
+  if (knownTar) {
+    parts.tar = Math.round(rawTar * 100) / 100;
     parts.energy = Math.round((energyTar - parts.tar) * 100) / 100;
   }
   const base = Math.round((parts.activation + parts.support + energyTar + parts.iec) * 100) / 100;
   const totalEur = up2(base * vat);
   parts.base = base;
   parts.vatEur = Math.round((totalEur - base) * 100) / 100;
-  return { period, region, eurKwhNoIva, totalEur, vat, parts, breakdown: { final, iec, activation, support, kwh } };
+  const out = { period: detail[0].period, region, eurKwhNoIva, totalEur, vat, parts, breakdown: { final, iec, activation, support, kwh } };
+  if (slices.length > 1) {
+    for (const k of Object.keys(kwhByPeriod)) kwhByPeriod[k] = Math.round(kwhByPeriod[k] * 1000) / 1000;
+    Object.assign(out, { kwhByPeriod, slices: detail });
+  }
+  return out;
 }
 
 // Para os indexados, vê engine/indexed.js (indexedPrice).

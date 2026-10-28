@@ -99,6 +99,53 @@ describe('servidor: hardening HTTP', () => {
     assert.equal(bad.status, 400);
   });
 
+  it('profile: cada fatia no seu período; detalhe só a pedido', async () => {
+    const sim = async (body) => (await fetch(`${BASE}/v1/simulate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })).json();
+    // Quarta 21 Out 2026, hora de Verão: 21:00Z = 22:00 de Lisboa, início do
+    // vazio diário. Quatro quartos de 10 kWh, dois de cada lado.
+    const ats = ['2026-10-21T20:30:00.000Z', '2026-10-21T20:45:00.000Z', '2026-10-21T21:00:00.000Z', '2026-10-21T21:15:00.000Z'];
+    const omieCycles = { DIARIO: { vazio: 0.05, fora: 0.10 }, SEMANAL: { vazio: 0.07, fora: 0.12 } };
+    const r = await sim({ profile: ats.map(at => ({ at, kwh: 10 })), omieCycles, detail: true });
+    assert.equal(r.kwh, 40);
+    assert.equal(r.at, ats[0]);
+    assert.deepEqual(r.profile, { slices: 4, from: ats[0], to: '2026-10-21T21:15:00.000Z', withSpot: 0 });
+    const dia = r.data.find(q => q.id === 'meo-dinamica-bt');
+    assert.deepEqual(dia.kwhByPeriod, { FORA_VAZIO: 20, VAZIO: 20 });
+    assert.deepEqual(dia.slices.map(x => x.period), ['FORA_VAZIO', 'FORA_VAZIO', 'VAZIO', 'VAZIO']);
+    assert.deepEqual(dia.slices.map(x => x.omie), [0.10, 0.10, 0.05, 0.05], 'OMIE médio do período de cada fatia');
+    // Um tarifário que fica num período só dá o mesmo que sem profile.
+    const plain = await sim({ kwh: 40, at: ats[0], omieCycles });
+    for (const q of r.data.filter(q => q.kwhByPeriod && Object.keys(q.kwhByPeriod).length === 1)) {
+      assert.equal(q.totalEur, plain.data.find(x => x.id === q.id).totalEur, `${q.id}: um período só, mesmo total`);
+    }
+    // Sem detail, o resumo fica e as fatias não.
+    const lean = await sim({ profile: ats.map(at => ({ at, kwh: 10 })), omieCycles });
+    const d2 = lean.data.find(q => q.id === 'meo-dinamica-bt');
+    assert.equal(d2.slices, undefined);
+    assert.deepEqual(d2.kwhByPeriod, dia.kwhByPeriod);
+    assert.equal(d2.totalEur, dia.totalEur);
+  });
+
+  it('profile inválido → 400 bad_profile', async () => {
+    const post = async (profile) => fetch(`${BASE}/v1/simulate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ profile }),
+    });
+    const at = (m) => `2026-10-21T20:${m}:00Z`;
+    for (const p of [[], 'x', [{ at: at('00') }], [{ at: 'ontem', kwh: 1 }], [{ at: at('00'), kwh: -1 }],
+      [{ at: at('15'), kwh: 1 }, { at: at('00'), kwh: 1 }], [{ at: at('00'), kwh: 0 }],
+      [{ at: at('00'), kwh: 600 }, { at: at('15'), kwh: 600 }], Array.from({ length: 401 }, (_, i) => ({ at: new Date(Date.UTC(2026, 9, 21) + i * 9e5).toISOString(), kwh: 0.1 }))]) {
+      const r = await post(p);
+      assert.equal(r.status, 400, JSON.stringify(p).slice(0, 80));
+      assert.equal((await r.json()).error.code, 'bad_profile');
+    }
+  });
+
   it('alvo `//`: 400 e o processo continua vivo (antes o new URL matava-o)', async () => {
   const status = await new Promise((resolve, reject) => {
     http.request({ host: '127.0.0.1', port: PORT, path: '//', method: 'GET' }, r => { r.resume(); resolve(r.statusCode); })

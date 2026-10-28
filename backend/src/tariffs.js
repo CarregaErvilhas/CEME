@@ -8,9 +8,9 @@
 //   - loadPricing(): tudo isto de uma vez, para cotar muitos tarifários;
 //   - quoteOne(): junta tudo e devolve o cartão de um tarifário, com o total.
 import { query } from './db.js';
-import { quoteFixed } from './engine/quote.js';
+import { quoteFixed, quoteSlices } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
-import { lossByPeriod } from './engine/losses.js';
+import { lossAt, lossByPeriod } from './engine/losses.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { civilDay } from './omie/convert.js';
 import { pickComponents } from './db/components.js';
@@ -153,8 +153,13 @@ export async function loadPricing(region = 'CONT') {
 //   kwh, region
 //   omie, omieVazio, omieFora, omieCycles: o OMIE de referência (€/kWh)
 //   spot:  { omieKwh, loss } do quarto de hora do carregamento, se houver
+//   profile: opcional, o carregamento partido em fatias no tempo,
+//          [{ at, kwh, spot }] (spot como acima, ou null). Cada fatia é
+//          cotada no seu período e, nos indexados, com o OMIE, as perdas e a
+//          TAR do seu instante (vê quoteSlices). Os campos `prices`, `loss` e
+//          `omieRef` continuam a ser os do início (`at`).
 //   pricing: o resultado de loadPricing(region)
-export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot }, pricing) {
+export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot, profile }, pricing) {
   const ver = pricing.version(t.vid);
   const { price, act, iec, sup, split } = pricing.comps(t.vid);
   const meta = {
@@ -166,7 +171,11 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
     brand: pricing.brand(t.ceme_id),
   };
   if (t.kind === 'FIXED') {
-    const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region, split });
+    // O preço final de um fixo não muda com a hora, só com o período, e o
+    // quoteSlices já escolhe o período de cada fatia.
+    const q = profile
+      ? quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices: profile.map(p => ({ at: p.at, kwh: p.kwh, price, split })), activation: act, support: sup, iec, region })
+      : quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price, activation: act, support: sup, iec, region, split });
     return { ...meta, activation: act, iec, prices: price, split, avail: t.regions, ...egmeFlags(act), ...q };
   }
   // INDEXADO: calcula o €/kWh de cada período e depois usa a mesma conta dos
@@ -207,6 +216,25 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
     splitIdx[per] = { energy: price - tar, tar };
   }
   const omieRef = spotKwh ?? ((agg === 'SPLIT_VAZIO_FORA') ? (pair.vazio ?? omie) : omie);
-  const q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region, split: splitIdx });
+  // Com perfil, cada fatia leva o preço do SEU período, calculado com o OMIE
+  // do seu quarto de hora (se houver; senão as médias), as perdas desse
+  // quarto e a TAR do seu dia (o carregamento pode passar a meia-noite).
+  const sliceOf = (p) => {
+    const per = periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at: p.at });
+    const tar = pricing.tar(t.voltage, per, civilDay(p.at, REGIONS[region].tz));
+    if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${civilDay(p.at, REGIONS[region].tz)}`);
+    const loss = p.spot ? (lossAt(t.voltage, p.at) ?? vm.loss) : (lossPer?.[per] ?? vm.loss);
+    const omieKwh = p.spot?.omieKwh ?? omieForPeriod(per);
+    const price = indexedPrice({ omieEurKwh: omieKwh, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tar, loss, formula: vm.formula }).price;
+    return { at: p.at, kwh: p.kwh, price: { [per]: price }, split: { [per]: { energy: price - tar, tar } }, omieKwh, omieSpot: !!p.spot };
+  };
+  let q;
+  if (profile) {
+    const slices = profile.map(sliceOf);
+    q = quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices, activation: act, support: sup, iec, region });
+    if (q.slices) q.slices.forEach((d, i) => Object.assign(d, { omie: slices[i].omieKwh, omieSpot: slices[i].omieSpot }));
+  } else {
+    q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, price: out, activation: act, support: sup, iec, region, split: splitIdx });
+  }
   return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: spot?.loss ?? lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], omieSpot: spotKwh != null, lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }

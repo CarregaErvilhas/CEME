@@ -13,7 +13,7 @@ falam com a BD nem com a rede, por isso testas-las facilmente.
 
 | peça | ficheiro |
 |---|---|
-| Fixos: `quoteFixed(...)` (total + `parts`, a conta linha a linha) | `backend/src/engine/quote.js` |
+| Fixos: `quoteFixed(...)` (total + `parts`, a conta linha a linha) e `quoteSlices(...)` (o mesmo, com o carregamento partido no tempo) | `backend/src/engine/quote.js` |
 | Indexados: `indexedPrice(...)`, `breakevenOmie(...)`, `lossFor(...)` | `backend/src/engine/indexed.js` |
 | Perdas por quarto de hora: `lossAt(...)`, `lossByPeriod(...)` | `backend/src/engine/losses.js` |
 | Períodos: `periodForRegion(...)` (instante) e `periodForWall(...)` (hora de relógio) | `backend/src/engine/regions.js` |
@@ -119,6 +119,31 @@ energia/TAR do período, `energyTar` aparece também partido em `energy` +
 `tar`: a TAR arredonda ao cêntimo e a energia fica com o resto, para não
 se perder nenhum cêntimo. É esta conta que o detalhe de cada tarifário
 mostra no simulador.
+
+### Carregamentos partidos no tempo (`quoteSlices`)
+
+Um carregamento leva minutos a horas, e pelo caminho pode mudar de período
+(começa às 21:30 e acaba às 22:45, com o vazio a começar às 22:00), de
+quarto de hora OMIE, de dia (TAR do dia seguinte) e até de hora legal. O
+`quoteSlices` recebe o carregamento em fatias `{ at, kWh, preço final }`
+e cota cada uma no período em que cai:
+
+```
+energia+TAR = ROUNDUP( Σ kWh_fatia × preço_final_do_período_da_fatia , 2)
+IEC         = ROUNDUP( kWh_total × IEC , 2)
+activação, apoio: uma vez; IVA no fim, como nos fixos
+```
+
+Arredonda a soma uma vez, porque a fatura traz uma linha por carregamento,
+não uma por quarto de hora. O `quoteFixed` é só o `quoteSlices` com uma
+fatia, por isso dão exactamente o mesmo (e os golden não mudam).
+
+Nos indexados, o `quoteOne` calcula o preço de cada fatia com o OMIE do seu
+quarto (ou a média do período, se não houver), as perdas desse quarto e a
+TAR do dia da fatia na região. Os casos de fronteira (vazio ↔ fora, as
+duas mudanças da hora, o sábado semanal antes e depois da mudança, as
+ilhas, a meia-noite com TAR nova) estão em `test/profile.test.js`. A API
+recebe as fatias no `profile` do `/v1/simulate` ([04](04-api-auth.md)).
 
 ### O preço final e a separação energia + TAR
 
