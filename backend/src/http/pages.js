@@ -30,6 +30,8 @@ const STATIC = {
   '/icon-192.png': { file: 'icon-192.png', headers: ICON, missing: 404 },
   '/icon-512.png': { file: 'icon-512.png', headers: ICON, missing: 404 },
   '/icon-180.png': { file: 'icon-180.png', headers: ICON, missing: 404 },
+  '/icon-32.png': { file: 'icon-32.png', headers: ICON, missing: 404 },
+  '/icon-maskable-512.png': { file: 'icon-maskable-512.png', headers: ICON, missing: 404 },
 };
 
 // robots.txt. A /tabela não aparece aqui: é escondida pelo cabeçalho

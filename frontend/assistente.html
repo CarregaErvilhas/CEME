@@ -17,8 +17,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="CEME">
-<link rel="apple-touch-icon" href="/icon-180.png">
-<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-180.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=2"><link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
 <style>
 :root {
   --bg0: #F7F7F7; --bg1: #EDEDED;
@@ -65,6 +65,8 @@ button { cursor: pointer; }
 .shell { max-width: 460px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; padding: 0 var(--gap); }
 .top { display: flex; align-items: center; gap: 10px; height: 56px; flex: none; }
 .brand { font-weight: 500; letter-spacing: .04em; text-decoration: none; color: inherit; font-size: 14px; }
+.home { display: flex; align-items: center; gap: 8px; font-weight: 500; letter-spacing: .04em; text-decoration: none; color: inherit; font-size: 14px; }
+.home img { width: 28px; height: 28px; border-radius: 8px; display: block; }
 .top .spacer { flex: 1; }
 .iconbtn { width: 36px; height: 36px; border: 0; background: none; border-radius: var(--r); display: grid; place-items: center; color: var(--ink); }
 .iconbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -386,7 +388,7 @@ const STEPS = ['onde', 'quanto', 'quando'];
 function header(step) {
   const i = STEPS.indexOf(step);
   const left = step === 'landing'
-    ? '<a class="brand" href="#/">CEME</a>'
+    ? '<a class="home" href="#/"><img src="/icon-192.png?v=2" alt="" width="28" height="28">CEME</a>'
     : `<button class="iconbtn back" data-act="back" aria-label="${t('back')}"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>`;
   const mid = i >= 0 ? `<div class="progress" aria-label="${i + 1} / 3">${STEPS.map((_, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>` : '';
   document.getElementById('top').innerHTML = `${left}${mid}<span class="spacer"></span>
