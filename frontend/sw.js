@@ -12,9 +12,9 @@
  *
  * Mudar a estratégia ou a lista? Subir o CACHE: o `activate` apaga as caches
  * com outro nome. */
-const CACHE = 'ceme-v3';
+const CACHE = 'ceme-v4';
 const OFFLINE = ['/strings.js', '/tz.js', '/theme.js', '/pages.css', '/manifest.webmanifest'];
-const IMMUTABLE = ['/icon-180.png', '/icon-192.png', '/icon-512.png'];
+const IMMUTABLE = ['/icon-180.png', '/icon-192.png', '/icon-512.png', '/icon-32.png', '/icon-maskable-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
