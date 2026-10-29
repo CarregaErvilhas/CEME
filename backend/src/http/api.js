@@ -17,7 +17,7 @@ import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from '../om
 import { civilDay } from '../omie/convert.js';
 import { zonedParts } from '../time.js';
 import { allTariffs, comps, compRows, loadPricing, tarFor, quoteOne, today, vmeta } from '../tariffs.js';
-import { promoOut } from '../promos.js';
+import { finalTotal, promoOut } from '../promos.js';
 import { json, fail, clientIp } from './respond.js';
 import { rateBucket, rlHeaders, rateLimited, RATE_DEFAULT } from './ratelimit.js';
 import { auth, issueSession } from './auth.js';
@@ -284,7 +284,17 @@ function parseSimulate(body) {
       return { ok: false, code: 'bad_omie', message: `${nome} deve ser um número (€/kWh) positivo` };
     }
   }
-  return { ok: true, value: { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot: useSpot === true, profile, detail: detail === true } };
+  // `monthKwh` (opcional): { id do tarifário: kWh já carregados este mês com
+  // ele }, para as promoções KWH_GRATIS. Quem chama é que sabe (o simulador
+  // não guarda nada sobre ninguém).
+  const { monthKwh } = parsed;
+  if (monthKwh != null) {
+    const entries = typeof monthKwh === 'object' && !Array.isArray(monthKwh) ? Object.entries(monthKwh) : null;
+    if (!entries || entries.length > 100 || entries.some(([k, v]) => k.length > 64 || typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100000)) {
+      return { ok: false, code: 'bad_month_kwh', message: 'monthKwh: { id do tarifário: kWh ≥ 0 }, até 100 entradas' };
+    }
+  }
+  return { ok: true, value: { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot: useSpot === true, profile, detail: detail === true, monthKwh: monthKwh ?? null } };
 }
 
 // Valida o `profile` do /v1/simulate. Cada fatia é cotada no seu instante
@@ -325,6 +335,25 @@ async function spotAt(now, days) {
   return null;
 }
 
+// O que uma promoção faz a este carregamento, para juntar à sua linha:
+//   ENERGIA     totalEur: o CEME com o desconto (sem OPC, como o do tarifário)
+//   FINAL       totalEur: o carregamento todo, OPC incluído
+//   KWH_GRATIS  totalEur com os kWh grátis que ainda sobram este mês, e
+//               freeKwhLeft; monthKwhKnown diz se quem chama disse quanto já
+//               gastou (senão conta-se o mês todo por gastar)
+//   OPC         nada: só a percentagem, que vai em promoOut
+function promoQuote(p, t, input, pricing, q, monthKwh) {
+  if (p.target === 'ENERGIA') return { totalEur: quoteOne(t, { ...input, discountKwh: p.eur_kwh }, pricing).totalEur };
+  if (p.target === 'FINAL') return { totalEur: finalTotal(input.kwh, p.eur_kwh) };
+  if (p.target === 'KWH_GRATIS') {
+    const used = monthKwh?.[t.id];
+    const left = Math.max(0, p.free_kwh - (used ?? 0));
+    const totalEur = left > 0 ? quoteOne(t, { ...input, freeKwh: left }, pricing).totalEur : q.totalEur;
+    return { totalEur, freeKwhLeft: Math.round(left * 1000) / 1000, monthKwhKnown: used != null };
+  }
+  return {};
+}
+
 // Cota todos os tarifários para um carregamento e devolve-os do mais barato
 // para o mais caro.
 async function simulate({ req, res, headers }) {
@@ -332,7 +361,7 @@ async function simulate({ req, res, headers }) {
   if (body == null) return fail(res, 413, 'payload_too_large', `corpo > ${MAX_BODY} bytes`, headers);
   const p = parseSimulate(body);
   if (!p.ok) return fail(res, 400, p.code, p.message, headers);
-  const { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot, detail } = p.value;
+  const { kwh, now, region, omie, omieVazio, omieFora, omieCycles, useSpot, detail, monthKwh } = p.value;
   let { profile } = p.value;
   try {
     // O dia do carregamento na região escolhe a versão e a TAR em vigor.
@@ -355,14 +384,10 @@ async function simulate({ req, res, headers }) {
         const q = quoteOne(t, input, pricing);
         // O detalhe por fatia só vai se for pedido (são N fatias × cada tarifário).
         if (!detail) delete q.slices;
-        // As promoções deste tarifário nesse dia, à parte: valem só numa rede
-        // de postos, e o simulador não sabe em qual carregas. As de ENERGIA
-        // levam o total já com o desconto; as de OPC só a percentagem.
+        // As promoções deste tarifário nesse dia, à parte: quase todas valem
+        // só numa rede de postos, e o simulador não sabe em qual carregas.
         const ps = pricing.promos(t, day);
-        if (ps.length) {
-          q.promos = ps.map(p => ({ ...promoOut(p),
-            ...(p.target === 'ENERGIA' && { totalEur: quoteOne(t, { ...input, discountKwh: p.eur_kwh }, pricing).totalEur }) }));
-        }
+        if (ps.length) q.promos = ps.map(p => ({ ...promoOut(p), ...promoQuote(p, t, input, pricing, q, monthKwh) }));
         return q;
       } catch (e) {
         console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);

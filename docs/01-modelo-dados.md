@@ -28,7 +28,7 @@ estão comentadas nos schemas, `backend/src/db/schema.sql` (SQLite) e
 | `tariff_version` | as versões de cada tarifário no tempo (vê abaixo), com os parâmetros dos indexados (K, CGS) |
 | `price_component` | os preços de cada versão, uma linha por período, para o Continente |
 | `price_component_region` | preços próprios das ilhas, só para os CEME que cobram diferente lá |
-| `promo` | promoções de um CEME numa rede de postos (vê `PROMOS` em `seed-data.js` e `src/promos.js`) |
+| `promo` | promoções de um CEME, quase sempre numa rede de postos (vê `PROMOS` em `seed-data.js` e `src/promos.js`) |
 | `tar` | a TAR por região, tensão e período, com validade |
 
 ### OMIE

@@ -8,14 +8,14 @@
 //   - loadPricing(): tudo isto de uma vez, para cotar muitos tarifários;
 //   - quoteOne(): junta tudo e devolve o cartão de um tarifário, com o total.
 import { query } from './db.js';
-import { quoteFixed, quoteSlices } from './engine/quote.js';
+import { quoteSlices } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { lossAt, lossByPeriod } from './engine/losses.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { civilDay } from './omie/convert.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed-data.js';
-import { discounted, promosFor } from './promos.js';
+import { discounted, freeFirst, promosFor } from './promos.js';
 
 // "Hoje" em Portugal, para escolher a versão em vigor (vê civilDay).
 export const today = () => civilDay();
@@ -166,7 +166,9 @@ export async function loadPricing(region = 'CONT') {
 //   discountKwh: €/kWh a menos no preço final de cada período (uma promoção
 //          de ENERGIA, vê promos.js). Os campos `prices` e `split` do cartão
 //          ficam os do tarifário; só a conta usa o preço com desconto.
-export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot, profile, discountKwh = 0 }, pricing) {
+//   freeKwh: os primeiros kWh do carregamento sem energia nem TAR (uma
+//          promoção KWH_GRATIS, vê freeFirst).
+export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot, profile, discountKwh = 0, freeKwh = 0 }, pricing) {
   const ver = pricing.version(t.vid);
   const { price, act, iec, sup, split } = pricing.comps(t.vid);
   const meta = {
@@ -181,9 +183,8 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
     // O preço final de um fixo não muda com a hora, só com o período, e o
     // quoteSlices já escolhe o período de cada fatia.
     const d = discounted(price, split, discountKwh);
-    const q = profile
-      ? quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices: profile.map(p => ({ at: p.at, kwh: p.kwh, ...d })), activation: act, support: sup, iec, region })
-      : quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, ...d, activation: act, support: sup, iec, region });
+    const slices = freeFirst(profile ? profile.map(p => ({ at: p.at, kwh: p.kwh, ...d })) : [{ at, kwh, ...d }], freeKwh);
+    const q = quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices, activation: act, support: sup, iec, region });
     return { ...meta, activation: act, iec, prices: price, split, avail: t.regions, ...egmeFlags(act), ...q };
   }
   // INDEXADO: calcula o €/kWh de cada período e depois usa a mesma conta dos
@@ -238,11 +239,11 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
   };
   let q;
   if (profile) {
-    const slices = profile.map(sliceOf);
+    const slices = freeFirst(profile.map(sliceOf), freeKwh);
     q = quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices, activation: act, support: sup, iec, region });
     if (q.slices) q.slices.forEach((d, i) => Object.assign(d, { omie: slices[i].omieKwh, omieSpot: slices[i].omieSpot }));
   } else {
-    q = quoteFixed({ schedule: t.schedule, cycle: t.cycle, at, kwh, ...discounted(out, splitIdx, discountKwh), activation: act, support: sup, iec, region });
+    q = quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices: freeFirst([{ at, kwh, ...discounted(out, splitIdx, discountKwh) }], freeKwh), activation: act, support: sup, iec, region });
   }
   return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: spot?.loss ?? lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], omieSpot: spotKwh != null, lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
 }

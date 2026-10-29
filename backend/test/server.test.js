@@ -151,7 +151,26 @@ describe('servidor: hardening HTTP', () => {
     const one = nov.find(q => q.id === 'miio-bt-miioonebi');
     assert.deepEqual(one.promos.map(p => [p.target, p.pct, p.totalEur]), [['OPC', 45, undefined]], 'OPC: só a percentagem');
     assert.equal(nov.find(q => q.id === 'miio-bt-miiobihor').promos, undefined, 'sem miio one, sem promoção');
-    assert.equal(nov.find(q => q.id === 'edp-bt-cartoedp-2').promos, undefined);
+    assert.equal(nov.find(q => q.id === 'edp-bt-cartoedp').promos, undefined, 'EDP sem UVE, sem promoção');
+    // FINAL: o carregamento todo, OPC incluído, a 0,47 €/kWh.
+    const uve = nov.find(q => q.id === 'edp-bt-cartoedp-2').promos.find(p => p.id === 'edp-uve-2026-09');
+    assert.deepEqual([uve.target, uve.network, uve.totalEur], ['FINAL', 'EDP', 18.8]);
+    // KWH_GRATIS: sem monthKwh conta-se o mês todo por gastar; com ele, o que sobra.
+    const gold = nov.find(q => q.id === 'goldenergy-bt-clientesgold');
+    const g = gold.promos.find(p => p.id === 'goldenergy-7kwh');
+    assert.equal(g.network, null, 'vale em qualquer posto MOBI.E');
+    assert.deepEqual([g.freeKwhLeft, g.monthKwhKnown], [7, false]);
+    assert.ok(g.totalEur < gold.totalEur);
+    const used = async (monthKwh) => (await (await fetch(`${BASE}/v1/simulate`, {
+      method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at: '2026-11-10T12:00:00Z', omie: 0.08, monthKwh }),
+    })).json()).data.find(q => q.id === 'goldenergy-bt-clientesgold').promos[0];
+    const part = await used({ 'goldenergy-bt-clientesgold': 5 });
+    assert.deepEqual([part.freeKwhLeft, part.monthKwhKnown], [2, true]);
+    assert.ok(part.totalEur > g.totalEur && part.totalEur < gold.totalEur);
+    const gone = await used({ 'goldenergy-bt-clientesgold': 12 });
+    assert.deepEqual([gone.freeKwhLeft, gone.totalEur], [0, gold.totalEur], 'já gastou os 7: preço normal');
+    const bad = await fetch(`${BASE}/v1/simulate`, { method: 'POST', headers: auth, body: JSON.stringify({ monthKwh: { x: -1 } }) });
+    assert.equal(bad.status, 400);
     // Depois do fim, desaparece; o preço do tarifário é o mesmo nos dois dias.
     const dez = await sim('2026-12-02T12:00:00Z');
     assert.equal(dez.find(q => q.id === 'luzigas-ceme-bt').promos, undefined);

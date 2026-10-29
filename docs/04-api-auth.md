@@ -203,16 +203,30 @@ Notas:
   nos indexados, o OMIE usado e se era do quarto (`omieSpot`). Sem
   `detail`, as fatias não vêm (são N fatias × cada tarifário).
 - `promos` (só nos tarifários que as têm nesse dia e região): as promoções
-  do CEME numa **rede de postos** (Powerdot, Ionity…). O simulador não sabe
-  em que posto carregas, por isso uma promoção nunca muda o `totalEur`: vai
-  à parte, e quem sabe o posto escolhe as da rede certa (`network`). Cada
-  uma traz os campos de `GET /v1/promos` e, nas de `target: "ENERGIA"`,
-  `totalEur` com o desconto (o mesmo carregamento, com `eurKwh` a menos no
-  preço final de cada fatia, antes de IEC, EGME e IVA). As de `"OPC"` são um
-  desconto em `pct` na taxa do operador, que este simulador não cota: só a
-  percentagem vai. `newCustomers: true` quer dizer que só vale para quem
-  adere durante a promoção (e `maxHours`, se vier, quanto tempo dura depois
-  da adesão), por isso nunca deve entrar no preço por omissão.
+  do CEME, quase sempre numa **rede de postos** (`network`: Powerdot, EDP…;
+  `null` = qualquer posto MOBI.E). O simulador não sabe em que posto
+  carregas, por isso uma promoção nunca muda o `totalEur`: vai à parte, e
+  quem sabe o posto escolhe as da rede certa. Cada uma traz os campos de
+  `GET /v1/promos` e, conforme o `target`:
+  - `"ENERGIA"`: `totalEur` com o desconto (o mesmo carregamento, com
+    `eurKwh` a menos no preço final de cada fatia, antes de IEC, EGME e
+    IVA). Como o do tarifário, sem OPC;
+  - `"OPC"`: só `pct`, o desconto na taxa do operador, que este simulador
+    não cota;
+  - `"FINAL"`: `totalEur` = kWh × `eurKwh`, o carregamento **todo** (CEME,
+    OPC, taxas e IVA), arredondado para cima ao cêntimo;
+  - `"KWH_GRATIS"`: os primeiros `freeKwh` de cada mês civil não pagam
+    energia nem TAR (o IEC, a activação e o IVA pagam-se). `freeKwhLeft` é
+    o que ainda sobra deles e `totalEur` o CEME com esses kWh grátis no
+    início do carregamento. O simulador não guarda nada sobre ninguém: quem
+    chama diz quanto já carregou este mês em `monthKwh` (`{ "id do
+    tarifário": kWh }`, até 100 entradas, senão `400 bad_month_kwh`). Sem
+    entrada para o tarifário, conta-se o mês todo por gastar e
+    `monthKwhKnown` vem `false`.
+
+  `newCustomers: true` quer dizer que só vale para quem adere durante a
+  promoção (e `maxHours`, se vier, quanto tempo dura depois da adesão), por
+  isso nunca deve entrar no preço por omissão.
 - As **datas devolvidas são UTC** (`toISOString()`), seja qual for a região.
   Passar para a hora local é com o cliente. As datas que **envias** em `at`
   seguem o offset que escreveres.
@@ -220,8 +234,8 @@ Notas:
 ### `GET /v1/promos`
 
 As promoções que ainda não acabaram, com `active` = já em vigor hoje. Os
-campos: `id`, `ceme`, `name`, `network`, `target` (`ENERGIA` ou `OPC`),
-`eurKwh` ou `pct`, `from` e `to` (dias, inclusive), `newCustomers`,
+campos: `id`, `ceme`, `name`, `network`, `target` (`ENERGIA`, `OPC`, `FINAL` ou `KWH_GRATIS`),
+`eurKwh`, `pct` ou `freeKwh`, `from` e `to` (dias, inclusive), `newCustomers`,
 `maxHours`, `tariffs` (ids; `null` = todos os do CEME), `regions`, `url` e
 `checked` (o dia em que a lemos). Vêm de `PROMOS` em
 `backend/src/db/seed-data.js`.

@@ -91,31 +91,38 @@ CREATE TABLE IF NOT EXISTS price_component_region (
   PRIMARY KEY (tariff_version_id, region, period)
 );
 
--- Promoções de um CEME numa rede de postos (ex.: a Luzigás dá −0,12 €/kWh
--- na energia nos postos Powerdot; a miio one dá −45 % na taxa do OPC nos
--- mesmos postos). O simulador não sabe em que posto carregas, por isso
--- devolve as promoções de cada tarifário e quem sabe o posto (o ohmigo)
+-- Promoções de um CEME, quase sempre numa rede de postos (ex.: a Luzigás dá
+-- −0,12 €/kWh na energia nos postos Powerdot; a miio one dá −45 % na taxa do
+-- OPC nos mesmos postos). O simulador não sabe em que posto carregas, por
+-- isso devolve as promoções de cada tarifário e quem sabe o posto (o ohmigo)
 -- escolhe as da rede certa. Vê PROMOS em db/seed-data.js.
 --   tariff_ids: lista separada por vírgulas; NULL = todos os do CEME;
---   network:    o nome da rede (Powerdot, Ionity…), não um id do NAP;
---   target:     ENERGIA (desconto em €/kWh no preço final do CEME, antes de
---               IEC, EGME e IVA: eur_kwh) ou OPC (desconto em % na taxa do
---               operador do posto: pct, que o simulador não cota);
+--   network:    o nome da rede (Powerdot, EDP…), não um id do NAP; NULL =
+--               qualquer posto MOBI.E;
+--   target:     ENERGIA: eur_kwh a menos no preço final do CEME (energia +
+--                 TAR), antes de IEC, EGME e IVA;
+--               OPC: pct a menos na taxa do operador do posto (que o
+--                 simulador não cota);
+--               FINAL: o carregamento todo (CEME, OPC, taxas e IVA) a
+--                 eur_kwh por kWh;
+--               KWH_GRATIS: os primeiros free_kwh de cada mês civil sem
+--                 energia nem TAR a pagar;
 --   starts_on, ends_on: o primeiro e o último dia, inclusive;
 --   new_customers: só para quem adere durante a promoção; max_hours: quanto
 --               tempo dura o desconto depois da adesão, se tiver limite;
 --   regions:    onde vale (CONT,MAD,AZO).
 CREATE TABLE IF NOT EXISTS promo (
   id TEXT PRIMARY KEY, ceme_id TEXT NOT NULL REFERENCES ceme(id),
-  name TEXT NOT NULL, tariff_ids TEXT, network TEXT NOT NULL,
-  target TEXT NOT NULL CHECK (target IN ('ENERGIA','OPC')),
-  eur_kwh REAL, pct REAL,
+  name TEXT NOT NULL, tariff_ids TEXT, network TEXT,
+  target TEXT NOT NULL CHECK (target IN ('ENERGIA','OPC','FINAL','KWH_GRATIS')),
+  eur_kwh REAL, pct REAL, free_kwh REAL,
   starts_on TEXT NOT NULL, ends_on TEXT NOT NULL,
   new_customers INTEGER DEFAULT 0, max_hours INTEGER,
   regions TEXT NOT NULL DEFAULT 'CONT',
   source_url TEXT NOT NULL, checked_on TEXT NOT NULL,
-  CHECK ((target = 'ENERGIA' AND eur_kwh > 0 AND pct IS NULL)
-      OR (target = 'OPC' AND pct > 0 AND pct <= 100 AND eur_kwh IS NULL))
+  CHECK ((target IN ('ENERGIA','FINAL') AND eur_kwh > 0 AND pct IS NULL AND free_kwh IS NULL)
+      OR (target = 'OPC' AND pct > 0 AND pct <= 100 AND eur_kwh IS NULL AND free_kwh IS NULL)
+      OR (target = 'KWH_GRATIS' AND free_kwh > 0 AND eur_kwh IS NULL AND pct IS NULL))
 );
 
 -- TAR (Tarifas de Acesso às Redes): o que se paga pelo uso da rede eléctrica,

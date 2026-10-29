@@ -5,8 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { PROMOS, TARIFFS, CEMES } from '../src/db/seed-data.js';
-import { promosFor, promoOut, discounted } from '../src/promos.js';
-import { quoteFixed } from '../src/engine/quote.js';
+import { promosFor, promoOut, discounted, freeFirst, finalTotal } from '../src/promos.js';
+import { quoteFixed, quoteSlices } from '../src/engine/quote.js';
 import { seededDb, reseed } from './seeded-db.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -17,12 +17,14 @@ describe('PROMOS: os dados do seed', () => {
     for (const p of PROMOS) {
       assert.ok(!ids.has(p.id), `${p.id} repetido`); ids.add(p.id);
       assert.ok(CEMES.some(c => c.id === p.ceme), `${p.id}: CEME ${p.ceme} não existe`);
-      assert.ok(p.name && p.network, `${p.id}: falta name ou network`);
+      assert.ok(p.name, `${p.id}: falta name`);
+      assert.ok(p.network == null || (typeof p.network === 'string' && p.network), `${p.id}: network`);
       assert.ok(ISO.test(p.from) && ISO.test(p.to) && p.from <= p.to, `${p.id}: datas ${p.from}..${p.to}`);
       assert.ok(ISO.test(p.checked), `${p.id}: checked`);
       assert.match(p.url, /^https:\/\//, `${p.id}: url`);
-      if (p.target === 'ENERGIA') assert.ok(p.eurKwh > 0 && p.pct == null, `${p.id}: ENERGIA leva eurKwh`);
-      else if (p.target === 'OPC') assert.ok(p.pct > 0 && p.pct <= 100 && p.eurKwh == null, `${p.id}: OPC leva pct`);
+      if (p.target === 'ENERGIA' || p.target === 'FINAL') assert.ok(p.eurKwh > 0 && p.pct == null && p.freeKwh == null, `${p.id}: ${p.target} leva eurKwh`);
+      else if (p.target === 'OPC') assert.ok(p.pct > 0 && p.pct <= 100 && p.eurKwh == null && p.freeKwh == null, `${p.id}: OPC leva pct`);
+      else if (p.target === 'KWH_GRATIS') assert.ok(p.freeKwh > 0 && p.eurKwh == null && p.pct == null, `${p.id}: KWH_GRATIS leva freeKwh`);
       else assert.fail(`${p.id}: target ${p.target}`);
       for (const tid of p.tariffs ?? []) {
         const t = TARIFFS.find(x => x.id === tid);
@@ -82,5 +84,36 @@ describe('discounted: desconto de ENERGIA', () => {
     const full = quoteFixed({ ...args, price: { UNICO: 0.25 } });
     const off = quoteFixed({ ...args, ...discounted({ UNICO: 0.25 }, {}, 0.12) });
     assert.equal(Math.round((full.parts.base - off.parts.base) * 100), 480);
+  });
+});
+
+describe('freeFirst: kWh grátis no início do carregamento', () => {
+  const P = { UNICO: 0.25 }, S = { UNICO: { energy: 0.2, tar: 0.05 } };
+  it('parte a fatia onde os grátis acabam, com o mesmo instante', () => {
+    const at = '2026-11-10T12:00:00Z';
+    const out = freeFirst([{ at, kwh: 3, price: P, split: S }, { at: 'b', kwh: 10, price: P, split: S }], 7);
+    assert.deepEqual(out.map(x => [x.at, x.kwh, x.price.UNICO]), [[at, 3, 0], ['b', 4, 0], ['b', 6, 0.25]]);
+    assert.deepEqual(out[0].split.UNICO, { energy: 0, tar: 0 });
+  });
+  it('mais grátis do que o carregamento: tudo grátis; zero: igual', () => {
+    assert.deepEqual(freeFirst([{ at: 'a', kwh: 5, price: P }], 7).map(x => x.price.UNICO), [0]);
+    const sl = [{ at: 'a', kwh: 5, price: P }];
+    assert.equal(freeFirst(sl, 0), sl);
+  });
+  it('num fixo, 7 kWh grátis = 7 × preço a menos na energia; IEC e activação ficam', () => {
+    const at = new Date('2026-11-10T12:00:00Z');
+    const args = { schedule: 'SIMPLES', cycle: 'SIMPLES', activation: 0.1088, iec: 0.001 };
+    const full = quoteSlices({ ...args, slices: [{ at, kwh: 30, price: P }] });
+    const free = quoteSlices({ ...args, slices: freeFirst([{ at, kwh: 30, price: P }], 7) });
+    assert.equal(Math.round((full.parts.energyTar - free.parts.energyTar) * 100), 175);
+    assert.equal(free.parts.iec, full.parts.iec);
+    assert.equal(free.parts.activation, full.parts.activation);
+  });
+});
+
+describe('finalTotal: tudo incluído', () => {
+  it('kWh × preço, para cima ao cêntimo', () => {
+    assert.equal(finalTotal(40, 0.47), 18.8);
+    assert.equal(finalTotal(33.333, 0.5), 16.67);
   });
 });

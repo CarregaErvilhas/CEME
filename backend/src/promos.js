@@ -1,5 +1,5 @@
-// Promoções de um CEME numa rede de postos (tabela `promo`, vê PROMOS em
-// db/seed-data.js).
+// Promoções de um CEME, quase sempre numa rede de postos (tabela `promo`,
+// vê PROMOS em db/seed-data.js).
 //
 // O simulador cota um carregamento sem saber em que posto é. Por isso uma
 // promoção nunca muda o `totalEur` de um tarifário: vai numa lista à parte,
@@ -20,7 +20,7 @@ export function promosFor(rows, t, day, region) {
 // CEME_PUBLIC_COLS: uma coluna nova não aparece na API sem passar por aqui.
 export const promoOut = (p) => ({
   id: p.id, ceme: p.ceme_id, name: p.name, network: p.network, target: p.target,
-  eurKwh: p.eur_kwh ?? null, pct: p.pct ?? null, from: p.starts_on, to: p.ends_on,
+  eurKwh: p.eur_kwh ?? null, pct: p.pct ?? null, freeKwh: p.free_kwh ?? null, from: p.starts_on, to: p.ends_on,
   newCustomers: !!p.new_customers, maxHours: p.max_hours ?? null,
   tariffs: p.tariff_ids ? p.tariff_ids.split(',') : null,
   regions: p.regions, url: p.source_url, checked: p.checked_on,
@@ -37,3 +37,27 @@ export function discounted(price, split, d) {
   const s = split && Object.fromEntries(Object.entries(split).map(([k, v]) => [k, v && { energy: p[k] - v.tar, tar: v.tar }]));
   return { price: p, split: s };
 }
+
+// Os primeiros `n` kWh de um carregamento sem energia nem TAR a pagar (uma
+// promoção KWH_GRATIS: os primeiros kWh do mês são oferecidos, e o que ainda
+// sobra deles cai no início deste carregamento). Parte a fatia onde os kWh
+// grátis acabam em duas, com o mesmo instante: a grátis e a paga.
+//   slices: [{ at, kwh, price, split, … }] por ordem de tempo
+export function freeFirst(slices, n) {
+  if (!(n > 0)) return slices;
+  const zero = (o) => o && Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v == null ? v : 0]));
+  const zeroSplit = (o) => o && Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v && { energy: 0, tar: 0 }]));
+  const out = [];
+  let left = n;
+  for (const sl of slices) {
+    const free = Math.min(left, sl.kwh);
+    left -= free;
+    if (free > 0) out.push({ ...sl, kwh: free, price: zero(sl.price), split: zeroSplit(sl.split) });
+    if (sl.kwh - free > 0) out.push({ ...sl, kwh: sl.kwh - free });
+  }
+  return out;
+}
+
+// Um carregamento todo a `eurKwh` por kWh (promoção FINAL, já com OPC, taxas
+// e IVA), arredondado para cima ao cêntimo como as outras contas.
+export const finalTotal = (kwh, eurKwh) => Math.ceil(kwh * eurKwh * 100 - 1e-9) / 100;
