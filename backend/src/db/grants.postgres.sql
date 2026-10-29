@@ -17,7 +17,7 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ceme_app;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM ceme_app;
 
 GRANT SELECT, INSERT, UPDATE ON
-  ceme, tariff, tariff_version, price_component, price_component_region, tar,
+  ceme, tariff, tariff_version, price_component, price_component_region, promo, tar,
   omie_spot, omie_daily, omie_meta, api_client, api_key
   TO ceme_app;
 

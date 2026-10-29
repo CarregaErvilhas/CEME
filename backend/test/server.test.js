@@ -134,6 +134,57 @@ describe('servidor: hardening HTTP', () => {
     assert.equal(d2.totalEur, dia.totalEur);
   });
 
+  it('promoções: à parte de cada tarifário, só no dia certo; o total não muda', async () => {
+    const auth = { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+    const sim = async (at) => (await (await fetch(`${BASE}/v1/simulate`, {
+      method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at, omie: 0.08 }),
+    })).json()).data;
+    const nov = await sim('2026-11-10T12:00:00Z');
+    const luz = nov.find(q => q.id === 'luzigas-ceme-bt');
+    const lp = luz.promos.find(p => p.id === 'luzigas-powerdot-2026-10');
+    assert.equal(lp.network, 'Powerdot');
+    assert.equal(lp.target, 'ENERGIA');
+    assert.equal(lp.newCustomers, true);
+    // 40 kWh × 0,12 € = 4,80 € a menos antes do IVA; com IVA e arredondamentos,
+    // à volta de 5,90 €.
+    assert.ok(Math.abs((luz.totalEur - lp.totalEur) - 4.8 * 1.23) < 0.03, `${luz.totalEur} → ${lp.totalEur}`);
+    const one = nov.find(q => q.id === 'miio-bt-miioonebi');
+    assert.deepEqual(one.promos.map(p => [p.target, p.pct, p.totalEur]), [['OPC', 45, undefined]], 'OPC: só a percentagem');
+    assert.equal(nov.find(q => q.id === 'miio-bt-miiobihor').promos, undefined, 'sem miio one, sem promoção');
+    assert.equal(nov.find(q => q.id === 'edp-bt-cartoedp').promos, undefined, 'EDP sem UVE, sem promoção');
+    // FINAL: o carregamento todo, OPC incluído, a 0,47 €/kWh.
+    const uve = nov.find(q => q.id === 'edp-bt-cartoedp-2').promos.find(p => p.id === 'edp-uve-2026-09');
+    assert.deepEqual([uve.target, uve.network, uve.totalEur], ['FINAL', 'EDP', 18.8]);
+    // KWH_GRATIS: sem monthKwh conta-se o mês todo por gastar; com ele, o que sobra.
+    const gold = nov.find(q => q.id === 'goldenergy-bt-clientesgold');
+    const g = gold.promos.find(p => p.id === 'goldenergy-7kwh');
+    assert.equal(g.network, null, 'vale em qualquer posto MOBI.E');
+    assert.deepEqual([g.freeKwhLeft, g.monthKwhKnown], [7, false]);
+    assert.ok(g.totalEur < gold.totalEur);
+    const used = async (monthKwh) => (await (await fetch(`${BASE}/v1/simulate`, {
+      method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at: '2026-11-10T12:00:00Z', omie: 0.08, monthKwh }),
+    })).json()).data.find(q => q.id === 'goldenergy-bt-clientesgold').promos[0];
+    const part = await used({ 'goldenergy-bt-clientesgold': 5 });
+    assert.deepEqual([part.freeKwhLeft, part.monthKwhKnown], [2, true]);
+    assert.ok(part.totalEur > g.totalEur && part.totalEur < gold.totalEur);
+    const gone = await used({ 'goldenergy-bt-clientesgold': 12 });
+    assert.deepEqual([gone.freeKwhLeft, gone.totalEur], [0, gold.totalEur], 'já gastou os 7: preço normal');
+    const bad = await fetch(`${BASE}/v1/simulate`, { method: 'POST', headers: auth, body: JSON.stringify({ monthKwh: { x: -1 } }) });
+    assert.equal(bad.status, 400);
+    // Depois do fim, desaparece; o preço do tarifário é o mesmo nos dois dias.
+    const dez = await sim('2026-12-02T12:00:00Z');
+    assert.equal(dez.find(q => q.id === 'luzigas-ceme-bt').promos, undefined);
+    // Nas ilhas não valem (regions = CONT).
+    const mad = (await (await fetch(`${BASE}/v1/simulate`, {
+      method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at: '2026-11-10T12:00:00Z', region: 'MAD' }),
+    })).json()).data;
+    assert.equal(mad.find(q => q.id === 'miio-bt-miioonebi').promos, undefined);
+    // /v1/promos lista as que ainda não acabaram.
+    const list = await (await fetch(`${BASE}/v1/promos`, { headers: auth })).json();
+    assert.ok(Array.isArray(list.data));
+    for (const p of list.data) assert.equal(typeof p.active, 'boolean');
+  });
+
   it('profile inválido → 400 bad_profile', async () => {
     const post = async (profile) => fetch(`${BASE}/v1/simulate`, {
       method: 'POST',
