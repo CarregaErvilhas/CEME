@@ -322,3 +322,42 @@ export const CAMPAIGN_END = {
   'ezu-bt-abenergia': '2026-09-30',
   'ezu-mt-abenergia': '2026-09-30',
 };
+
+// Promoções de um CEME numa rede de postos, uma por objecto (vê a tabela
+// `promo` em db/schema.sql). Não mexem no preço do tarifário: o
+// /v1/simulate devolve-as ao lado de cada tarifário a que se aplicam, e quem
+// sabe em que posto carregas escolhe as da rede certa.
+//   id        identificador único (ceme-rede-aaaa-mm do início)
+//   ceme      id do CEME (vê CEMES)
+//   name      o nome da promoção, como o CEME a anuncia
+//   tariffs   ids dos tarifários abrangidos; sem isto, todos os do CEME
+//   network   o nome da rede de postos, igual ao que o ohmigo usa em
+//             offers/networks.json (Powerdot, Ionity…)
+//   target    ENERGIA: `eurKwh` a menos no preço final do CEME (energia +
+//             TAR), antes de IEC, EGME e IVA. O simulador cota-o.
+//             OPC: `pct` a menos na taxa do operador do posto. O simulador
+//             não cota OPC, só devolve a percentagem.
+//   from, to  o primeiro e o último dia, inclusive
+//   newCustomers  true se é só para quem adere durante a promoção: um
+//             cliente que já o era não a tem, por isso nunca entra no
+//             preço por omissão
+//   maxHours  quanto tempo dura o desconto depois da adesão, se tiver limite
+//   regions   onde vale (CONT,MAD,AZO). Por omissão CONT
+//   url       onde a promoção está publicada; checked: o dia em que a lemos
+// Uma promoção que acabou não se apaga daqui: o `to` já a tira do simulador
+// no dia seguinte, e o seed só faz upserts.
+export const PROMOS = [
+  {
+    id: 'luzigas-powerdot-2026-10', ceme: 'luzigas', name: 'LUZiGÁS × Powerdot: −0,12 €/kWh na componente CEME',
+    network: 'Powerdot', target: 'ENERGIA', eurKwh: 0.12, from: '2026-10-29', to: '2026-11-28',
+    newCustomers: true, maxHours: 168,
+    // Anunciada na app da Powerdot; a Luzigás ainda não a tem no site.
+    url: 'https://www.luzigas.pt/plano-mobilidade-eletrica/', checked: '2026-10-29',
+  },
+  {
+    id: 'miio-powerdot-2026-02', ceme: 'miio', name: 'miio one: −45 % na tarifa do operador nos postos Powerdot',
+    tariffs: ['miio-bt-miioonebi', 'miio-mt-miioonebi', 'miio-bt-miioonebi-2', 'miio-mt-miioonebi-2'],
+    network: 'Powerdot', target: 'OPC', pct: 45, from: '2026-02-03', to: '2026-12-31',
+    url: 'https://www.miio.com/pt/miio-one', checked: '2026-10-29',
+  },
+];

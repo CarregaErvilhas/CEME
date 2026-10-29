@@ -17,6 +17,7 @@ import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from '../om
 import { civilDay } from '../omie/convert.js';
 import { zonedParts } from '../time.js';
 import { allTariffs, comps, compRows, loadPricing, tarFor, quoteOne, today, vmeta } from '../tariffs.js';
+import { promoOut } from '../promos.js';
 import { json, fail, clientIp } from './respond.js';
 import { rateBucket, rlHeaders, rateLimited, RATE_DEFAULT } from './ratelimit.js';
 import { auth, issueSession } from './auth.js';
@@ -68,6 +69,14 @@ async function tariffs({ res, headers }) {
   const rows = await allTariffs();
   const versions = new Map((await query('SELECT * FROM tariff_version')).map(v => [v.id, v]));
   json(res, 200, { data: rows.map(t => ({ ...t, version: versions.get(t.vid) ?? null })) }, headers);
+}
+
+// As promoções que ainda não acabaram (as que já começaram e as que vão
+// começar), com `active` = em vigor hoje. Vê promos.js.
+async function promos({ res, headers }) {
+  const day = today();
+  const rows = await query('SELECT * FROM promo WHERE ends_on >= $1 ORDER BY ceme_id, id', [day]);
+  json(res, 200, { data: rows.map(p => ({ ...promoOut(p), active: p.starts_on <= day })) }, headers);
 }
 
 async function tar({ res, headers }) {
@@ -342,9 +351,18 @@ async function simulate({ req, res, headers }) {
     // aviso. A quarentena é para dados errados, não para o calendário.
     const results = list.filter(t => t.vid != null).map(t => {
       try {
-        const q = quoteOne(t, { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) }, profile }, pricing);
+        const input = { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) }, profile };
+        const q = quoteOne(t, input, pricing);
         // O detalhe por fatia só vai se for pedido (são N fatias × cada tarifário).
         if (!detail) delete q.slices;
+        // As promoções deste tarifário nesse dia, à parte: valem só numa rede
+        // de postos, e o simulador não sabe em qual carregas. As de ENERGIA
+        // levam o total já com o desconto; as de OPC só a percentagem.
+        const ps = pricing.promos(t, day);
+        if (ps.length) {
+          q.promos = ps.map(p => ({ ...promoOut(p),
+            ...(p.target === 'ENERGIA' && { totalEur: quoteOne(t, { ...input, discountKwh: p.eur_kwh }, pricing).totalEur }) }));
+        }
         return q;
       } catch (e) {
         console.warn(`[ceme-v2] tarifário em quarentena: ${t.id}: ${e.message}`);
@@ -365,6 +383,7 @@ const ROUTES = {
   '/v1/cemes': { method: 'GET', handler: cemes },
   '/v1/tariffs': { method: 'GET', handler: tariffs },
   '/v1/tar': { method: 'GET', handler: tar },
+  '/v1/promos': { method: 'GET', handler: promos },
   '/v1/tabela': { method: 'GET', handler: tabela },
   '/v1/omie/daily': { method: 'GET', handler: omieDaily },
   '/v1/omie/futures': { method: 'GET', handler: omieFutures },

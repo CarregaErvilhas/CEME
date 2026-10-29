@@ -10,7 +10,7 @@
 // os dois percebem.
 import {
   CEMES, TARIFFS, SPLITS, REGION_SPLITS, regionFinal, NOTES, VERSIONS,
-  CAMPAIGN_END, PRICES_VERIFIED_ON, IEC,
+  CAMPAIGN_END, PRICES_VERIFIED_ON, IEC, PROMOS,
 } from './seed-data.js';
 
 // As colunas de preço, iguais em price_component e price_component_region.
@@ -71,6 +71,17 @@ export async function seed(db) {
           [vid, region, period, regionFinal(s.energy, s.tar), ...fees, s.energy, s.tar]);
       }
     }
+  }
+
+  // As promoções (vê PROMOS). Só upserts: uma promoção que acabou fica na
+  // BD, e o `ends_on` tira-a do simulador.
+  const PROMO_COLS = ['ceme_id', 'name', 'tariff_ids', 'network', 'target', 'eur_kwh', 'pct', 'starts_on', 'ends_on', 'new_customers', 'max_hours', 'regions', 'source_url', 'checked_on'];
+  for (const p of PROMOS) {
+    await db.run(`INSERT INTO promo (id, ${PROMO_COLS.join(', ')})
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ON CONFLICT (id) DO UPDATE SET ${updateAll(PROMO_COLS)}`,
+      [p.id, p.ceme, p.name, p.tariffs?.join(',') ?? null, p.network, p.target, p.eurKwh ?? null, p.pct ?? null,
+        p.from, p.to, p.newCustomers ? 1 : 0, p.maxHours ?? null, p.regions ?? 'CONT', p.url, p.checked]);
   }
 
   // Campanhas que acabaram. Corre depois do upsert, por isso voltar a correr

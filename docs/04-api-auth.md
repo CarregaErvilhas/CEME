@@ -111,6 +111,7 @@ GET  /v1/health                  # confirma a credencial e diz de que tipo é
 GET  /v1/cemes                   # comercializadores
 GET  /v1/tariffs                 # todos os tarifários + a versão em vigor
 GET  /v1/tar                     # TAR em vigor (region, voltage, period, valid_from)
+GET  /v1/promos                  # promoções que ainda não acabaram (vê abaixo)
 POST /v1/simulate                # vê abaixo
 GET  /v1/omie/daily?days=60      # médias diárias; days entre 7 e 120
 GET  /v1/omie/futures            # contratos de futuros do OMIP (a interface não os usa)
@@ -201,9 +202,29 @@ Notas:
   instante, os kWh, o período e o preço final (sem IVA) de cada fatia, e,
   nos indexados, o OMIE usado e se era do quarto (`omieSpot`). Sem
   `detail`, as fatias não vêm (são N fatias × cada tarifário).
+- `promos` (só nos tarifários que as têm nesse dia e região): as promoções
+  do CEME numa **rede de postos** (Powerdot, Ionity…). O simulador não sabe
+  em que posto carregas, por isso uma promoção nunca muda o `totalEur`: vai
+  à parte, e quem sabe o posto escolhe as da rede certa (`network`). Cada
+  uma traz os campos de `GET /v1/promos` e, nas de `target: "ENERGIA"`,
+  `totalEur` com o desconto (o mesmo carregamento, com `eurKwh` a menos no
+  preço final de cada fatia, antes de IEC, EGME e IVA). As de `"OPC"` são um
+  desconto em `pct` na taxa do operador, que este simulador não cota: só a
+  percentagem vai. `newCustomers: true` quer dizer que só vale para quem
+  adere durante a promoção (e `maxHours`, se vier, quanto tempo dura depois
+  da adesão), por isso nunca deve entrar no preço por omissão.
 - As **datas devolvidas são UTC** (`toISOString()`), seja qual for a região.
   Passar para a hora local é com o cliente. As datas que **envias** em `at`
   seguem o offset que escreveres.
+
+### `GET /v1/promos`
+
+As promoções que ainda não acabaram, com `active` = já em vigor hoje. Os
+campos: `id`, `ceme`, `name`, `network`, `target` (`ENERGIA` ou `OPC`),
+`eurKwh` ou `pct`, `from` e `to` (dias, inclusive), `newCustomers`,
+`maxHours`, `tariffs` (ids; `null` = todos os do CEME), `regions`, `url` e
+`checked` (o dia em que a lemos). Vêm de `PROMOS` em
+`backend/src/db/seed-data.js`.
 
 ### Formatos gerais
 
