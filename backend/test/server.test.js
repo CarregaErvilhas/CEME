@@ -140,11 +140,15 @@ describe('servidor: hardening HTTP', () => {
       method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at, omie: 0.08 }),
     })).json()).data;
     const nov = await sim('2026-11-10T12:00:00Z');
-    const luz = nov.find(q => q.id === 'luzigas-ceme-bt');
+    const luz = nov.find(q => q.id === 'luzigas-promo-ceme-bt');
     const lp = luz.promos.find(p => p.id === 'luzigas-powerdot-2026-10');
     assert.equal(lp.network, 'Powerdot');
     assert.equal(lp.target, 'ENERGIA');
     assert.equal(lp.newCustomers, true);
+    // O tarifário também é só para novas adesões, e diz até quando vale.
+    assert.deepEqual([luz.newCustomers, luz.valid_until], [true, '2026-11-28']);
+    const idx = nov.find(q => q.id === 'luzigas-ceme-bt');
+    assert.deepEqual([idx.newCustomers, idx.valid_until], [false, null]);
     // 40 kWh × 0,12 € = 4,80 € a menos antes do IVA; com IVA e arredondamentos,
     // à volta de 5,90 €.
     assert.ok(Math.abs((luz.totalEur - lp.totalEur) - 4.8 * 1.23) < 0.03, `${luz.totalEur} → ${lp.totalEur}`);
@@ -174,6 +178,12 @@ describe('servidor: hardening HTTP', () => {
     // Depois do fim, desaparece; o preço do tarifário é o mesmo nos dois dias.
     const dez = await sim('2026-12-02T12:00:00Z');
     assert.equal(dez.find(q => q.id === 'luzigas-ceme-bt').promos, undefined);
+    assert.equal(nov.find(q => q.id === 'luzigas-ceme-bt').promos, undefined, 'o indexado não tem o desconto');
+    // Tarifário de campanha: vale até ao `to`, inclusive, e no dia a seguir sai.
+    const promoTotal = async (at) => (await sim(at)).find(q => q.id === 'luzigas-promo-ceme-bt')?.totalEur;
+    assert.ok(nov.find(q => q.id === 'luzigas-promo-casa-bt'));
+    assert.ok(await promoTotal('2026-11-28T12:00:00Z'));
+    assert.equal(await promoTotal('2026-11-29T12:00:00Z'), undefined);
     // Nas ilhas não valem (regions = CONT).
     const mad = (await (await fetch(`${BASE}/v1/simulate`, {
       method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at: '2026-11-10T12:00:00Z', region: 'MAD' }),
@@ -549,6 +559,41 @@ it('HTML também leva nosniff', async () => {
       assert.ok(bi.prices.FORA_VAZIO > 0 && bi.prices.VAZIO > 0, 'preços por período em falta');
       assert.equal(j.data.find(x => x.id === 'atlante-bt-myatlanteac').legacy_id, 92, 'a /tabela mostra o número da folha');
     });
+
+    it('/v1/tabela: campanha com datas, futuro marcado, acabado fora', async () => {
+      // Três tarifários de teste: uma campanha em curso, um que só começa em
+      // 2099 e um que acabou em 2020. Saem no fim, para não mexer no ranking.
+      const db = new DatabaseSync(path.join(dir, `ceme-${PORT}.db`));
+      const add = (id, from, to, campaign) => {
+        db.prepare(`INSERT INTO tariff (id, ceme_id, name, kind, voltage, schedule, cycle, new_customers)
+          VALUES (?, 'acp', ?, 'FIXED', 'BT', 'SIMPLES', 'SIMPLES', 1)`).run(id, id);
+        const { lastInsertRowid: vid } = db.prepare(`INSERT INTO tariff_version (tariff_id, valid_from, valid_to, campaign, status)
+          VALUES (?, ?, ?, ?, 'ACTIVE')`).run(id, from, to, campaign);
+        db.prepare(`INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh, activation_eur, support_eur, iec_eur_kwh)
+          VALUES (?, 'UNICO', 0.2, 0.1, 0, 0.001)`).run(vid);
+      };
+      add('teste-campanha', '2020-01-01', '2099-01-02', 1);
+      add('teste-futuro', '2099-01-01', null, 0);
+      add('teste-acabado', '2020-01-01', '2020-02-01', 1);
+      try {
+        const j = await (await fetch(`${BASE}/v1/tabela`, { headers: { Authorization: `Bearer ${token}` } })).json();
+        const by = (id) => j.data.find(x => x.id === id);
+        assert.deepEqual([by('teste-campanha').upcoming, by('teste-campanha').validFrom, by('teste-campanha').validUntil, by('teste-campanha').newCustomers],
+          [false, '2020-01-01', '2099-01-01', true]);
+        assert.deepEqual([by('teste-futuro').upcoming, by('teste-futuro').validFrom, by('teste-futuro').validUntil, by('teste-futuro').prices.UNICO],
+          [true, '2099-01-01', null, 0.2]);
+        assert.equal(by('teste-acabado'), undefined, 'o que acabou não aparece');
+        const normal = by('atlante-bt-myatlanteac');
+        assert.deepEqual([normal.upcoming, normal.validFrom, normal.validUntil, normal.newCustomers], [false, null, null, false]);
+      } finally {
+        for (const id of ['teste-campanha', 'teste-futuro', 'teste-acabado']) {
+          db.prepare('DELETE FROM price_component WHERE tariff_version_id IN (SELECT id FROM tariff_version WHERE tariff_id = ?)').run(id);
+          db.prepare('DELETE FROM tariff_version WHERE tariff_id = ?').run(id);
+          db.prepare('DELETE FROM tariff WHERE id = ?').run(id);
+        }
+        db.close();
+      }
+    });
   });
 
   it('/v1/tariffs devolve o legacy_id e filtra por ele', async () => {
@@ -693,7 +738,7 @@ it('HTML também leva nosniff', async () => {
     assert.equal(r.status, 200);
     const j = await r.json();
     // todos menos o myAtlanteMT em quarentena (e o EZU BT fechado acima)
-    assert.ok(j.data.length >= 90 && j.data.length < 108, `ranking continua (${j.data.length})`);
+    assert.ok(j.data.length >= 90 && j.data.length < 112, `ranking continua (${j.data.length})`);
     assert.ok(!j.data.find(x => x.id === 'atlante-mt-myatlanteac'), 'o corrompido sai do ranking');
   });
 });

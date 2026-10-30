@@ -17,12 +17,13 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=2"><link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
   <link rel="stylesheet" href="/pages.css">
   <style>
-    /* uma tabela para ler e comparar, não um painel. */
+    /* uma tabela para ler e comparar, não um painel: ocupa o ecrã todo e
+     * não tem barra de scroll própria. Os cabeçalhos, o CEME, o nome e a
+     * validade quebram linha para a tabela caber na largura; os números não. */
     main.cont {
-      max-width: 1240px;
-      margin: 0 auto;
+      max-width: none;
+      margin: 0;
       padding: 12px 16px;
-      overflow-x: auto;
     }
 
     p.meta {
@@ -32,6 +33,7 @@
     }
 
     table {
+      width: 100%;
       border-collapse: collapse;
       font-size: .88rem;
       font-variant-numeric: tabular-nums;
@@ -42,6 +44,13 @@
       border: 1px solid #B7B7B7;
       padding: 3px 8px;
       white-space: nowrap;
+    }
+
+    th,
+    td:nth-child(2),
+    td:nth-child(3),
+    td:last-child {
+      white-space: normal;
     }
 
     th {
@@ -56,6 +65,11 @@
 
     tr.ilha td {
       background: rgba(0, 0, 0, .03);
+    }
+
+    tr.futuro td {
+      font-style: italic;
+      opacity: .75;
     }
   </style>
 </head>
@@ -123,9 +137,18 @@
     <th>${t('thOp')}</th><th>${t('thCycle')}</th>
     <th class="num">${t('thCheias')}</th><th class="num">${t('thVazio')}</th>
     <th class="num">${t('thAct')}</th>
-    <th>${t('thPop')}</th><th>${t('thBundle')}</th>
+    <th>${t('thPop')}</th><th>${t('thBundle')}</th><th>${t('thValid')}</th>
   </tr></thead>`;
     }
+
+    /* Só as campanhas e os que ainda não começaram têm datas; os outros
+     * valem até nova verificação. */
+    const validity = (r) => {
+      if (r.validFrom && r.validUntil) return t('validRange', { a: dtDay(r.validFrom), b: dtDay(r.validUntil) });
+      if (r.validUntil) return t('validUntil', { d: dtDay(r.validUntil) });
+      if (r.validFrom) return t('validFrom', { d: dtDay(r.validFrom) });
+      return '—';
+    };
 
     /* Uma linha por tarifário. Bi-horário: Cheias = FORA_VAZIO, Vazio = VAZIO.
      * Simples: o preço único atravessa as duas colunas (só há um número, e
@@ -142,7 +165,8 @@
       const rowHtml = (r, region) => {
         const rp = region ? r.regionPrices[region] : r;
         const prices = rp.prices, split = rp.split;
-        const name = region ? `${esc(r.name)} <small>· ${esc(((CEME_I18N.regions[region] || {})[LANG] || {}).curto || region)}</small>` : esc(r.name);
+        const tag = r.newCustomers ? ` <small>· ${t('newOnly')}</small>` : '';
+        const name = (region ? `${esc(r.name)} <small>· ${esc(((CEME_I18N.regions[region] || {})[LANG] || {}).curto || region)}</small>` : esc(r.name)) + tag;
         const cells = [
           `<td class="num">${r.legacy_id ?? '—'}</td>`,
           `<td>${esc(r.ceme)}</td>`,
@@ -160,7 +184,9 @@
         else cells.push(`<td class="num">${fmt('FORA_VAZIO')}</td><td class="num">${fmt('VAZIO')}</td>`);
         cells.push(`<td class="num">${r.activation ? nf(r.activation) : '—'}</td>`);
         cells.push(`<td>${r.popular ? t('yes') : t('no')}</td><td>${r.bundle ? t('yes') : t('no')}</td>`);
-        return `<tr${region ? ' class="ilha"' : ''}>${cells.join('')}</tr>`;
+        cells.push(`<td>${validity(r)}</td>`);
+        const cls = [region && 'ilha', r.upcoming && 'futuro'].filter(Boolean).join(' ');
+        return `<tr${cls ? ` class="${cls}"` : ''}>${cells.join('')}</tr>`;
       };
       const body = rows.map(r => rowHtml(r, null) +
         Object.keys(r.regionPrices || {}).map(g => rowHtml(r, g)).join('')).join('');

@@ -180,6 +180,10 @@ Onde aparece:
 - `GET /v1/tabela`: em cada linha, e a página `/tabela` mostra-o na
   primeira coluna (ID).
 
+O `GET /v1/tabela` traz também os tarifários que ainda vão começar
+(`upcoming: true`) e, nas campanhas, `validFrom` e `validUntil` (dias,
+inclusive). Os que já acabaram não vêm.
+
 Como se consome:
 
 ```sh
@@ -280,6 +284,11 @@ Notas:
   instante, os kWh, o período e o preço final (sem IVA) de cada fatia, e,
   nos indexados, o OMIE usado e se era do quarto (`omieSpot`). Sem
   `detail`, as fatias não vêm (são N fatias × cada tarifário).
+- `newCustomers: true`: o tarifário só o tem quem adere ao CEME (um cliente
+  que já o era não pode). Entra no ranking, mas quem mostra o preço a um
+  cliente antigo deve deixá-lo de fora ou avisar.
+- `valid_until` (só nas campanhas): o último dia em que o preço vale,
+  inclusive. No dia seguinte o tarifário deixa de vir.
 - `promos` (só nos tarifários que as têm nesse dia e região): as promoções
   do CEME, quase sempre numa **rede de postos** (`network`: Powerdot, EDP…;
   `null` = qualquer posto MOBI.E). O simulador não sabe em que posto

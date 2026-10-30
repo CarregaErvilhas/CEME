@@ -12,6 +12,7 @@ import {
   CEMES, TARIFFS, SPLITS, REGION_SPLITS, regionFinal, NOTES, VERSIONS,
   CAMPAIGN_END, PRICES_VERIFIED_ON, IEC, PROMOS, LEGACY_IDS,
 } from './seed-data.js';
+import { shiftDays } from '../time.js';
 
 // As colunas de preço, iguais em price_component e price_component_region.
 const PRICE_COLS = ['energy_eur_kwh', 'activation_eur', 'support_eur', 'iec_eur_kwh', 'energy_only_eur_kwh', 'tar_eur_kwh'];
@@ -29,22 +30,24 @@ export async function seed(db) {
   for (const t of TARIFFS) {
     const name = t.name + (t.est && t.kind === 'FIXED' ? ' ~' : '');
     await db.run(`INSERT INTO tariff
-      (id, ceme_id, name, kind, voltage, schedule, cycle, green, access, popular, bundle, regions, source_url, legacy_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      ON CONFLICT (id) DO UPDATE SET ${updateAll(['ceme_id', 'name', 'kind', 'voltage', 'schedule', 'cycle', 'green', 'access', 'popular', 'bundle', 'regions', 'source_url', 'legacy_id'])}`,
-      [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url ?? websites[t.ceme], LEGACY_IDS[t.id] ?? null]);
+      (id, ceme_id, name, kind, voltage, schedule, cycle, green, access, popular, bundle, regions, source_url, legacy_id, new_customers)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ON CONFLICT (id) DO UPDATE SET ${updateAll(['ceme_id', 'name', 'kind', 'voltage', 'schedule', 'cycle', 'green', 'access', 'popular', 'bundle', 'regions', 'source_url', 'legacy_id', 'new_customers'])}`,
+      [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url ?? websites[t.ceme], LEGACY_IDS[t.id] ?? null, t.newCustomers ? 1 : 0]);
 
     // Uma versão por tarifário, a começar em PRICES_VERIFIED_ON. `valid_to`
     // não entra no UPDATE: se alguém fechou uma versão à mão, o seed não a
-    // reabre. `omie_aggregation` é SPLIT_VAZIO_FORA em todos, porque os
+    // reabre. Uma campanha (`from`/`to`, inclusive) começa no seu `from` e
+    // fecha no dia a seguir ao `to`, porque `valid_to` é exclusivo. `omie_aggregation` é SPLIT_VAZIO_FORA em todos, porque os
     // indexados do seed são todos bi-horários (vê docs/02).
     const v = VERSIONS[t.id] || {};
+    const from = t.from ?? PRICES_VERIFIED_ON;
     await db.run(`INSERT INTO tariff_version
       (tariff_id, valid_from, valid_to, campaign, status, origin, k_index_eur_mwh, cgs_eur_mwh, omie_aggregation, notes)
-      VALUES ($1, $2, NULL, 0, 'ACTIVE', $3, $4, $5, 'SPLIT_VAZIO_FORA', $6)
+      VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, 'SPLIT_VAZIO_FORA', $8)
       ON CONFLICT (tariff_id, valid_from) DO UPDATE SET ${updateAll(['status', 'origin', 'k_index_eur_mwh', 'cgs_eur_mwh', 'omie_aggregation', 'notes'])}`,
-      [t.id, PRICES_VERIFIED_ON, `SEED_${PRICES_VERIFIED_ON}`, v.k ?? null, v.cgs ?? null, NOTES[t.id] ?? null]);
-    const [{ id: vid }] = await db.query('SELECT id FROM tariff_version WHERE tariff_id = $1 AND valid_from = $2', [t.id, PRICES_VERIFIED_ON]);
+      [t.id, from, t.to ? shiftDays(t.to, 1) : null, t.to ? 1 : 0, `SEED_${PRICES_VERIFIED_ON}`, v.k ?? null, v.cgs ?? null, NOTES[t.id] ?? null]);
+    const [{ id: vid }] = await db.query('SELECT id FROM tariff_version WHERE tariff_id = $1 AND valid_from = $2', [t.id, from]);
 
     // Os preços do Continente, um por período. A activação, o apoio e o IEC
     // são do tarifário e repetem-se em cada linha (vê db/components.js). Nos

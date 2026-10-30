@@ -55,6 +55,8 @@ export const ADDED_COLUMNS = [
   ['price_component', 'tar_eur_kwh', 'REAL'],
   // O número do tarifário na folha original (vê LEGACY_IDS).
   ['tariff', 'legacy_id', 'INTEGER'],
+  // Tarifários só para quem adere ao CEME (vê `newCustomers` em TARIFFS).
+  ['tariff', 'new_customers', 'INTEGER DEFAULT 0'],
 ];
 
 export async function migrateAddedColumns() {

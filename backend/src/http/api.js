@@ -15,7 +15,7 @@ import { REGIONS, periodForRegion } from '../engine/regions.js';
 import { compareWithFixed, tallyWinners } from '../engine/compare.js';
 import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from '../omie/pipeline.js';
 import { civilDay } from '../omie/convert.js';
-import { zonedParts } from '../time.js';
+import { shiftDays, zonedParts } from '../time.js';
 import { allTariffs, comps, compRows, loadPricing, tarFor, quoteOne, today, vmeta } from '../tariffs.js';
 import { finalTotal, promoOut } from '../promos.js';
 import { json, fail, clientIp } from './respond.js';
@@ -87,8 +87,9 @@ async function tar({ res, headers }) {
   json(res, 200, { data: await query('SELECT * FROM tar WHERE valid_from <= $1 AND (valid_to IS NULL OR valid_to > $1)', [today()]) }, headers);
 }
 
-// Dados da página /tabela: os tarifários em vigor com os preços, sem
-// cálculo nenhum.
+// Dados da página /tabela: os tarifários em vigor e os que ainda vão
+// começar (`upcoming`), com os preços, sem cálculo nenhum. Os que acabaram
+// não aparecem.
 async function tabela({ res, headers }) {
   const pricing = await loadPricing('CONT');
   // Preços próprios das ilhas, à parte, por versão: vid → linhas.
@@ -100,9 +101,17 @@ async function tabela({ res, headers }) {
     if (!islandRows.has(r.tariff_version_id)) islandRows.set(r.tariff_version_id, []);
     islandRows.get(r.tariff_version_id).push(r);
   }
+  // A primeira versão futura de cada tarifário, para os que ainda não começaram.
+  const next = new Map();
+  for (const v of await query('SELECT id, tariff_id FROM tariff_version WHERE valid_from > $1 ORDER BY valid_from DESC', [today()])) {
+    next.set(v.tariff_id, v.id);
+  }
   const out = [];
-  for (const t of await allTariffs()) {
-    if (t.vid == null) continue; // sem versão em vigor (ex.: campanha acabada)
+  for (const row of await allTariffs()) {
+    const upcoming = row.vid == null && next.has(row.id);
+    if (row.vid == null && !upcoming) continue; // campanha acabada
+    const t = upcoming ? { ...row, vid: next.get(row.id) } : row;
+    const ver = pricing.version(t.vid);
     const cp = pricing.comps(t.vid);
     // { MAD: { prices, split }, … }. Só aparece para quem cobra diferente lá.
     const regRows = islandRows.get(t.vid) ?? [];
@@ -115,13 +124,18 @@ async function tabela({ res, headers }) {
       id: t.id, legacy_id: t.legacy_id ?? null,
       ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
       schedule: t.schedule, cycle: t.cycle, green: t.green, bundle: t.bundle,
-      popular: t.popular, access: t.access,
+      popular: t.popular, access: t.access, newCustomers: !!t.new_customers,
+      // Datas só nas campanhas e nos que ainda não começaram; `validUntil` é
+      // o último dia, inclusive.
+      upcoming, validFrom: ver.campaign || upcoming ? ver.valid_from : null,
+      validUntil: ver.valid_to ? shiftDays(ver.valid_to, -1) : null,
       prices: cp.price, activation: cp.act, iec: cp.iec, split: cp.split,
       ...(Object.keys(regionPrices).length ? { regionPrices } : {}),
     });
   }
   const ver = await get(
-    'SELECT MAX(valid_from) AS d FROM tariff_version WHERE valid_from <= $1 AND (valid_to IS NULL OR valid_to > $1)', [today()]);
+    // As campanhas têm datas próprias (na coluna Validade) e não contam aqui.
+    'SELECT MAX(valid_from) AS d FROM tariff_version WHERE campaign = 0 AND valid_from <= $1 AND (valid_to IS NULL OR valid_to > $1)', [today()]);
   json(res, 200, { at: ver?.d ?? null, data: out }, headers);
 }
 
