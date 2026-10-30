@@ -282,12 +282,12 @@ export const PRICES_VERIFIED_ON = '2026-10-15';
 export const VERSIONS = {
   "ynerluz-bt": { k: 0.02, cgs: 0.025, loss: 0.1531275537, formula: "ynerluz" },
   "ynerluz-mt": { k: 0.02, cgs: 0.025, loss: 0.07127022935, formula: "ynerluz" },
-  "luzigas-ceme-bt": { k: 0.05, cgs: 0.02 },
-  "luzigas-ceme-mt": { k: 0.05, cgs: 0.02 },
-  "luzigas-casa-bt": { k: 0.005, cgs: 0.02 },
-  "luzigas-casa-mt": { k: 0.005, cgs: 0.02 },
-  "luzigas-k0010-bt": { k: 0.01, cgs: 0.02 },
-  "luzigas-k0010-mt": { k: 0.01, cgs: 0.02 },
+  "luzigas-ceme-bt": { k: 0.05, cgs: 0.0183 },
+  "luzigas-ceme-mt": { k: 0.05, cgs: 0.0183 },
+  "luzigas-casa-bt": { k: 0.005, cgs: 0.0183 },
+  "luzigas-casa-mt": { k: 0.005, cgs: 0.0183 },
+  "luzigas-k0010-bt": { k: 0.01, cgs: 0.0183 },
+  "luzigas-k0010-mt": { k: 0.01, cgs: 0.0183 },
   "meo-dinamica-bt": { k: 0.065, cgs: 0.0 },
   "meo-dinamica-mt": { k: 0.065, cgs: 0.0 },
 };
