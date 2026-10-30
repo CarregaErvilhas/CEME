@@ -37,6 +37,12 @@ token estragado é só um 401, nunca um erro do servidor. O código está em
 Uma `X-API-Key` valida-se comparando o seu hash com os da BD (ignoram-se
 chaves revogadas ou expiradas). Qualquer chave desconhecida recebe 401.
 
+Todos os 401 têm o código `unauthorized`; a mensagem diz o que correu mal
+(credencial em falta, `X-API-Key` inválida, token expirado ou inválido). Uma
+chave revogada, expirada ou que nunca existiu dá a mesma mensagem, para não
+revelar quais chaves já existiram. As mensagens estão em `AUTH_MESSAGES`
+(`backend/src/http/api.js`).
+
 ### A chave da variável de ambiente
 
 A variável `CEME_API_KEY` manda na linha `env-key` da BD. Como a BD
