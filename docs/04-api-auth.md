@@ -338,6 +338,27 @@ se a língua **preferida** (a de maior `q`) for inglês: um `en;q=0.8` atrás
 de um `pt;q=0.9` fica em português. No browser, a bandeira escolhida
 (guardada em `localStorage`) tem prioridade sobre o cabeçalho.
 
+## Texto no HTML e etiquetas para os motores de busca
+
+O texto das páginas é desenhado pelo script de cada uma, a partir de
+`strings.js`. Quem não corre JavaScript (muitos crawlers, e os de IA) via
+uma página quase vazia. Por isso, em `/`, `/assistente`, `/simulador`,
+`/sobre`, `/contactos` e `/privacidade`, o servidor corre esse mesmo script
+uma vez por página e língua (`http/prerender.js`, num `document` falso que só
+regista o que é escrito em cada elemento com `id`) e manda o HTML já com o
+texto nos elementos vazios e o `<title>` da língua. No browser o script volta
+a desenhar o mesmo por cima. Se mudares uma página, não há nada a manter à
+parte; se o script rebentar no `document` falso, a página sai como está no
+ficheiro. Um elemento que o script preencha tem de ter `id` e estar vazio no
+HTML, senão fica de fora.
+
+`seoHead()` em `http/pages.js` junta o que falta a cada página: `<link
+rel="canonical">` (os sinónimos como `/about` apontam para o caminho do
+sitemap; `/` e `/assistente` são a mesma página), `og:url`, `og:image`
+(`frontend/og.png`) e, no assistente e no simulador, JSON-LD
+`WebApplication`. O domínio canónico é `PUBLIC_ORIGIN` (por omissão
+`https://ceme.ocarroeletrico.com`).
+
 ## Planos
 
 Nada disto existe ainda; está no [roadmap](06-roadmap.md):

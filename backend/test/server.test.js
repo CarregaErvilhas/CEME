@@ -507,6 +507,29 @@ it('HTML também leva nosniff', async () => {
       assert.doesNotMatch(xml, /tabela/);
     });
 
+    it('as páginas chegam com o texto lá dentro, para quem não corre JavaScript', async () => {
+      const semScripts = h => h.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ');
+      for (const [caminho, frase] of [['/', 'Qual tarifário'], ['/simulador', 'Quanto custa'], ['/sobre', 'Porque é que isto existe'], ['/contactos', 'Fala connosco'], ['/privacidade', 'Quem é responsável']]) {
+        const { html } = await abrir(caminho);
+        assert.ok(semScripts(html).includes(frase), `${caminho} sem "${frase}" no HTML`);
+      }
+      const en = (await abrir('/sobre', { 'accept-language': 'en' })).html;
+      assert.match(en, /<title>About the EV Tariff Comparison<\/title>/);
+      assert.ok(semScripts(en).includes('Why this exists'));
+    });
+
+    it('etiquetas para os motores de busca: canónico, og:image, JSON-LD, links para os outros projectos', async () => {
+      const { html } = await abrir('/about');
+      assert.match(html, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/sobre">/);
+      assert.match(html, /property="og:image" content="https:\/\/ceme\.ocarroeletrico\.com\/og\.png"/);
+      assert.match(html, /href="https:\/\/ohmigo\.ocarroeletrico\.com\/"/);
+      assert.match(html, /href="https:\/\/nap\.ocarroeletrico\.com\/"/);
+      const raiz = (await abrir('/')).html;
+      assert.match(raiz, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/">/);
+      assert.equal(JSON.parse(raiz.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1])['@type'], 'WebApplication');
+      assert.equal((await fetch(`${BASE}/og.png`)).headers.get('content-type'), 'image/png');
+    });
+
     it('/tabela leva X-Robots-Tag noindex', async () => {
       const r = await fetch(`${BASE}/tabela`);
       assert.match(r.headers.get('x-robots-tag') || '', /noindex/);

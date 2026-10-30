@@ -101,7 +101,7 @@ function render() {
       <p>${t('p5p1')}</p>
       <p><small>${t('updated')}</small></p>
     </article>`);
-  set('foot', `${t('footNote')} <a href="/sobre">${t('navSobre')}</a><span class="sep">·</span><a href="/contactos">${t('navContactos')}</a><span class="sep">·</span><a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">GitHub</a>`);
+  set('foot', `${t('footNote')} <a href="/sobre">${t('navSobre')}</a><span class="sep">·</span><a href="/contactos">${t('navContactos')}</a><span class="sep">·</span><a href="https://github.com/CarregaErvilhas/CEME" target="_blank" rel="noopener">GitHub</a><br>${t('footSister')}`);
 }
 
 document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => {

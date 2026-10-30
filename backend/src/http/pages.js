@@ -5,6 +5,7 @@
 // ficheiro daqui (e já respondeu), ou false para o router seguir para a API.
 import { readFile } from 'node:fs/promises';
 import { fail } from './respond.js';
+import { prerender } from './prerender.js';
 
 const FRONTEND = new URL('../../../frontend/', import.meta.url);
 const NOSNIFF = { 'x-content-type-options': 'nosniff' };
@@ -32,6 +33,8 @@ const STATIC = {
   '/icon-180.png': { file: 'icon-180.png', headers: ICON, missing: 404 },
   '/icon-32.png': { file: 'icon-32.png', headers: ICON, missing: 404 },
   '/icon-maskable-512.png': { file: 'icon-maskable-512.png', headers: ICON, missing: 404 },
+  // Imagem das pré-visualizações de links (WhatsApp, Facebook, X).
+  '/og.png': { file: 'og.png', headers: ICON, missing: 404 },
 };
 
 // robots.txt. A /tabela não aparece aqui: é escondida pelo cabeçalho
@@ -121,14 +124,72 @@ function uiCookie(req, ui) {
   return `${UI_COOKIE}=${ui}; Path=/; Max-Age=${UI_COOKIE_MAX_AGE}; SameSite=Lax${https ? '; Secure' : ''}`;
 }
 
+// O domínio público do comparador: o endereço canónico das páginas, mesmo
+// quando o pedido chega por outro nome (o domínio interno do Zerops). A página
+// OMIE no seu próprio domínio usa esse.
+const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || 'https://ceme.ocarroeletrico.com').replace(/\/$/, '');
+
+// Páginas cujo texto o servidor já põe no HTML (prerender.js). A OMIE vive
+// de dados da API e a /tabela não é indexada; a /api já é HTML estático.
+const PRERENDER = new Set(['assistente.html', 'index.html', 'about.html', 'contact.html', 'privacy.html']);
+
+// O endereço canónico de cada caminho: os sinónimos (/about, /index.html)
+// apontam para o caminho que está no sitemap. `/` e `/assistente` mostram o
+// assistente a quem não escolheu outra interface: são a mesma página.
+const CANONICAL = {
+  '/': '/', '/index.html': '/', '/assistente': '/', '/simulador': '/simulador',
+  '/sobre': '/sobre', '/about': '/sobre', '/contactos': '/contactos', '/contact': '/contactos',
+  '/privacidade': '/privacidade', '/privacy': '/privacidade', '/api': '/api', '/omie': '/omie', '/omie.html': '/omie',
+};
+
+// Dados estruturados (schema.org) das duas interfaces do simulador.
+const appLd = (url, lang) => JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: lang === 'en' ? 'EV Tariff Comparison (CEME)' : 'Comparador CEME',
+  url,
+  inLanguage: lang === 'en' ? 'en' : 'pt-PT',
+  applicationCategory: 'UtilitiesApplication',
+  operatingSystem: 'Any',
+  isAccessibleForFree: true,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+  areaServed: { '@type': 'Country', name: 'Portugal' },
+  publisher: { '@type': 'Organization', name: 'O Carro Elétrico', url: 'https://ocarroeletrico.com' },
+}).replace(/</g, '\\u003c');
+
+// As etiquetas que os motores de busca e as pré-visualizações lêem e que a
+// página ainda não tem: endereço canónico, og:url, og:image, JSON-LD.
+function seoHead(html, req, lang) {
+  const p = new URL(req.url, 'http://x').pathname;
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  const origin = host === OMIE_HOST ? `https://${OMIE_HOST}` : PUBLIC_ORIGIN;
+  const path = host === OMIE_HOST && p === '/' ? '/' : CANONICAL[p];
+  if (!path) return html;
+  const url = origin + path;
+  const tags = [];
+  if (!/rel="canonical"/.test(html)) tags.push(`<link rel="canonical" href="${url}">`);
+  if (!/property="og:url"/.test(html)) tags.push(`<meta property="og:url" content="${url}">`);
+  if (!/property="og:image"/.test(html)) tags.push(`<meta property="og:image" content="${PUBLIC_ORIGIN}/og.png">`, '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">');
+  if (lang === 'en') html = html.replace(/<meta property="og:locale" content="pt_PT">/, '<meta property="og:locale" content="en_GB">');
+  html = html.replace(/<meta name="twitter:card" content="summary">/, '<meta name="twitter:card" content="summary_large_image">');
+  if (path === '/' || path === '/simulador') tags.push(`<script type="application/ld+json">${appLd(url, lang)}</script>`);
+  if (!tags.length) return html;
+  // Algumas páginas não escrevem <head> (é opcional em HTML): aí as etiquetas
+  // vão logo a seguir ao viewport, que todas têm.
+  const at = html.includes('</head>') ? /<\/head>/ : /(<meta name="viewport"[^>]*>)/;
+  return html.replace(at, m => (m === '</head>' ? tags.join('\n') + '\n</head>' : m + '\n' + tags.join('\n')));
+}
+
 // Envia uma página HTML com a língua negociada: troca o `lang` do <html> e o
-// marcador window.__LANG__.
+// marcador window.__LANG__, põe o texto na página (prerender.js) e as
+// etiquetas para os motores de busca (seoHead).
 async function sendHtml(req, res, file, headers = {}) {
   const lang = negotiateLang(req.headers['accept-language']);
   let html;
   try { html = await readFile(new URL(file, FRONTEND), 'utf8'); }
   catch { return fail(res, 500, 'no_frontend', `frontend/${file} em falta`); }
-  html = html
+  if (PRERENDER.has(file)) html = prerender(file, lang, html);
+  html = seoHead(html, req, lang)
     .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
     .replace(LANG_MARK, `window.__LANG__=${JSON.stringify(lang)}`);
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...NO_STORE, ...NOSNIFF, vary: 'Accept-Language', ...headers });
