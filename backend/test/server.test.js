@@ -149,6 +149,8 @@ describe('servidor: hardening HTTP', () => {
     assert.deepEqual([luz.newCustomers, luz.valid_until], [true, '2026-11-28']);
     const idx = nov.find(q => q.id === 'luzigas-ceme-bt');
     assert.deepEqual([idx.newCustomers, idx.valid_until], [false, null]);
+    // O dos colaboradores EDP diz a que público é; os outros não.
+    assert.deepEqual([nov.find(q => q.id === 'edp-bt-cartoedp-5').audience, idx.audience], ['edp-staff', null]);
     // 40 kWh × 0,12 € = 4,80 € a menos antes do IVA; com IVA e arredondamentos,
     // à volta de 5,90 €.
     assert.ok(Math.abs((luz.totalEur - lp.totalEur) - 4.8 * 1.23) < 0.03, `${luz.totalEur} → ${lp.totalEur}`);

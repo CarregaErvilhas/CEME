@@ -57,6 +57,8 @@ export const ADDED_COLUMNS = [
   ['tariff', 'legacy_id', 'INTEGER'],
   // Tarifários só para quem adere ao CEME (vê `newCustomers` em TARIFFS).
   ['tariff', 'new_customers', 'INTEGER DEFAULT 0'],
+  // Tarifários só para um público (vê `audience` em TARIFFS).
+  ['tariff', 'audience', 'TEXT'],
 ];
 
 export async function migrateAddedColumns() {

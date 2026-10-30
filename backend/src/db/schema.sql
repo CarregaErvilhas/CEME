@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS ceme_contact (
 --             LEGACY_IDS em db/seed-data.js); NULL se não tiver.
 --   new_customers: 1 se só o pode ter quem adere ao CEME (um cliente que
 --             já o era não pode).
+--   audience: quem o pode ter, quando não é qualquer pessoa (vê
+--             `audience` em TARIFFS); NULL = qualquer pessoa.
 CREATE TABLE IF NOT EXISTS tariff (
   id TEXT PRIMARY KEY, ceme_id TEXT NOT NULL REFERENCES ceme(id),
   name TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('FIXED','INDEXED')),
@@ -46,7 +48,8 @@ CREATE TABLE IF NOT EXISTS tariff (
   popular INTEGER DEFAULT 0, source_url TEXT,
   regions TEXT NOT NULL DEFAULT 'CONT',
   legacy_id INTEGER,
-  new_customers INTEGER DEFAULT 0
+  new_customers INTEGER DEFAULT 0,
+  audience TEXT
 );
 
 -- Versões de um tarifário no tempo. A versão em vigor num dia é a que tem

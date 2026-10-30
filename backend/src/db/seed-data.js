@@ -131,6 +131,10 @@ export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1
 //   url       a página onde o preço está publicado, se não for o `website`
 //             do CEME (vê CEMES)
 //   newCustomers  true se só o tem quem adere ao CEME
+//   audience  só para um público, que tem de o dizer: 'edp-staff'
+//             (colaboradores da EDP)… O preço sai no /v1/simulate na mesma,
+//             com o `audience`, e quem o mostra decide (o ohmigo esconde-o
+//             a quem não disse que pertence a esse público)
 //   from, to  só nas campanhas com datas: o primeiro e o último dia em que
 //             o preço vale, inclusive. Fora delas o simulador não o mostra
 // Os campos true/false que faltam são false.
@@ -160,8 +164,8 @@ export const TARIFFS = [
   { id: 'edp-mt-cartoedp-3', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Clientes energia (20%)', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, popular: true, bundle: true, prices: { UNICO: 0.2143 }, act: 0.1088 },
   { id: 'edp-bt-cartoedp-4', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Clientes energia / UVE (30%)', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, prices: { UNICO: 0.1875 }, act: 0.1088 },
   { id: 'edp-mt-cartoedp-4', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Clientes energia / UVE (30%)', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, prices: { UNICO: 0.1875 }, act: 0.1088 },
-  { id: 'edp-bt-cartoedp-5', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Colaboradores (25%)', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, prices: { UNICO: 0.2009 }, act: 0.1088 },
-  { id: 'edp-mt-cartoedp-5', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Colaboradores (25%)', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, prices: { UNICO: 0.2009 }, act: 0.1088 },
+  { id: 'edp-bt-cartoedp-5', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Colaboradores (25%)', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, audience: 'edp-staff', prices: { UNICO: 0.2009 }, act: 0.1088 },
+  { id: 'edp-mt-cartoedp-5', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Colaboradores (25%)', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, audience: 'edp-staff', prices: { UNICO: 0.2009 }, act: 0.1088 },
   { id: 'edp-bt-cartoedp-6', ceme: 'edp', name: 'Cartão EDP Charge Frota (Simples)', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, prices: { UNICO: 0.2678 }, act: 0.1088, url: 'https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/' },
   { id: 'edp-mt-cartoedp-6', ceme: 'edp', name: 'Cartão EDP Charge Frota (Simples)', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, prices: { UNICO: 0.2678 }, act: 0.1088, url: 'https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/' },
   { id: 'edp-bt-cartoedp-7', ceme: 'edp', name: 'Cartão EDP Charge Frota (Simples) Clientes Energia', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, bundle: true, prices: { UNICO: 0.2143 }, act: 0.1088, url: 'https://www.edp.pt/empresas/servicos/mobilidade-eletrica/cartao-edp-charge-frota/' },
