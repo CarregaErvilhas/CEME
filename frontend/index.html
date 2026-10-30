@@ -293,7 +293,7 @@
     <div class="mfoot" id="fmFoot"></div>
   </div>
 </div>
-<footer></footer>
+<footer id="foot"></footer>
 <script>window.__LANG__=null;</script>
 <script src="/strings.js"></script>
 <script src="/tz.js"></script>
@@ -444,9 +444,9 @@ function applyChrome() {
   set('nSobre', i18n('navSobre')); set('nContactos', i18n('navContactos'));
   set('fmTitle', i18n('fmTitle')); set('fmFoot', i18n('fmFoot'));
   ph('favSearch', i18n('fmPh'));
-  const f = document.querySelector('footer');
+  const f = document.getElementById('foot');
   if (f) f.innerHTML = i18n('footScope') + ' <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">' + (L === 'en' ? 'Official breakdown ↗' : 'Ver a estrutura oficial ↗') + '</a> · <a href="https://www.mobie.pt/pt/carregarveiculo/faq" target="_blank" rel="noopener">FAQ Mobi.E ↗</a><br><br>' + i18n('footRest') +
-    '<br><br><a href="/sobre">' + i18n('navSobre') + '</a> · <a href="/contactos">' + i18n('navContactos') + '</a> · <a href="/privacidade">' + i18n('navPriv') + '</a> · <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">GitHub Issues ↗</a>';
+    '<br><br><a href="/sobre">' + i18n('navSobre') + '</a> · <a href="/contactos">' + i18n('navContactos') + '</a> · <a href="/privacidade">' + i18n('navPriv') + '</a> · <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">GitHub Issues ↗</a><br><br>' + i18n('footSister');
 }
 
 /* ================= estado ================= */
