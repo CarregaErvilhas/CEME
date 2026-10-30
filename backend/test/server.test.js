@@ -140,14 +140,6 @@ describe('servidor: hardening HTTP', () => {
       method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at, omie: 0.08 }),
     })).json()).data;
     const nov = await sim('2026-11-10T12:00:00Z');
-    const luz = nov.find(q => q.id === 'luzigas-ceme-bt');
-    const lp = luz.promos.find(p => p.id === 'luzigas-powerdot-2026-10');
-    assert.equal(lp.network, 'Powerdot');
-    assert.equal(lp.target, 'ENERGIA');
-    assert.equal(lp.newCustomers, true);
-    // 40 kWh × 0,12 € = 4,80 € a menos antes do IVA; com IVA e arredondamentos,
-    // à volta de 5,90 €.
-    assert.ok(Math.abs((luz.totalEur - lp.totalEur) - 4.8 * 1.23) < 0.03, `${luz.totalEur} → ${lp.totalEur}`);
     const one = nov.find(q => q.id === 'miio-bt-miioonebi');
     assert.deepEqual(one.promos.map(p => [p.target, p.pct, p.totalEur]), [['OPC', 45, undefined]], 'OPC: só a percentagem');
     assert.equal(nov.find(q => q.id === 'miio-bt-miiobihor').promos, undefined, 'sem miio one, sem promoção');
@@ -174,6 +166,12 @@ describe('servidor: hardening HTTP', () => {
     // Depois do fim, desaparece; o preço do tarifário é o mesmo nos dois dias.
     const dez = await sim('2026-12-02T12:00:00Z');
     assert.equal(dez.find(q => q.id === 'luzigas-ceme-bt').promos, undefined);
+    assert.equal(nov.find(q => q.id === 'luzigas-ceme-bt').promos, undefined, 'fechada no ceme-v2: vive no ohmigo');
+    // Tarifário de campanha: vale até ao `to`, inclusive, e no dia a seguir sai.
+    const promoTotal = async (at) => (await sim(at)).find(q => q.id === 'luzigas-promo-ceme-bt')?.totalEur;
+    assert.ok(nov.find(q => q.id === 'luzigas-promo-casa-bt'));
+    assert.ok(await promoTotal('2026-11-28T12:00:00Z'));
+    assert.equal(await promoTotal('2026-11-29T12:00:00Z'), undefined);
     // Nas ilhas não valem (regions = CONT).
     const mad = (await (await fetch(`${BASE}/v1/simulate`, {
       method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at: '2026-11-10T12:00:00Z', region: 'MAD' }),
@@ -693,7 +691,7 @@ it('HTML também leva nosniff', async () => {
     assert.equal(r.status, 200);
     const j = await r.json();
     // todos menos o myAtlanteMT em quarentena (e o EZU BT fechado acima)
-    assert.ok(j.data.length >= 90 && j.data.length < 108, `ranking continua (${j.data.length})`);
+    assert.ok(j.data.length >= 90 && j.data.length < 112, `ranking continua (${j.data.length})`);
     assert.ok(!j.data.find(x => x.id === 'atlante-mt-myatlanteac'), 'o corrompido sai do ranking');
   });
 });

@@ -151,15 +151,17 @@ describe('golden: preços por região (price_component_region)', () => {
 });
 
 describe('cobertura do seed', () => {
-  it('todas as 20 CEME e 108 tarifários', async () => {
+  it('todas as 20 CEME e 112 tarifários', async () => {
     const db = await seeded();
     assert.equal(db.prepare('SELECT COUNT(*) c FROM ceme').get().c, 20);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 108);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 112);
   });
 
-  it('todos os tarifários têm o número da folha original (legacy_id)', async () => {
+  it('todos os tarifários da folha original têm o número dela (legacy_id)', async () => {
     const db = await seeded();
-    assert.deepEqual(db.prepare('SELECT id FROM tariff WHERE legacy_id IS NULL').all(), []);
+    // Os que vieram depois da folha não ganham número.
+    assert.deepEqual(db.prepare('SELECT id FROM tariff WHERE legacy_id IS NULL ORDER BY id').all().map(r => r.id),
+      ['luzigas-promo-casa-bt', 'luzigas-promo-casa-mt', 'luzigas-promo-ceme-bt', 'luzigas-promo-ceme-mt']);
     // Uma linha "BT/MT" da folha dá dois tarifários, um por tensão.
     assert.deepEqual(db.prepare('SELECT id FROM tariff WHERE legacy_id = 121 ORDER BY id').all().map(r => r.id),
       ['enable-bt-tarifasimple', 'enable-mt-tarifasimple']);
@@ -252,11 +254,15 @@ describe('cobertura do seed', () => {
   it('todas as versões partilham a data de captura (nenhuma data inventada)', async () => {
     const db = await seeded();
     // Só sabemos quando os preços foram verificados, não quando cada contrato
-    // começou. Por isso todas as versões usam essa data (PRICES_VERIFIED_ON).
-    const d = db.prepare('SELECT COUNT(*) c FROM tariff_version WHERE valid_from != ? OR valid_from IS NULL').get(PRICES_VERIFIED_ON);
+    // começou. Por isso todas as versões usam essa data (PRICES_VERIFIED_ON),
+    // menos as campanhas, cujas datas o CEME publica.
+    const d = db.prepare('SELECT COUNT(*) c FROM tariff_version WHERE campaign = 0 AND (valid_from != ? OR valid_from IS NULL)').get(PRICES_VERIFIED_ON);
     assert.equal(d.c, 0, `${d.c} versoes com data diferente de ${PRICES_VERIFIED_ON}`);
-    const aberta = db.prepare("SELECT COUNT(*) c FROM tariff_version WHERE valid_to IS NOT NULL AND status='ACTIVE'").get();
-    assert.equal(aberta.c, 0, 'uma versao ACTIVE nao pode ter valid_to');
+    const aberta = db.prepare("SELECT COUNT(*) c FROM tariff_version WHERE valid_to IS NOT NULL AND status='ACTIVE' AND campaign = 0").get();
+    assert.equal(aberta.c, 0, 'uma versao ACTIVE nao pode ter valid_to, a nao ser numa campanha');
+    // Campanha: do `from` ao dia a seguir ao `to` (valid_to é exclusivo).
+    const luz = db.prepare("SELECT valid_from, valid_to FROM tariff_version WHERE tariff_id = 'luzigas-promo-ceme-bt'").get();
+    assert.deepEqual({ ...luz }, { valid_from: '2026-10-29', valid_to: '2026-11-29' });
   });
 
   it('todo o tarifário tem versão com componente de preço (ou é INDEXED)', async () => {

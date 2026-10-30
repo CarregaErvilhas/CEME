@@ -130,6 +130,8 @@ export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1
 //             o nome ganha um " ~" no fim
 //   url       a página onde o preço está publicado, se não for o `website`
 //             do CEME (vê CEMES)
+//   from, to  só nas campanhas com datas: o primeiro e o último dia em que
+//             o preço vale, inclusive. Fora delas o simulador não o mostra
 // Os campos true/false que faltam são false.
 // Os preços finais têm no máximo 4 casas decimais, arredondados para cima
 // quando a fonte tem mais (nunca subestimar o custo).
@@ -241,6 +243,11 @@ export const TARIFFS = [
   { id: 'luzigas-casa-mt', ceme: 'luzigas', name: 'Tarifário Indexado Cliente Casa e CEME', kind: 'INDEXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'CARTAO', popular: true, bundle: true, prices: null, act: 0.1088 },
   { id: 'luzigas-k0010-bt', ceme: 'luzigas', name: 'Tarifário Indexado Cliente CEME (K=0,010)', kind: 'INDEXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', bundle: true, prices: null, act: 0.1088 },
   { id: 'luzigas-k0010-mt', ceme: 'luzigas', name: 'Tarifário Indexado Cliente CEME (K=0,010)', kind: 'INDEXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', bundle: true, prices: null, act: 0.1088 },
+  // Campanha de preço fixo na app, de 29/10 a 28/11 (`from`/`to`, vê o seed).
+  { id: 'luzigas-promo-ceme-bt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente CEME', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', prices: { UNICO: 0.3199 }, act: 0.1088, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
+  { id: 'luzigas-promo-ceme-mt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente CEME', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', prices: { UNICO: 0.3199 }, act: 0.1088, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
+  { id: 'luzigas-promo-casa-bt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente Casa e CEME', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', bundle: true, prices: { UNICO: 0.2599 }, act: 0.1088, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
+  { id: 'luzigas-promo-casa-mt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente Casa e CEME', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', bundle: true, prices: { UNICO: 0.2599 }, act: 0.1088, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
   { id: 'meo-dinamica-bt', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Dinâmica Exclusivo Clientes MEO *e* MEO Energia', kind: 'INDEXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'CARTAO', green: true, bundle: true, prices: null, act: 0.1088 },
   { id: 'meo-dinamica-mt', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Dinâmica Exclusivo Clientes MEO *e* MEO Energia', kind: 'INDEXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'CARTAO', green: true, bundle: true, prices: null, act: 0.1088 },
 ];
@@ -455,11 +462,13 @@ export const RETIRED_CEMES = ['bluecharge', 'evpower', 'factorenergia', 'mobisma
 // no dia seguinte, e o seed só faz upserts.
 export const PROMOS = [
   {
+    // O desconto Powerdot da LUZiGÁS é do ohmigo (é de uma rede de postos,
+    // vê ohmigo-mcp src/promos.js). Fica aqui fechada para a BD a tirar do
+    // simulador; o tarifário promocional está em TARIFFS.
     id: 'luzigas-powerdot-2026-10', ceme: 'luzigas', name: 'LUZiGÁS × Powerdot: −0,12 €/kWh na componente CEME',
-    network: 'Powerdot', target: 'ENERGIA', eurKwh: 0.12, from: '2026-10-29', to: '2026-11-28',
+    network: 'Powerdot', target: 'ENERGIA', eurKwh: 0.12, from: '2026-10-29', to: '2026-10-29',
     newCustomers: true, maxHours: 168,
-    // Anunciada na app da Powerdot; a Luzigás ainda não a tem no site.
-    url: 'https://www.luzigas.pt/plano-mobilidade-eletrica/', checked: '2026-10-29',
+    url: 'https://www.luzigas.pt/app-mobilidade-eletrica/', checked: '2026-10-30',
   },
   {
     // O regulamento só fala de 2 de Março a 31 de Maio; a página da
