@@ -137,7 +137,7 @@ token. Detalhe em [docs/04](docs/04-api-auth.md).
 | POST | `/v1/session` | um token de sessão (24 h); sem auth, com limite por IP |
 | GET | `/v1/health` | estado do serviço e o tipo da credencial que usaste |
 | GET | `/v1/cemes` | os comercializadores |
-| GET | `/v1/tariffs` | os tarifários e a versão em vigor de cada um |
+| GET | `/v1/tariffs` | os tarifários e a versão em vigor de cada um; `?legacy_id=92` filtra pelo número da folha original |
 | GET | `/v1/tar` | a TAR em vigor (região, tensão, período) |
 | POST | `/v1/simulate` | todos os tarifários cotados para um carregamento, com a conta linha a linha |
 | GET | `/v1/omie/daily?days=60` | médias diárias do OMIE (7 a 120 dias), com `complete` |
@@ -177,17 +177,14 @@ Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
     src/
       server.js               # ponto de entrada: arranca e encaminha pedidos
       boot.js                 # prepara a BD no arranque (schema, TAR, seed)
-      http/                   # pages (site), api (rotas /v1), auth,
-                              #   ratelimit, respond
+      http/                   # pages (site), api (rotas /v1), auth, ratelimit, respond
       tariffs.js              # lê tarifários e preços da BD e cota-os
       time.js                 # datas, fusos e mudança de hora
       auth/tokens.js          # JWT e hash das API keys
       db.js                   # escolhe SQLite ou PostgreSQL
-      db/                     # sqlite.js, pg.js, schemas, migrate.js,
-                              #   seed-data.js, seed.js, tar.js, components.js
+      db/                     # sqlite.js, pg.js, schemas, migrate.js, seed-data.js, seed.js, tar.js, components.js
       engine/                 # o motor: quote, indexed, regions, losses, compare
-      omie/                   # preços OMIE: omiees, tf, fetch, parse, convert,
-                              #   store, pipeline, stats
+      omie/                   # preços OMIE: omiees, tf, fetch, parse, convert, store, pipeline, stats
     test/                     # testes (`npm test`)
     tools/cores.mjs           # mede as paletas de cor da página OMIE
     data/                     # gerado: SQLite + cache dos CSV (fora do git)

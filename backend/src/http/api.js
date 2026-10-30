@@ -65,8 +65,12 @@ async function cemes({ res, headers }) {
   json(res, 200, { data: await query(`SELECT ${CEME_PUBLIC_COLS.join(', ')} FROM ceme ORDER BY name`) }, headers);
 }
 
-async function tariffs({ res, headers }) {
-  const rows = await allTariffs();
+// `?legacy_id=92` filtra pelo número da folha original (vê LEGACY_IDS em
+// db/seed-data.js). Pode dar dois tarifários, um por tensão.
+async function tariffs({ res, url, headers }) {
+  const legacy = url.searchParams.get('legacy_id');
+  if (legacy != null && !/^\d+$/.test(legacy)) return fail(res, 400, 'bad_legacy_id', 'legacy_id tem de ser um número inteiro', headers);
+  const rows = (await allTariffs()).filter(t => legacy == null || t.legacy_id === Number(legacy));
   const versions = new Map((await query('SELECT * FROM tariff_version')).map(v => [v.id, v]));
   json(res, 200, { data: rows.map(t => ({ ...t, version: versions.get(t.vid) ?? null })) }, headers);
 }
@@ -108,6 +112,7 @@ async function tabela({ res, headers }) {
       regionPrices[region] = { prices: rp.price, split: rp.split };
     }
     out.push({
+      id: t.id, legacy_id: t.legacy_id ?? null,
       ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
       schedule: t.schedule, cycle: t.cycle, green: t.green, bundle: t.bundle,
       popular: t.popular, access: t.access,

@@ -11,6 +11,7 @@
 // arranque falhava.
 import { readFile } from 'node:fs/promises';
 import { query, run, exec, USE_PG } from '../db.js';
+import { RETIRED_TARIFFS, RETIRED_CEMES } from './seed-data.js';
 
 // Os nomes das colunas de uma tabela (lista vazia se a tabela não existir).
 //
@@ -52,6 +53,8 @@ export const ADDED_COLUMNS = [
   // A separação do preço em energia + TAR (quando o CEME a publica).
   ['price_component', 'energy_only_eur_kwh', 'REAL'],
   ['price_component', 'tar_eur_kwh', 'REAL'],
+  // O número do tarifário na folha original (vê LEGACY_IDS).
+  ['tariff', 'legacy_id', 'INTEGER'],
 ];
 
 export async function migrateAddedColumns() {
@@ -78,7 +81,39 @@ const schemaUrl = () => new URL(USE_PG ? './schema.postgres.sql' : './schema.sql
 // (db/migrate-cli.js), não com a do runtime. Devolve as notas da migração.
 export async function applySchema() {
   await exec(await readFile(schemaUrl(), 'utf8'));
-  return migrateAddedColumns();
+  return [...await migrateAddedColumns(), ...await removeRetired()];
+}
+
+// Apaga os tarifários de RETIRED_TARIFFS (com as versões e os preços) e os
+// CEME de RETIRED_CEMES. O seed só faz upsert, por isso sem isto ficavam na
+// BD para sempre. Precisa de DELETE, que a role do runtime não tem: corre
+// aqui, com a role dona. Idempotente: numa BD sem eles não faz nada.
+//
+// Um CEME com contactos em `ceme_contact` fica: esses dados não vêm do seed
+// e não se apagam às escondidas. A nota diz qual ficou.
+export async function removeRetired() {
+  const notes = [];
+  if (!(await tableExists('tariff'))) return notes;
+  for (const id of RETIRED_TARIFFS) {
+    if (!(await query('SELECT 1 FROM tariff WHERE id = $1', [id])).length) continue;
+    const versions = 'SELECT id FROM tariff_version WHERE tariff_id = $1';
+    await run(`DELETE FROM price_component_region WHERE tariff_version_id IN (${versions})`, [id]);
+    await run(`DELETE FROM price_component WHERE tariff_version_id IN (${versions})`, [id]);
+    await run('DELETE FROM tariff_version WHERE tariff_id = $1', [id]);
+    await run('DELETE FROM tariff WHERE id = $1', [id]);
+    notes.push(`tarifário ${id} apagado`);
+  }
+  for (const id of RETIRED_CEMES) {
+    if (!(await query('SELECT 1 FROM ceme WHERE id = $1', [id])).length) continue;
+    const refs = [];
+    for (const table of ['tariff', 'promo', 'ceme_contact']) {
+      if ((await query(`SELECT 1 FROM ${table} WHERE ceme_id = $1 LIMIT 1`, [id])).length) refs.push(table);
+    }
+    if (refs.length) { notes.push(`CEME ${id} fica: ainda tem linhas em ${refs.join(', ')}`); continue; }
+    await run('DELETE FROM ceme WHERE id = $1', [id]);
+    notes.push(`CEME ${id} apagado`);
+  }
+  return notes;
 }
 
 // Com o schema tratado fora do processo (CEME_SCHEMA_EXTERNAL=1), o arranque

@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS ceme_contact (
 --             com condições, mais usado);
 --   regions:  lista separada por vírgulas (CONT,MAD,AZO) onde o tarifário é
 --             vendido. É só informação: o simulador cota-o em qualquer região.
+--   legacy_id: o número do tarifário na folha de cálculo original (vê
+--             LEGACY_IDS em db/seed-data.js); NULL se não tiver.
 CREATE TABLE IF NOT EXISTS tariff (
   id TEXT PRIMARY KEY, ceme_id TEXT NOT NULL REFERENCES ceme(id),
   name TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('FIXED','INDEXED')),
@@ -40,7 +42,8 @@ CREATE TABLE IF NOT EXISTS tariff (
   cycle TEXT NOT NULL CHECK (cycle IN ('DIARIO','SEMANAL','SIMPLES')),
   green INTEGER DEFAULT 0, access TEXT, bundle INTEGER DEFAULT 0,
   popular INTEGER DEFAULT 0, source_url TEXT,
-  regions TEXT NOT NULL DEFAULT 'CONT'
+  regions TEXT NOT NULL DEFAULT 'CONT',
+  legacy_id INTEGER
 );
 
 -- Versões de um tarifário no tempo. A versão em vigor num dia é a que tem

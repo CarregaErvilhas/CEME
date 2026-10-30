@@ -520,12 +520,24 @@ it('HTML também leva nosniff', async () => {
       const r = await fetch(`${BASE}/v1/tabela`, { headers: { Authorization: `Bearer ${token}` } });
       assert.equal(r.status, 200);
       const j = await r.json();
-      assert.ok(j.data.length >= 120, `devolve tarifários (${j.data?.length})`);
+      assert.ok(j.data.length >= 100, `devolve tarifários (${j.data?.length})`);
       assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(j.at || ''), `data de validade (${j.at})`);
       const bi = j.data.find(x => x.kind === 'FIXED' && x.schedule === 'BI_HORARIA');
       assert.ok(bi.prices.FORA_VAZIO > 0 && bi.prices.VAZIO > 0, 'preços por período em falta');
-      assert.ok(!j.data.some(x => x.ceme === 'EZU' && x.name === 'AB Energia'), 'campanha expirada não devia aparecer');
+      assert.equal(j.data.find(x => x.id === 'atlante-bt-myatlanteac').legacy_id, 92, 'a /tabela mostra o número da folha');
     });
+  });
+
+  it('/v1/tariffs devolve o legacy_id e filtra por ele', async () => {
+    const auth = { headers: { Authorization: `Bearer ${token}` } };
+    const all = await (await fetch(`${BASE}/v1/tariffs`, auth)).json();
+    assert.equal(all.data.find(t => t.id === 'atlante-bt-myatlanteac').legacy_id, 92);
+    const j = await (await fetch(`${BASE}/v1/tariffs?legacy_id=121`, auth)).json();
+    assert.deepEqual(j.data.map(t => t.voltage).sort(), ['BT', 'MT'], 'uma linha BT/MT da folha dá dois');
+    assert.ok(j.data.every(t => t.legacy_id === 121));
+    const none = await (await fetch(`${BASE}/v1/tariffs?legacy_id=9999`, auth)).json();
+    assert.deepEqual(none.data, []);
+    assert.equal((await fetch(`${BASE}/v1/tariffs?legacy_id=abc`, auth)).status, 400);
   });
 
   it('ceme_contact não sai na API e /v1/cemes só tem as colunas públicas', async () => {
@@ -624,7 +636,12 @@ it('HTML também leva nosniff', async () => {
   });
 
   it('campanha acabada: fica de fora sem ir para a quarentena', async () => {
-    // AB Energia (EZU) acabou a 2026-09-30 (CAMPAIGN_END no seed).
+    // Fecha o EZU BT como o seed fecha uma campanha (vê CAMPAIGN_END): o
+    // seed não tem nenhuma acabada, por isso faz-se aqui na BD do servidor.
+    const db = new DatabaseSync(path.join(dir, `ceme-${PORT}.db`));
+    db.prepare(`UPDATE tariff_version SET valid_to='2026-09-30', campaign=1, status='EXPIRED'
+      WHERE tariff_id='ezu-bt-tarifrioceme'`).run();
+    db.close();
     const r = await fetch(`${BASE}/v1/simulate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -632,11 +649,12 @@ it('HTML também leva nosniff', async () => {
     });
     assert.equal(r.status, 200);
     const j = await r.json();
-    assert.ok(!j.data.find(x => x.id === 'ezu-bt-abenergia'), 'a campanha acabada não é cotada');
-    assert.ok(!/quarentena: ezu-(bt|mt)-abenergia/.test(proc.stderrText), 'e não enche o log');
+    assert.ok(!j.data.find(x => x.id === 'ezu-bt-tarifrioceme'), 'a campanha acabada não é cotada');
+    assert.ok(j.data.find(x => x.id === 'ezu-mt-tarifrioceme'), 'o MT continua');
+    assert.ok(!/quarentena: ezu-bt-tarifrioceme/.test(proc.stderrText), 'e não enche o log');
   });
 
-  it('quarentena: um tarifário com componentes divergentes não derruba os 128', async () => {
+  it('quarentena: um tarifário com componentes divergentes não derruba os outros', async () => {
     // corrompe UM período de UM tarifário na BD do servidor (a cena do bot:
     // activation 0,11 → 0,12 muda um período só do atlante MT)
     const db = new DatabaseSync(path.join(dir, `ceme-${PORT}.db`));
@@ -651,8 +669,8 @@ it('HTML também leva nosniff', async () => {
     });
     assert.equal(r.status, 200);
     const j = await r.json();
-    // 128 menos o myAtlanteMT em quarentena
-    assert.ok(j.data.length >= 100 && j.data.length < 128, `ranking continua (${j.data.length})`);
+    // todos menos o myAtlanteMT em quarentena (e o EZU BT fechado acima)
+    assert.ok(j.data.length >= 90 && j.data.length < 108, `ranking continua (${j.data.length})`);
     assert.ok(!j.data.find(x => x.id === 'atlante-mt-myatlanteac'), 'o corrompido sai do ranking');
   });
 });

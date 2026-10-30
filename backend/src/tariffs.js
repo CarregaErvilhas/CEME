@@ -172,7 +172,7 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
   const ver = pricing.version(t.vid);
   const { price, act, iec, sup, split } = pricing.comps(t.vid);
   const meta = {
-    id: t.id, ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
+    id: t.id, legacy_id: t.legacy_id ?? null, ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
     schedule: t.schedule, cycle: t.cycle, green: !!t.green, access: t.access,
     bundle: !!t.bundle, popular: !!t.popular, estimated: /~$/.test(t.name),
     source_url: t.source_url, valid_from: ver?.valid_from || null,

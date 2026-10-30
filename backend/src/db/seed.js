@@ -10,7 +10,7 @@
 // os dois percebem.
 import {
   CEMES, TARIFFS, SPLITS, REGION_SPLITS, regionFinal, NOTES, VERSIONS,
-  CAMPAIGN_END, PRICES_VERIFIED_ON, IEC, PROMOS,
+  CAMPAIGN_END, PRICES_VERIFIED_ON, IEC, PROMOS, LEGACY_IDS,
 } from './seed-data.js';
 
 // As colunas de preço, iguais em price_component e price_component_region.
@@ -29,10 +29,10 @@ export async function seed(db) {
   for (const t of TARIFFS) {
     const name = t.name + (t.est && t.kind === 'FIXED' ? ' ~' : '');
     await db.run(`INSERT INTO tariff
-      (id, ceme_id, name, kind, voltage, schedule, cycle, green, access, popular, bundle, regions, source_url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      ON CONFLICT (id) DO UPDATE SET ${updateAll(['ceme_id', 'name', 'kind', 'voltage', 'schedule', 'cycle', 'green', 'access', 'popular', 'bundle', 'regions', 'source_url'])}`,
-      [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url ?? websites[t.ceme]]);
+      (id, ceme_id, name, kind, voltage, schedule, cycle, green, access, popular, bundle, regions, source_url, legacy_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (id) DO UPDATE SET ${updateAll(['ceme_id', 'name', 'kind', 'voltage', 'schedule', 'cycle', 'green', 'access', 'popular', 'bundle', 'regions', 'source_url', 'legacy_id'])}`,
+      [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url ?? websites[t.ceme], LEGACY_IDS[t.id] ?? null]);
 
     // Uma versão por tarifário, a começar em PRICES_VERIFIED_ON. `valid_to`
     // não entra no UPDATE: se alguém fechou uma versão à mão, o seed não a
