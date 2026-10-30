@@ -22,7 +22,7 @@ const dir = mkdtempSync(path.join(tmpdir(), 'ceme-migrate-'));
 process.env.DB_PATH = path.join(dir, 'migrate.db');
 
 const { query, run } = await import('../src/db.js');
-const { migrateAddedColumns, ADDED_COLUMNS } = await import('../src/db/migrate.js');
+const { migrateAddedColumns, ADDED_COLUMNS, applySchema, removeRetired } = await import('../src/db/migrate.js');
 
 const colsOf = async (table) => (await query(`PRAGMA table_info(${table})`)).map(r => r.name);
 
@@ -129,5 +129,37 @@ describe('migração: a lista bate certo com o schema', () => {
         }
       }
     }
+  });
+});
+
+describe('migração: tarifários e CEME que saíram do seed', () => {
+  const ids = async (sql, args) => (await query(sql, args)).map(r => r.id);
+
+  it('apaga o tarifário com versões e preços, e o CEME que fica sem nada', async () => {
+    await applySchema();
+    await run('DELETE FROM price_component'); // sobra do teste das colunas, na mesma BD
+    await run(`INSERT INTO ceme (id, name) VALUES ('bluecharge', 'Bluecharge'), ('evpower', 'EVPower'), ('acp', 'ACP')`);
+    await run(`INSERT INTO tariff (id, ceme_id, name, kind, voltage, schedule, cycle) VALUES
+      ('bluecharge-bt-cartobluecha', 'bluecharge', 'Cartão Bluecharge', 'FIXED', 'BT', 'BI_HORARIA', 'DIARIO'),
+      ('acp-bt-acpelectricb', 'acp', 'ACP Electric', 'FIXED', 'BT', 'BI_HORARIA', 'DIARIO')`);
+    await run(`INSERT INTO tariff_version (tariff_id, valid_from) VALUES ('bluecharge-bt-cartobluecha', '2026-10-15'), ('acp-bt-acpelectricb', '2026-10-15')`);
+    const [{ id: vid }] = await query(`SELECT id FROM tariff_version WHERE tariff_id = 'bluecharge-bt-cartobluecha'`);
+    await run(`INSERT INTO price_component (tariff_version_id, period, energy_eur_kwh) VALUES ($1, 'VAZIO', 0.249)`, [vid]);
+    await run(`INSERT INTO price_component_region (tariff_version_id, region, period, energy_eur_kwh) VALUES ($1, 'MAD', 'VAZIO', 0.2)`, [vid]);
+    // Contactos internos não vêm do seed: o CEME com contactos fica.
+    await run(`INSERT INTO ceme_contact (ceme_id, name) VALUES ('evpower', 'alguém')`);
+
+    const notes = await removeRetired();
+
+    assert.deepEqual(await ids('SELECT id FROM tariff ORDER BY id'), ['acp-bt-acpelectricb'], 'só o tarifário que saiu é apagado');
+    assert.deepEqual(await query('SELECT * FROM price_component WHERE tariff_version_id = $1', [vid]), []);
+    assert.deepEqual(await query('SELECT * FROM price_component_region WHERE tariff_version_id = $1', [vid]), []);
+    assert.deepEqual(await ids('SELECT id FROM ceme ORDER BY id'), ['acp', 'evpower']);
+    assert.ok(notes.includes('tarifário bluecharge-bt-cartobluecha apagado'), notes.join('; '));
+    assert.ok(notes.includes('CEME evpower fica: ainda tem linhas em ceme_contact'), notes.join('; '));
+  });
+
+  it('é idempotente: a segunda passagem só repete o aviso do CEME que ficou', async () => {
+    assert.deepEqual(await removeRetired(), ['CEME evpower fica: ainda tem linhas em ceme_contact']);
   });
 });

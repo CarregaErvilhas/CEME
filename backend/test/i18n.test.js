@@ -39,7 +39,6 @@ describe('tradução dos nomes dos tarifários', () => {
       ['Tarifário Indexado Cliente Casa e CEME', 'indexed tariff, home & CEME customer'],
       ['Cartão CEME', 'CEME card'],
       ['Cartão Mobilidade Elétrica', 'electric mobility card'],
-      ['Cartão Bluecharge', 'Bluecharge card'],
       ['miio (Bi-Horário Diário) sem subscrição', 'miio (bi-hourly daily) no subscription'],
       ['miio one (Bi-Horário Semanal) subscrição', 'miio one (bi-hourly weekly) subscription'],
       ['Galp Electric Energia Verde', 'Galp Electric Renewable energy'],
@@ -56,8 +55,8 @@ describe('tradução dos nomes dos tarifários', () => {
   });
 
   it('não toca nas marcas nem nos nomes comerciais', async () => {
-    const intactos = ['myAtlante (AC)', 'myAtlante Business (AC)', 'Eco Green', 'VECARD',
-      'GOW', 'Hyundai Blue', 'AB Energia', 'Go.Charge by EVIO', 'EVIO',
+    const intactos = ['myAtlante (AC)', 'myAtlante Business (AC)', 'Eco Green',
+      'GOW', 'Hyundai Blue', 'Go.Charge by EVIO', 'EVIO',
       'Via Verde Electric by ECOCHOICE', 'Prio Electric (EUR/kWh)'];
     for (const n of intactos) assert.equal(en(n), n, n);
   });
@@ -70,7 +69,7 @@ describe('tradução dos nomes dos tarifários', () => {
 
   it('nenhum dos nomes do seed fica com português por traduzir', async () => {
     const nomes = (await seededDb()).prepare('SELECT DISTINCT name FROM tariff').all().map(r => r.name);
-    assert.ok(nomes.length >= 50, `seed tem ${nomes.length} nomes distintos`);
+    assert.ok(nomes.length >= 40, `seed tem ${nomes.length} nomes distintos`);
     // Words that mean the translation did not reach that name.
     const sobra = /\b(sócio|scrição|Clientes|Cartão|Bi-Horário|Tarifário|Energia Verde|Mobilidade Elétrica|desconto|pré-pago|pós-pago)\b/;
     const maus = nomes.map(n => [n, en(n)]).filter(([, t]) => sobra.test(t));

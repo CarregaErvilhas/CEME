@@ -55,7 +55,7 @@
   </article>
   <article>
     <h2>Contents</h2>
-    <div class="toc"><a href="#auth">Authentication</a><a href="#endpoints">Endpoints</a><a href="#simulate">Simulate</a><a href="#quarters">Indexed quarters</a><a href="#errors">Errors and limits</a><a href="#agent">Guidance for AI agents</a></div>
+    <div class="toc"><a href="#auth">Authentication</a><a href="#endpoints">Endpoints</a><a href="#legacy">Spreadsheet IDs</a><a href="#simulate">Simulate</a><a href="#quarters">Indexed quarters</a><a href="#errors">Errors and limits</a><a href="#agent">Guidance for AI agents</a></div>
   </article>
   <article id="auth">
     <h2>Authentication</h2>
@@ -73,7 +73,7 @@ curl 'https://ceme.ocarroeletrico.com/v1/health' \
     <table><thead><tr><th>Method and path</th><th>Purpose / parameters</th></tr></thead><tbody>
       <tr><td><code>GET /v1/health</code></td><td>Confirms authentication; reports credential kind and server time.</td></tr>
       <tr><td><code>GET /v1/cemes</code></td><td>Commercial energy suppliers (CEMEs).</td></tr>
-      <tr><td><code>GET /v1/tariffs</code></td><td>Tariffs and the current tariff version where one is available.</td></tr>
+      <tr><td><code>GET /v1/tariffs</code></td><td>Tariffs and the current tariff version where one is available. <code>?legacy_id=N</code> returns only the tariffs with that spreadsheet number; see <a href="#legacy">Spreadsheet IDs</a>.</td></tr>
       <tr><td><code>GET /v1/tar</code></td><td>Currently valid regulated network access tariffs (TAR).</td></tr>
       <tr><td><code>GET /v1/omie/daily?days=60</code></td><td>Daily OMIE series, one row per Lisbon calendar day. <code>days</code> is clamped to 7–120; default 60. <code>complete</code> is <code>false</code> for a day that does not yet have all its quarter-hours (typically tomorrow, in the afternoon).</td></tr>
       <tr><td><code>GET /v1/omie/futures</code></td><td>OMIP futures data.</td></tr>
@@ -82,6 +82,36 @@ curl 'https://ceme.ocarroeletrico.com/v1/health' \
       <tr><td><code>POST /v1/simulate</code></td><td>Calculates and ranks tariffs for supplied usage inputs. See below.</td></tr>
     </tbody></table>
     <p>Exact field sets can evolve with the tariff data. Treat unknown JSON fields as valid, and do not assume every tariff has every optional value (for example, tariff version or split energy/network prices).</p>
+  </article>
+  <article id="legacy">
+    <h2>Spreadsheet IDs (<code>legacy_id</code>)</h2>
+    <p>If you integrated with the original Google spreadsheet, you know each tariff by the number in its column B (for example <code>92</code> for myAtlante (AC), low voltage). The API keeps those numbers in <code>legacy_id</code>. Every tariff has its own <code>id</code> as well (for example <code>atlante-bt-myatlanteac</code>); that is the one to use for anything new.</p>
+    <p><b>One number can match two tariffs.</b> Where a spreadsheet row said "BT/MT", the API has one tariff for low voltage (<code>BT</code>) and one for medium voltage (<code>MT</code>), with the same <code>legacy_id</code>. Use <code>voltage</code> to tell them apart.</p>
+    <h3>Look up one number</h3>
+    <pre><code>curl 'https://ceme.ocarroeletrico.com/v1/tariffs?legacy_id=121' \
+  -H 'X-API-Key: YOUR_API_KEY'</code></pre>
+    <pre><code>{
+  "data": [
+    { "id": "enable-bt-tarifasimple", "legacy_id": 121, "voltage": "BT", "name": "Tarifa Simples", "ceme_name": "Enable Mobility", "version": { … }, … },
+    { "id": "enable-mt-tarifasimple", "legacy_id": 121, "voltage": "MT", "name": "Tarifa Simples", "ceme_name": "Enable Mobility", "version": { … }, … }
+  ]
+}</code></pre>
+    <h3>Map every number at once (recommended)</h3>
+    <p>Rather than one request per number, fetch <code>GET /v1/tariffs</code> once and build your own table of <code>(legacy_id, voltage) → id</code>. After that, store and use the <code>id</code>. For example, with <code>jq</code>:</p>
+    <pre><code>curl -s 'https://ceme.ocarroeletrico.com/v1/tariffs' -H 'X-API-Key: YOUR_API_KEY' \
+  | jq -r '.data[] | select(.legacy_id != null) | [.legacy_id, .voltage, .id] | @tsv'</code></pre>
+    <h3>Where it appears</h3>
+    <ul>
+      <li><code>GET /v1/tariffs</code>: on every tariff, and as the <code>?legacy_id=</code> filter.</li>
+      <li><code>POST /v1/simulate</code>: on every quoted tariff in <code>data</code>, so you can match a ranking to your own records without a second request.</li>
+    </ul>
+    <h3>Rules to code against</h3>
+    <ul>
+      <li>The numbers are frozen. A tariff added after the spreadsheet has <code>"legacy_id": null</code> and never gets one: handle <code>null</code>.</li>
+      <li>A number that matches nothing returns <code>200</code> with <code>"data": []</code>. That is also what you get for a tariff that left the comparison: treat it as "no longer offered", not as an error.</li>
+      <li>A value that is not a whole number returns <code>400</code> with <code>error.code</code> <code>bad_legacy_id</code>.</li>
+      <li>The filter only exists on <code>GET /v1/tariffs</code>. Every other route that takes a tariff (for example <code>tariff</code> and <code>fixed</code> in <code>/v1/indexed/quarters</code>) wants the <code>id</code>.</li>
+    </ul>
   </article>
   <article id="simulate">
     <h2>Calculate a comparison</h2>

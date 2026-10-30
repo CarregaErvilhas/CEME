@@ -145,7 +145,7 @@ GET  /readyz                     # processo + BD; sem auth; só testa a BD a par
 POST /v1/session                 # dá-te um WEB_SESSION (24 h); sem auth
 GET  /v1/health                  # confirma a credencial e diz de que tipo é
 GET  /v1/cemes                   # comercializadores
-GET  /v1/tariffs                 # todos os tarifários + a versão em vigor
+GET  /v1/tariffs                 # todos os tarifários + a versão em vigor; ?legacy_id= (vê abaixo)
 GET  /v1/tar                     # TAR em vigor (region, voltage, period, valid_from)
 GET  /v1/promos                  # promoções que ainda não acabaram (vê abaixo)
 POST /v1/simulate                # vê abaixo
@@ -165,6 +165,48 @@ processo responde. `/readyz` também faz um `SELECT 1` à BD, mas **só quando
 o pedido vem da própria máquina** (com 3 s de prazo e a resposta guardada
 5 s). De fora responde 200 com `db: unknown`, sem tocar na BD. Com a BD em
 baixo: 503 `db_unavailable`.
+
+### `/v1/tariffs` e o `legacy_id`
+
+Quem integrou com a folha de cálculo original conhece cada tarifário pelo
+número da coluna B da aba CEME (ex.: `92` = myAtlante (AC) BT). A API
+guarda esse número em `legacy_id`. O `id` de cada tarifário (ex.:
+`atlante-bt-myatlanteac`) é o que se usa para tudo o resto.
+
+Onde aparece:
+
+- `GET /v1/tariffs`: em cada tarifário, e como filtro `?legacy_id=92`;
+- `POST /v1/simulate`: em cada tarifário cotado de `data`;
+- `GET /v1/tabela`: em cada linha, e a página `/tabela` mostra-o na
+  primeira coluna (ID).
+
+Como se consome:
+
+```sh
+# um número
+curl 'https://ceme.ocarroeletrico.com/v1/tariffs?legacy_id=121' -H 'X-API-Key: <chave>'
+
+# todos de uma vez: (legacy_id, voltage) → id
+curl -s 'https://ceme.ocarroeletrico.com/v1/tariffs' -H 'X-API-Key: <chave>' \
+  | jq -r '.data[] | select(.legacy_id != null) | [.legacy_id, .voltage, .id] | @tsv'
+```
+
+O que um cliente tem de saber:
+
+- **um número pode dar dois tarifários.** Uma linha "BT/MT" da folha deu um
+  tarifário por tensão, com o mesmo `legacy_id`. Desempata-se pelo
+  `voltage`;
+- **o número fica congelado.** Um tarifário novo sai com
+  `legacy_id: null` e nunca ganha número;
+- **um número sem tarifário dá 200 com `data: []`**, e é o mesmo para um
+  tarifário que saiu do comparador. Um valor que não seja inteiro dá 400
+  `bad_legacy_id`;
+- **o filtro só existe no `/v1/tariffs`.** As outras rotas que recebem um
+  tarifário (`tariff` e `fixed` do `/v1/indexed/quarters`) querem o `id`.
+
+A lista dos números é `LEGACY_IDS`, em `backend/src/db/seed-data.js`. A
+versão para quem integra, em inglês, está na página `/api` (secção
+«Spreadsheet IDs», em `frontend/api.html`).
 
 ### `/v1/indexed/quarters`
 

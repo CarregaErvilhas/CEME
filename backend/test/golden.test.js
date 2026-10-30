@@ -39,7 +39,6 @@ const GOLDEN = [
   ['enable-bt-tarifasimple', 11.96, 0.25],
   ['enable-mt-tarifasimple', 10.09, 0.21],
   ['viaverde-mt-viaverdeelec', 8.31, 0.17],
-  ['ezu-mt-abenergia', 5.84, 0.12],
   ['miio-mt-miiobihor-2', 12.64, 0.26],
 ];
 
@@ -152,10 +151,18 @@ describe('golden: preços por região (price_component_region)', () => {
 });
 
 describe('cobertura do seed', () => {
-  it('todas as 24 CEME e 128 tarifários', async () => {
+  it('todas as 20 CEME e 108 tarifários', async () => {
     const db = await seeded();
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM ceme').get().c, 24);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 128);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM ceme').get().c, 20);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 108);
+  });
+
+  it('todos os tarifários têm o número da folha original (legacy_id)', async () => {
+    const db = await seeded();
+    assert.deepEqual(db.prepare('SELECT id FROM tariff WHERE legacy_id IS NULL').all(), []);
+    // Uma linha "BT/MT" da folha dá dois tarifários, um por tensão.
+    assert.deepEqual(db.prepare('SELECT id FROM tariff WHERE legacy_id = 121 ORDER BY id').all().map(r => r.id),
+      ['enable-bt-tarifasimple', 'enable-mt-tarifasimple']);
   });
 
   it('preços finais têm no máximo 4 casas e foram arredondados para cima', async () => {
@@ -172,7 +179,7 @@ describe('cobertura do seed', () => {
       WHERE v.tariff_id='edp-bt-cartoedp-2' AND p.period='UNICO'`).get().energy_eur_kwh, 0.2411);
     assert.equal(db.prepare(`SELECT energy_eur_kwh FROM price_component p
       JOIN tariff_version v ON v.id=p.tariff_version_id
-      WHERE v.tariff_id='edp-bt-cartoedp-12' AND p.period='VAZIO'`).get().energy_eur_kwh, 0.1446);
+      WHERE v.tariff_id='edp-bt-cartoedp-11' AND p.period='VAZIO'`).get().energy_eur_kwh, 0.1349);
   });
 
   it('ACP não-sócio, Hyundai Blue e miio têm decomposição energia + TAR', async () => {

@@ -223,7 +223,7 @@ o CEME. Na prática junta casos diferentes:
 | miio one | ter uma subscrição |
 | ACP *sócio ACP*, EDP *Associados UVE* | ser sócio de uma associação |
 | EDP/MEO *Colaboradores* | trabalhar na empresa |
-| EDP *Clientes energia*, EVIO *Hyundai Blue*, Galp Plano, FactorEnergia *VECARD* | desconto por já ser cliente |
+| EDP *Clientes energia*, EVIO *Hyundai Blue*, Galp Plano | desconto por já ser cliente |
 | Atlante *myAtlante Business (AC)* | ser cliente empresarial |
 
 Na interface chama-se, nos três sítios onde aparece (badge, filtro e modal

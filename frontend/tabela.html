@@ -119,7 +119,7 @@
 
     function head() {
       return `<thead><tr>
-    <th>${t('thCeme')}</th><th>${t('thTariff')}</th><th>${t('thVolt')}</th>
+    <th class="num" title="${t('thIdTip')}">${t('thId')}</th><th>${t('thCeme')}</th><th>${t('thTariff')}</th><th>${t('thVolt')}</th>
     <th>${t('thOp')}</th><th>${t('thCycle')}</th>
     <th class="num">${t('thCheias')}</th><th class="num">${t('thVazio')}</th>
     <th class="num">${t('thAct')}</th>
@@ -144,6 +144,7 @@
         const prices = rp.prices, split = rp.split;
         const name = region ? `${esc(r.name)} <small>· ${esc(((CEME_I18N.regions[region] || {})[LANG] || {}).curto || region)}</small>` : esc(r.name);
         const cells = [
+          `<td class="num">${r.legacy_id ?? '—'}</td>`,
           `<td>${esc(r.ceme)}</td>`,
           `<td>${name}</td>`,
           `<td>${esc(r.voltage)}</td>`,

@@ -346,8 +346,6 @@ const NAME_RULES = [
   ['Tarifário Indexado Cliente Casa e CEME', 'indexed tariff, home & CEME customer'],
   ['Tarifário Indexado Cliente CEME', 'indexed tariff, CEME customer'],
   ['Cartão EDP Charge', 'EDP Charge card'],
-  ['Cartão Bluecharge', 'Bluecharge card'],
-  ['Cartão EVpower', 'EVpower card'],
   ['Cartão Mobilidade Elétrica', 'electric mobility card'],
   ['Cartão CEME', 'CEME card'],
   [' - não sócio ACP', ' — not an ACP member'],
@@ -375,7 +373,7 @@ const NAME_RULES = [
   ['desconto', 'discount'],
 ];
 // Nomes que não devem ser mexidos, mesmo se contiverem uma das frases acima.
-const NAME_KEEP = /^(myAtlante|Eco Green|VECARD|GOW|Hyundai Blue|AB Energia|Go\.Charge by EVIO)/;
+const NAME_KEEP = /^(myAtlante|Eco Green|GOW|Hyundai Blue|Go\.Charge by EVIO)/;
 
 function tariffName(name, lang) {
   if ((lang || L) !== 'en' || !name || NAME_KEEP.test(name)) return name;
