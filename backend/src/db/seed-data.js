@@ -462,12 +462,12 @@ export const RETIRED_CEMES = ['bluecharge', 'evpower', 'factorenergia', 'mobisma
 // no dia seguinte, e o seed só faz upserts.
 export const PROMOS = [
   {
-    // O desconto Powerdot da LUZiGÁS é do ohmigo (é de uma rede de postos,
-    // vê ohmigo-mcp src/promos.js). Fica aqui fechada para a BD a tirar do
-    // simulador; o tarifário promocional está em TARIFFS.
-    id: 'luzigas-powerdot-2026-10', ceme: 'luzigas', name: 'LUZiGÁS × Powerdot: −0,12 €/kWh na componente CEME',
-    network: 'Powerdot', target: 'ENERGIA', eurKwh: 0.12, from: '2026-10-29', to: '2026-10-29',
-    newCustomers: true, maxHours: 168,
+    // Só nos tarifários promocionais: 0,3199 − 0,12 = 0,1999 e 0,2599 − 0,12
+    // = 0,1399, os dois preços que a página anuncia. Quem a aplica é o
+    // ohmigo, que sabe se o posto é da Powerdot.
+    id: 'luzigas-powerdot-2026-10', ceme: 'luzigas', name: 'LUZiGÁS × Powerdot: −0,12 €/kWh no tarifário promocional',
+    tariffs: ['luzigas-promo-ceme-bt', 'luzigas-promo-ceme-mt', 'luzigas-promo-casa-bt', 'luzigas-promo-casa-mt'],
+    network: 'Powerdot', target: 'ENERGIA', eurKwh: 0.12, from: '2026-10-29', to: '2026-11-28',
     url: 'https://www.luzigas.pt/app-mobilidade-eletrica/', checked: '2026-10-30',
   },
   {
