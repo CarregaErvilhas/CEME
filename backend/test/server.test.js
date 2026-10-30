@@ -550,7 +550,20 @@ it('HTML também leva nosniff', async () => {
   });
 
   it('401 sem auth', async () => {
-    assert.equal((await fetch(`${BASE}/v1/cemes`)).status, 401);
+    const r = await fetch(`${BASE}/v1/cemes`);
+    assert.equal(r.status, 401);
+    assert.match((await r.json()).error.message, /^falta Authorization/);
+  });
+
+  it('401 com credencial errada diz qual foi o problema, não que falta', async () => {
+    const k = await fetch(`${BASE}/v1/cemes`, { headers: { 'X-API-Key': 'nao-existe-0123456789' } });
+    assert.equal(k.status, 401);
+    const e = (await k.json()).error;
+    assert.equal(e.code, 'unauthorized');
+    assert.equal(e.message, 'X-API-Key inválida, revogada ou expirada');
+    const t = await fetch(`${BASE}/v1/cemes`, { headers: { Authorization: 'Bearer lixo' } });
+    assert.equal(t.status, 401);
+    assert.equal((await t.json()).error.message, 'token Bearer inválido');
   });
 
   it('405 com allow e nosniff', async () => {

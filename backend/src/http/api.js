@@ -418,6 +418,16 @@ const ROUTES = {
   '/v1/simulate': { method: 'POST', handler: simulate },
 };
 
+// A mensagem do 401 diz qual foi o problema da credencial (o código é sempre
+// `unauthorized`). Chave revogada, expirada ou desconhecida dão a mesma, para
+// não revelar quais chaves existiram.
+const AUTH_MESSAGES = {
+  missing: 'falta Authorization (Bearer ou X-API-Key)',
+  invalid_key: 'X-API-Key inválida, revogada ou expirada',
+  expired: 'token expirado; pede outro em POST /v1/session',
+  invalid_token: 'token Bearer inválido',
+};
+
 export async function serveApi(req, res, url) {
   const route = Object.hasOwn(ROUTES, url.pathname) ? ROUTES[url.pathname] : null;
   // Método errado: 405, com o cabeçalho `allow` a dizer o certo.
@@ -429,7 +439,7 @@ export async function serveApi(req, res, url) {
   // Qualquer outro caminho (mesmo um que não existe) pede credencial: um
   // desconhecido sem credencial dá 401, não 404.
   const a = await auth(req);
-  if (!a.ok) return fail(res, 401, 'unauthorized', 'falta Authorization (Bearer ou X-API-Key)');
+  if (!a.ok) return fail(res, 401, 'unauthorized', AUTH_MESSAGES[a.error] || AUTH_MESSAGES.invalid_token);
 
   // Rate limit, depois da auth: por chave (API key) ou por IP (sessão web).
   const thirdParty = a.payload.kind === 'THIRD_PARTY';
