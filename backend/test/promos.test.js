@@ -41,8 +41,9 @@ describe('PROMOS: os dados do seed', () => {
     assert.equal(rows.length, PROMOS.length);
     const luz = rows.find(r => r.id === 'luzigas-powerdot-2026-10');
     assert.equal(luz.tariff_ids, 'luzigas-promo-ceme-bt,luzigas-promo-ceme-mt,luzigas-promo-casa-bt,luzigas-promo-casa-mt');
-    assert.equal(luz.new_customers, 0);
-    assert.equal(promoOut(luz).newCustomers, false);
+    assert.equal(luz.new_customers, 1);
+    assert.equal(promoOut(luz).newCustomers, true);
+    assert.equal(luz.max_hours, 168);
   });
 });
 

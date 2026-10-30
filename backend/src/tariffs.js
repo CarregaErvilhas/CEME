@@ -13,6 +13,7 @@ import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { lossAt, lossByPeriod } from './engine/losses.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { civilDay } from './omie/convert.js';
+import { shiftDays } from './time.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed-data.js';
 import { discounted, freeFirst, promosFor } from './promos.js';
@@ -176,6 +177,9 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
     schedule: t.schedule, cycle: t.cycle, green: !!t.green, access: t.access,
     bundle: !!t.bundle, popular: !!t.popular, estimated: /~$/.test(t.name),
     source_url: t.source_url, valid_from: ver?.valid_from || null,
+    // O último dia de uma campanha, inclusive (valid_to é exclusivo).
+    valid_until: ver?.valid_to ? shiftDays(ver.valid_to, -1) : null,
+    newCustomers: !!t.new_customers,
     notes: ver?.notes || null,
     brand: pricing.brand(t.ceme_id),
   };
