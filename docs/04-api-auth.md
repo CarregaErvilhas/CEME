@@ -55,6 +55,36 @@ Para revogar, tiras (ou trocas) a variável e reinicias. Testado em
 `server.test.js` («CEME_API_KEY — tirar a env revoga a chave»). Em modo
 `CEME_READONLY` isto não corre.
 
+### Chaves de outros clientes (`tools/api-key.mjs`)
+
+Cada app de terceiros tem o seu cliente em `api_client` (com o seu
+`rate_limit`) e as suas chaves em `api_key`. Não escreves SQL: com a VPN do
+Zerops ligada e a URL da BD exportada (`DATABASE_URL`, ou a
+`DATABASE_APP_URL` da role `ceme_app`, que chega), corres a partir de
+`backend/`:
+
+```sh
+node tools/api-key.mjs create <cliente> --limit 60   # cliente novo + chave
+node tools/api-key.mjs rotate <cliente>              # mais uma chave
+node tools/api-key.mjs revoke <cliente|id-da-chave>  # revoga
+node tools/api-key.mjs limit <cliente> 120           # muda o limite
+node tools/api-key.mjs list                          # clientes e chaves
+```
+
+`create` e `rotate` copiam a chave para o clipboard (só o prefixo aparece
+no ecrã) e testam-na contra `/v1/health` do site (`--base` para outro,
+`--no-check` para saltar). Guarda-a logo: na BD só fica o hash. Ao rodar, a
+chave antiga continua activa até a revogares, para o cliente trocar sem
+ficar sem serviço. O limite vale logo, sem reiniciar: o servidor lê-o a cada
+pedido.
+
+O cliente é sempre `THIRD_PARTY`: com outro `kind` a chave entrava, mas o
+rate limit passava a ser por IP. Sem URL da BD o script recusa-se a correr
+(senão escrevia no SQLite local, onde o servidor de produção nunca a via);
+`--local` força o SQLite, para dev. A linha `env-key` é da variável e o
+script não lhe mexe. A lógica está em `backend/src/auth/apikeys.js`, testada
+em `apikeys.test.js`.
+
 ### O segredo das sessões (`JWT_SECRET`)
 
 O servidor arranca sempre. Sem `JWT_SECRET`, usa um segredo de dev
