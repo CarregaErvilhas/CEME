@@ -179,7 +179,7 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
     source_url: t.source_url, valid_from: ver?.valid_from || null,
     // O último dia de uma campanha, inclusive (valid_to é exclusivo).
     valid_until: ver?.valid_to ? shiftDays(ver.valid_to, -1) : null,
-    newCustomers: !!t.new_customers,
+    newCustomers: !!t.new_customers, audience: t.audience ?? null,
     notes: ver?.notes || null,
     brand: pricing.brand(t.ceme_id),
   };

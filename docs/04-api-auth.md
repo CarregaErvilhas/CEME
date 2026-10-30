@@ -287,6 +287,10 @@ Notas:
 - `newCustomers: true`: o tarifário só o tem quem adere ao CEME (um cliente
   que já o era não pode). Entra no ranking, mas quem mostra o preço a um
   cliente antigo deve deixá-lo de fora ou avisar.
+- `audience` (`null` na maioria): o público a que o tarifário se destina,
+  quando não é qualquer pessoa (`edp-staff` = colaboradores da EDP). Vem no
+  ranking como os outros; quem mostra o preço deve deixá-lo de fora a quem
+  não disse que pertence a esse público.
 - `valid_until` (só nas campanhas): o último dia em que o preço vale,
   inclusive. No dia seguinte o tarifário deixa de vir.
 - `promos` (só nos tarifários que as têm nesse dia e região): as promoções

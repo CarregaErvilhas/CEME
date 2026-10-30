@@ -61,6 +61,7 @@ describe('contrato do /v1/simulate', () => {
       for (const k of ['totalEur', 'vat', 'egme_legal']) assert.equal(typeof q[k], 'number', `${q.id}.${k}`);
       for (const k of ['popular', 'bundle', 'newCustomers', 'activation_stale']) assert.equal(typeof q[k], 'boolean', `${q.id}.${k}`);
       assert.ok(q.vat > 1, `${q.id} vat é um multiplicador`);
+      assert.ok(q.audience === null || typeof q.audience === 'string', `${q.id}.audience`);
     }
   });
 

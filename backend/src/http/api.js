@@ -125,6 +125,7 @@ async function tabela({ res, headers }) {
       ceme: t.ceme_name, name: t.name, kind: t.kind, voltage: t.voltage,
       schedule: t.schedule, cycle: t.cycle, green: t.green, bundle: t.bundle,
       popular: t.popular, access: t.access, newCustomers: !!t.new_customers,
+      audience: t.audience ?? null,
       // Datas só nas campanhas e nos que ainda não começaram; `validUntil` é
       // o último dia, inclusive.
       upcoming, validFrom: ver.campaign || upcoming ? ver.valid_from : null,
