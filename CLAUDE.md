@@ -15,6 +15,7 @@ node --test test/golden.test.js            # one file
 node --test --test-name-pattern="ROUNDUP" test/golden.test.js   # one test
 npm start                                  # http://localhost:3001/  (npm run dev = --watch)
 node tools/cores.mjs                       # colour-palette measurement for the OMIE page
+node tools/api-key.mjs list                # third-party API keys (needs DATABASE_URL; docs/04)
 ```
 
 There's no linter or formatter config. Without `DATABASE_URL` the DB is SQLite (`backend/data/ceme.db`, gitignored; `rm -rf backend/data` + restart rebuilds it from the seed). `omie-tz.test.js` fetches the real TF file (or uses `backend/data/` cache) and skips if offline.
