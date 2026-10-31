@@ -89,7 +89,7 @@ estáticos (`grants.test.js`), porque não há servidor nos testes.
 
 | variável | o que é | onde se define |
 |---|---|---|
-| `DATABASE_URL` | liga ao PostgreSQL (utilizador principal do `db`) | `zerops.yml` (`${db_connectionString}`, do serviço `db`) |
+| `DATABASE_URL` | liga ao PostgreSQL (utilizador principal do `db`) quando não há as duas seguintes; em dev, aponta a uma BD tua | local (em produção não se usa) |
 | `DATABASE_APP_URL` | liga à role `ceme_app`, só com DML; ganha à `DATABASE_URL` | variável secreta do serviço `api` |
 | `DATABASE_MIGRATE_URL` | role dona, só para o `migrate-cli` (DDL) | `zerops.yml` (`${db_connectionString}`) |
 | `CEME_SCHEMA_EXTERNAL` | `1` = o arranque não faz DDL, só verifica | `zerops.yml` |
@@ -98,6 +98,10 @@ estáticos (`grants.test.js`), porque não há servidor nos testes.
 | `NODE_ENV` | `production` faz o servidor recusar o segredo de dev | `zerops.yml` |
 | `CEME_API_KEY` | chave de terceiros ([04](04-api-auth.md)) | variável secreta, opcional |
 | `CEME_TRUST_PROXY` | quantos proxies de confiança há à frente ([04](04-api-auth.md)) | variável do serviço |
+| `CEME_API_KEY_RATE_LIMIT` | pedidos por minuto da `CEME_API_KEY` ([04](04-api-auth.md)) | variável do serviço |
+| `CEME_CACHE_DIR` | onde fica a cache dos CSV do TF (por omissão `backend/data/`) | `zerops.yml` (`/tmp/ceme-cache`) |
+| `PUBLIC_ORIGIN` | o domínio canónico das páginas (por omissão `https://ceme.ocarroeletrico.com`) | local, previews |
+| `PORT` | porta HTTP (por omissão 3001) | `zerops.yml` |
 | `CEME_READONLY`, `CEME_SKIP_SEED` | previews e cópias de dados ([preview-envs](preview-envs.md)) | por ambiente |
 
 As fontes e os tempos de cache do OMIE não são variáveis: estão em

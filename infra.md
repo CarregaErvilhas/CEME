@@ -44,7 +44,9 @@ A configuração do runtime está em `zerops.yml`; a criação dos serviços em
 | `db` | postgresql | 18 | a BD (tabelas em `docs/01-modelo-dados.md`) |
 
 Todos os serviços estão na mesma rede privada do projecto. O `api` chega ao
-`db` pelo nome interno (`db`) e recebe as credenciais em `DATABASE_URL`.
+`db` pelo nome interno (`db`), com duas ligações: `DATABASE_APP_URL` (a role
+`ceme_app`, só DML, a do processo da API) e `DATABASE_MIGRATE_URL` (a role
+dona, só nos `initCommands`). Vê «Privilégios da base de dados».
 
 Para criares os serviços de raiz:
 `zcli project service-import zerops-import.yaml -P <project-id>`. O
@@ -168,9 +170,10 @@ O que o `cocofree` pode e não pode:
 
 - lê o código em `/var/www` (que é do `zerops`), mas não o escreve;
 - escreve em `/tmp`, onde fica a cache dos CSV do TF (`CEME_CACHE_DIR`);
-- chega à BD pela `DATABASE_URL`, que continua no ambiente do processo.
+- chega à BD pela `DATABASE_APP_URL` (a role `ceme_app`), que está no
+  ambiente do processo.
 
-O que isto **não** resolve: a `DATABASE_URL` e o `JWT_SECRET` estão no
+O que isto **não** resolve: a `DATABASE_APP_URL` e o `JWT_SECRET` estão no
 ambiente do processo, por isso quem executar código na app lê-os e fala com
 a BD. O que se ganha é não poder alterar o código nem a imagem, não poder
 instalar nada e não escalar para root. O estrago na BD limita-se com uma
@@ -226,12 +229,15 @@ Com `CEME_SCHEMA_EXTERNAL=1` o `boot.js` não faz DDL: só confirma que as
 tabelas e as colunas de `ADDED_COLUMNS` existem e recusa-se a arrancar se
 faltar alguma (com `migrate-cli` não corrido, o deploy falha no readiness e a
 versão anterior continua a servir). Sem a variável (dev, testes, SQLite) o
-arranque faz tudo, como dantes.
+arranque faz tudo.
 
-#### Activar em produção (uma vez, à mão)
+#### Criar a role `ceme_app` (projecto novo, ou para lhe trocar a palavra-passe)
 
-Nada disto está feito só por fazer merge da PR: sem as variáveis novas, o
-`api` continua a ligar com `DATABASE_URL`, como antes.
+Em produção já está feito: o `zerops.yml` corre o `migrate-cli` nos
+`initCommands` e a API liga com a `DATABASE_APP_URL`, uma variável secreta
+do serviço `api`. Sem ela, a API não tem BD e o deploy chumba no readiness
+(a versão anterior continua a servir). Num projecto novo, ou para rodar a
+palavra-passe, segue estes passos.
 
 Cada passo seguinte é seguro de interromper. Variáveis secretas ficam como
 **Secret** na consola do Zerops; nunca as imprimas nem as cole em chats.
@@ -278,25 +284,8 @@ Cada passo seguinte é seguro de interromper. Variáveis secretas ficam como
    unset MAIN_URL APP_PW APP_URL
    ```
 
-5. **Mudar o `zerops.yml`** (commit em `main`, o webhook faz o deploy):
-
-   ```yaml
-       run:
-         initCommands:
-           - node /var/www/backend/src/db/migrate-cli.js
-         startCommands:
-           - command: env -u DATABASE_MIGRATE_URL node src/server.js
-             # (o resto igual: name, workingDir, user)
-         envVariables:
-           CEME_SCHEMA_EXTERNAL: 1
-           DATABASE_MIGRATE_URL: ${db_connectionString}
-           # remover a linha DATABASE_URL: ${db_connectionString}
-   ```
-
-   O deploy é rolling: se a `ceme_app` ou o `initCommands` falharem, o
-   readiness chumba, a versão nova é apagada e a anterior continua a servir.
-
-6. **Verificar**, na consola do container do `api`:
+5. **Verificar** (depois do próximo deploy, ou de reiniciar o `api`), na
+   consola do container do `api`:
 
    ```bash
    curl -s localhost:3001/readyz                  # 200, db: ok
@@ -307,21 +296,23 @@ Cada passo seguinte é seguro de interromper. Variáveis secretas ficam como
    E no `psql` com a role dona: `SELECT usename, count(*) FROM
    pg_stat_activity GROUP BY 1;` deve mostrar ligações da `ceme_app`.
 
-7. **Reverter**: repõe no `zerops.yml` a linha `DATABASE_URL:
-   ${db_connectionString}` e tira o `CEME_SCHEMA_EXTERNAL`, o
-   `initCommands` e o `env -u` (commit em `main`). A variável
-   `DATABASE_APP_URL` tem de sair, porque tem prioridade sobre a
-   `DATABASE_URL`. Para apagar a role: `REASSIGN OWNED BY ceme_app TO
-   <dono>; DROP OWNED BY ceme_app; DROP ROLE ceme_app;`.
+6. **Voltar atrás** (a API a ligar com o utilizador principal): no
+   `zerops.yml`, troca a `DATABASE_MIGRATE_URL` por `DATABASE_URL:
+   ${db_connectionString}` e tira o `CEME_SCHEMA_EXTERNAL`, o `initCommands`
+   e o `env -u` (commit em `main`). A variável `DATABASE_APP_URL` tem de
+   sair, porque tem prioridade sobre a `DATABASE_URL`. Para apagar a role:
+   `REASSIGN OWNED BY ceme_app TO <dono>; DROP OWNED BY ceme_app; DROP ROLE
+   ceme_app;`.
 
 ### Colunas novas e o schema
 
-O schema corre no arranque com `CREATE TABLE IF NOT EXISTS`, que **não
-acrescenta colunas** a tabelas que já existem (e a BD de produção já tem
-todas). Se acrescentares uma coluna a uma tabela existente e te esqueceres
-da migração, o seed falha a escrever nessa coluna, o serviço não arranca e
-o site dá 502. O procedimento está em `docs/08-sqlite-postgres.md`
-(«Para acrescentares uma coluna»).
+O schema (`CREATE TABLE IF NOT EXISTS`) **não acrescenta colunas** a tabelas
+que já existem, e a BD de produção já tem todas. Uma coluna nova numa tabela
+existente tem de entrar também em `ADDED_COLUMNS` (`db/migrate.js`), que o
+`migrate-cli` aplica nos `initCommands`. Se te esqueceres, o arranque da API
+não a encontra, recusa-se a arrancar e o deploy chumba no readiness (a versão
+anterior continua a servir). O procedimento está em
+`docs/08-sqlite-postgres.md` («Para acrescentares uma coluna»).
 
 ---
 
@@ -339,10 +330,21 @@ Domínios em produção:
   `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a
   página OMIE.
 
-Nos dois: na Cloudflare, **só um registo `AAAA`** para o IPv6 dedicado do
+Nos três: na Cloudflare, **só um registo `AAAA`** para o IPv6 dedicado do
 projecto, com **proxy activo**; no Zerops, o domínio registado no
 balanceador L7 (`public-http-routing`) com certificado Let's Encrypt.
-As zonas têm `ssl: strict`, `ipv6: on` e `always_use_https: on`.
+As zonas têm `ssl: strict`, `ipv6: on` e `always_use_https: on`, e a
+Cloudflare acrescenta o HSTS (`Strict-Transport-Security`) às respostas. Os
+outros cabeçalhos de segurança das páginas (CSP e companhia) põe-nos o
+servidor (`PAGE_SECURITY` em `backend/src/http/pages.js`).
+
+O CSP só deixa correr scripts do próprio domínio e os inline cujo hash vai no
+cabeçalho. O que a Cloudflare faz hoje às páginas passa: a *Email Address
+Obfuscation* injecta um script de `/cdn-cgi/` (do próprio domínio) e não
+mexe nos scripts inline, e o link do *AI Labyrinth* é só um link. Uma
+funcionalidade que injecte scripts inline ou de outro domínio (Rocket Loader,
+Zaraz, Web Analytics automático, as *JS detections* do Bot Fight Mode) fica
+bloqueada pelo CSP: se ligares alguma, acrescenta-a lá primeiro.
 
 ### O IP da origem
 
@@ -513,8 +515,9 @@ que nada chega a `main` sem testes verdes é a protecção do `main` (4.3).
 
 ### 4.3 Protecção do `main`
 
-Feita com um **ruleset** do GitHub (a branch protection clássica não se
-aplica a repos públicos de organizações no plano gratuito):
+Feita com um **ruleset** do GitHub (e não com a branch protection clássica:
+os rulesets juntam-se por camadas, têm lista de bypass e vê-os quem lê o
+repositório):
 
 - alvo `main`, `enforcement: active`;
 - `required_status_checks`: o check `test`, com
@@ -545,7 +548,8 @@ está em [`docs/preview-envs.md`](docs/preview-envs.md).
 ### 4.6 Dependências e dono
 
 - `.github/dependabot.yml`: npm e GitHub Actions, semanal, com um intervalo
-  mínimo entre actualizações.
+  mínimo entre actualizações. As actions do `ci.yml` estão fixadas por SHA
+  (com a versão em comentário), que o Dependabot também actualiza.
 - `.github/CODEOWNERS`: um dono para o repositório todo.
 
 ---

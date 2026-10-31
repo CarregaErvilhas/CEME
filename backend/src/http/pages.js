@@ -3,6 +3,7 @@
 //
 // servePage(req, res, url) devolve true se o pedido era para uma página ou
 // ficheiro daqui (e já respondeu), ou false para o router seguir para a API.
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fail } from './respond.js';
 import { prerender } from './prerender.js';
@@ -21,6 +22,7 @@ const STATIC = {
   '/strings.js': { file: 'strings.js', headers: JS },
   '/tz.js': { file: 'tz.js', headers: JS },
   '/pwa.js': { file: 'pwa.js', headers: JS },
+  '/api.js': { file: 'api.js', headers: JS },
   '/theme.js': { file: 'theme.js', headers: JS },
   '/pages.css': { file: 'pages.css', headers: { 'content-type': 'text/css; charset=utf-8', ...NO_STORE } },
   // PWA (app instalável): manifest, service worker e ícones.
@@ -35,7 +37,61 @@ const STATIC = {
   '/icon-maskable-512.png': { file: 'icon-maskable-512.png', headers: ICON, missing: 404 },
   // Imagem das pré-visualizações de links (WhatsApp, Facebook, X).
   '/og.png': { file: 'og.png', headers: ICON, missing: 404 },
+  // Browsers, leitores de feeds e crawlers pedem /favicon.ico sem olhar para o
+  // <link rel="icon"> das páginas. Sem esta rota caía na API e levava um 401.
+  // Um PNG servido neste caminho é aceite por todos os browsers actuais.
+  '/favicon.ico': { file: 'icon-32.png', headers: ICON, missing: 404 },
 };
+
+// Cabeçalhos de segurança de todas as páginas HTML (vê sendHtml).
+//   CSP: tudo vem do próprio site (scripts, CSS, o fetch à API, o service
+//   worker). Os scripts inline correm só se o hash deles estiver no
+//   cabeçalho (inlineScriptHashes, calculado em cada resposta: o
+//   window.__LANG__ muda com a língua). Um <script> que alguém consiga
+//   injectar não tem hash e não corre, e um onclick= escrito no HTML também
+//   não: os cliques ligam-se em JavaScript (data-action no index.html). Fecha
+//   ainda scripts e CSS de outros domínios, <base>, <object>, formulários para
+//   fora e o site dentro de iframes de outros (clickjacking). Os estilos inline
+//   (style=) continuam permitidos. Uma página que passe a carregar algo de
+//   outro domínio tem de o acrescentar aqui (o teste em server.test.js avisa).
+//   frame-ancestors 'self' (e X-Frame-Options, para browsers antigos): nenhum
+//   site embebe o comparador. Se um dia o ocarroeletrico.com o fizer, o
+//   domínio dele entra aqui.
+//   Permissions-Policy: nenhuma página usa câmara, microfone, localização,
+//   pagamentos nem USB.
+//   O HSTS não está aqui: põe-no a Cloudflare (infra.md, secção 3).
+const csp = scriptHashes => `default-src 'self'; script-src 'self' ${scriptHashes.join(' ')}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'`;
+const PAGE_SECURITY = {
+  'x-frame-options': 'SAMEORIGIN',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  'cross-origin-opener-policy': 'same-origin',
+};
+
+// Os hashes ('sha256-…') dos scripts inline que o browser vai executar, tal
+// como a página sai: sem src e sem type, ou com um type de JavaScript. O
+// JSON-LD (application/ld+json) não é executado, por isso não conta. O texto
+// é o que fica entre <script…> e o primeiro </script>, como o browser o lê.
+const INLINE_SCRIPT = /<script\b(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi;
+const isJs = attrs => {
+  const type = /\btype\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1];
+  return !type || /^(text|application)\/(java|ecma)script$|^module$/i.test(type);
+};
+export const inlineScriptHashes = html => [...new Set([...html.matchAll(INLINE_SCRIPT)]
+  .filter(m => isJs(m[1]))
+  .map(m => `'sha256-${createHash('sha256').update(m[2]).digest('base64')}'`))];
+
+// /.well-known/security.txt (RFC 9116): a quem escrever se encontrares um
+// problema de segurança. O Expires é obrigatório e uma data fixa apodrecia,
+// por isso cada resposta conta 180 dias a partir de hoje. O Canonical usa o
+// domínio público (não o Host do pedido, que o cliente pode inventar).
+const securityTxt = origin => [
+  'Contact: mailto:info@ocarroeletrico.com',
+  `Expires: ${new Date(Date.now() + 180 * 86_400_000).toISOString()}`,
+  `Canonical: ${origin}/.well-known/security.txt`,
+  'Preferred-Languages: pt, en',
+  '',
+].join('\n');
 
 // robots.txt. A /tabela não aparece aqui: é escondida pelo cabeçalho
 // x-robots-tag (um Disallow aqui anunciava-a). O Sitemap tem de ser um URL
@@ -128,6 +184,9 @@ function uiCookie(req, ui) {
 // quando o pedido chega por outro nome (o domínio interno do Zerops). A página
 // OMIE no seu próprio domínio usa esse.
 const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || 'https://ceme.ocarroeletrico.com').replace(/\/$/, '');
+// O domínio público de um pedido: o da página OMIE, se veio por lá, ou o do
+// comparador.
+const publicOrigin = host => (host === OMIE_HOST ? `https://${OMIE_HOST}` : PUBLIC_ORIGIN);
 
 // Páginas cujo texto o servidor já põe no HTML (prerender.js). A OMIE vive
 // de dados da API e a /tabela não é indexada; a /api já é HTML estático.
@@ -162,7 +221,7 @@ const appLd = (url, lang) => JSON.stringify({
 function seoHead(html, req, lang) {
   const p = new URL(req.url, 'http://x').pathname;
   const host = String(req.headers.host || '').split(':')[0].toLowerCase();
-  const origin = host === OMIE_HOST ? `https://${OMIE_HOST}` : PUBLIC_ORIGIN;
+  const origin = publicOrigin(host);
   const path = host === OMIE_HOST && p === '/' ? '/' : CANONICAL[p];
   if (!path) return html;
   const url = origin + path;
@@ -192,7 +251,10 @@ async function sendHtml(req, res, file, headers = {}) {
   html = seoHead(html, req, lang)
     .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
     .replace(LANG_MARK, `window.__LANG__=${JSON.stringify(lang)}`);
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...NO_STORE, ...NOSNIFF, vary: 'Accept-Language', ...headers });
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8', ...NO_STORE, ...NOSNIFF, ...PAGE_SECURITY,
+    'content-security-policy': csp(inlineScriptHashes(html)), vary: 'Accept-Language', ...headers,
+  });
   res.end(html);
 }
 
@@ -221,6 +283,11 @@ export async function servePage(req, res, url) {
   if (p === '/sitemap.xml') {
     res.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600', vary: 'Host', ...NOSNIFF });
     res.end(sitemap(originOf(req), host === OMIE_HOST ? ['/'] : SITEMAP_PATHS));
+    return true;
+  }
+  if (p === '/.well-known/security.txt') {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400', vary: 'Host', ...NOSNIFF });
+    res.end(securityTxt(publicOrigin(host)));
     return true;
   }
   if ((host === OMIE_HOST && p === '/') || Object.hasOwn(OMIE_ROUTES, p)) {

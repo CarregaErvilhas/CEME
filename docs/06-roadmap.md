@@ -49,5 +49,6 @@ documentos. Quando acabares um item, tira-o daqui.
 
 ## Produto
 
-- Emissão e gestão de API keys (hoje há uma só, pela variável de ambiente; [04](04-api-auth.md)).
+- Pedido de API keys por quem as quer usar, sem passar por quem mantém o
+  site (hoje cria-as o `tools/api-key.mjs`, à mão; [04](04-api-auth.md)).
 - Os endpoints planeados estão em [04](04-api-auth.md#planos).

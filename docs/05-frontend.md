@@ -30,12 +30,25 @@ E ainda: as páginas **Sobre** e **Contactos** (texto, sem API), as
 | `GET /api` | guia da API (EN) |
 | `GET /strings.js` | os textos PT/EN de todas as páginas |
 | `GET /tz.js` | conversão de horas de relógio por região |
+| `GET /api.js` | o cliente da API das páginas: sessão web, token partilhado no separador, nova tentativa num 401 |
 | `GET /pages.css` | estilo das páginas Sobre e Contactos |
 | `GET /manifest.webmanifest` (`/manifest.json`), `/sw.js` (`/service-worker.js`), `/pwa.js`, `/icon-*.png` | PWA |
+| `GET /favicon.ico` | o ícone de 32 px (PNG), para quem o pede sem ler o `<link rel="icon">` |
+| `GET /.well-known/security.txt` | o contacto para problemas de segurança (RFC 9116), com o `Expires` sempre 180 dias à frente |
 
 JS, CSS e HTML vão com `cache-control: no-store`, para o browser nunca
 ficar com uma versão antiga depois de um deploy. Os ícones vão com
 `immutable`.
+
+As páginas HTML levam ainda os cabeçalhos de segurança de `PAGE_SECURITY`
+(`backend/src/http/pages.js`): um CSP que só deixa carregar scripts, CSS e
+pedidos do próprio site, nada de iframes noutros sites, `Referrer-Policy` e
+`Permissions-Policy`. Os scripts inline só correm com o hash, que o servidor
+calcula em cada resposta: por isso não há `onclick=` no HTML. Um botão
+desenhado por um template leva `data-action` (e `data-id`, se precisar), e
+o listener único do simulador (`ACTIONS` no `index.html`) trata do resto. Se uma página passar a precisar de um CDN ou de outro
+domínio, acrescenta-o lá; o `server.test.js` falha antes de isso chegar à
+produção. O HSTS vem da Cloudflare.
 
 ### A escolha entre assistente e simulador
 
@@ -351,7 +364,7 @@ criares um script partilhado novo, tens de o carregar também nesses testes.
 O site pode ser instalado no telemóvel: `manifest.webmanifest`, `sw.js` (o
 service worker) e `pwa.js` (o banner "Instalar"). O service worker usa
 **rede primeiro** para tudo o que muda com um deploy (`strings.js`,
-`tz.js`, `pages.css`, manifest): a cópia guardada só serve sem rede. Os
+`tz.js`, `api.js`, `pages.css`, manifest): a cópia guardada só serve sem rede. Os
 ícones, que não mudam, vão **cache primeiro**. Não guarda páginas nem
 `/v1/*`. Se mudares a estratégia ou a lista, sobe o nome da cache (`CACHE`
 em `sw.js`): o service worker novo apaga as caches antigas.
