@@ -458,7 +458,10 @@ async function load() {
   LOADING = true; FAILED = false; render();
   try {
     const ref = await Promise.race([OMIE, new Promise(r => setTimeout(() => r(null), 4000))]);
-    const body = { kwh: kwh(), region: P.region, at: chargeAt().toISOString(), ...(ref || {}) };
+    // useSpot: cada indexado cotado ao OMIE do quarto de hora do início da
+    // carga, como o ranking em automático. As médias de `ref` ficam de plano
+    // B para quando esse quarto ainda não foi publicado.
+    const body = { kwh: kwh(), region: P.region, at: chargeAt().toISOString(), useSpot: true, ...(ref || {}) };
     const j = await api('/v1/simulate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     // Um tarifário por (CEME, nome), na variante BT — como o simulador por omissão.
     const seen = new Map();

@@ -116,9 +116,9 @@ o que se mostra. A regra, em `route()`:
   usa as mesmas funções.
 - **OMIE de referência:** por omissão, as médias de vazio/fora de vazio por
   ciclo do último dia **completo** de `/v1/omie/daily`. No ranking, em
-  automático, a web manda também `useSpot` e cada indexado é cotado ao
-  quarto de hora do carregamento. O slider do comparador desliga o
-  automático e passa a valer para todos.
+  automático, e sempre no assistente, a web manda também `useSpot` e cada
+  indexado é cotado ao quarto de hora do carregamento. O slider do
+  comparador desliga o automático e passa a valer para todos.
 - **Ramal (BT/MT):** a tensão escolhida no cartão de energia.
   `dedupByRamal()` deixa uma entrada por `ceme|nome`, na variante dessa
   tensão. É a mesma função no ranking, no modal de favoritos e no
