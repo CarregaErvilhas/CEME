@@ -43,7 +43,10 @@ ficar com uma versão antiga depois de um deploy. Os ícones vão com
 As páginas HTML levam ainda os cabeçalhos de segurança de `PAGE_SECURITY`
 (`backend/src/http/pages.js`): um CSP que só deixa carregar scripts, CSS e
 pedidos do próprio site, nada de iframes noutros sites, `Referrer-Policy` e
-`Permissions-Policy`. Se uma página passar a precisar de um CDN ou de outro
+`Permissions-Policy`. Os scripts inline só correm com o hash, que o servidor
+calcula em cada resposta: por isso não há `onclick=` no HTML. Um botão
+desenhado por um template leva `data-action` (e `data-id`, se precisar), e
+o listener único do simulador (`ACTIONS` no `index.html`) trata do resto. Se uma página passar a precisar de um CDN ou de outro
 domínio, acrescenta-o lá; o `server.test.js` falha antes de isso chegar à
 produção. O HSTS vem da Cloudflare.
 

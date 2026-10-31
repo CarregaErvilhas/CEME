@@ -11,6 +11,7 @@ import { tmpdir, networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import { signJwt } from '../src/auth/tokens.js';
 
 const dir = mkdtempSync(path.join(tmpdir(), 'ceme-server-test-'));
@@ -238,6 +239,30 @@ it('HTML também leva nosniff', async () => {
       assert.equal(r.headers.get('referrer-policy'), 'strict-origin-when-cross-origin', caminho);
       assert.match(r.headers.get('permissions-policy') || '', /geolocation=\(\)/, caminho);
       assert.equal(r.headers.get('cross-origin-opener-policy'), 'same-origin', caminho);
+    }
+  });
+
+  // Os scripts inline correm pelo hash, não por 'unsafe-inline': cada página,
+  // nas duas línguas (o window.__LANG__ muda o texto do script), traz no CSP
+  // o hash de cada script que o browser executa, e nenhum on…= no HTML (um
+  // hash desliga-os; os cliques ligam-se em JavaScript).
+  it('HTML: só correm os scripts inline com hash no CSP, e não há onclick= nas páginas', async () => {
+    for (const caminho of PAGINAS) {
+      for (const lingua of ['pt', 'en']) {
+        const r = await fetch(`${BASE}${caminho}`, { headers: { 'accept-language': lingua } });
+        const html = await r.text();
+        const scriptSrc = (r.headers.get('content-security-policy') || '').match(/script-src ([^;]*)/)[1];
+        assert.doesNotMatch(scriptSrc, /unsafe-inline/, `${caminho} (${lingua})`);
+        const inline = [...html.matchAll(/<script\b(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)]
+          .filter(m => !/type=/.test(m[1])).map(m => m[2]);
+        // A /api é HTML estático, sem script inline; as outras têm sempre.
+        if (caminho !== '/api') assert.ok(inline.length >= 1, `${caminho} (${lingua}) sem scripts inline?`);
+        for (const corpo of inline) {
+          assert.ok(scriptSrc.includes(`'sha256-${createHash('sha256').update(corpo).digest('base64')}'`), `${caminho} (${lingua}): script sem hash no CSP`);
+        }
+        const semScripts = html.replace(/<script[\s\S]*?<\/script>/g, '');
+        assert.doesNotMatch(semScripts, /<[^>]+\son[a-z]+\s*=/i, `${caminho} (${lingua}): handler inline no HTML`);
+      }
     }
   });
 

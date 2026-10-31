@@ -642,7 +642,7 @@ function card(q, i, max, lo, hi) {
         <div class="per">${perWhen()} <b>${perName(q.period)}</b> · ${kwhe(q.totalEur / effKwh())} ${i18n('inclVat')} · ${kwhTxt()} kWh</div>
         <div class="tname"${q.notes ? ` title="${noteText(q.notes)}"` : ''}><b>${esc(q.ceme)}</b> — ${tariffName(q.name)}</div>
         <div>${badges(q)}</div></div></div>
-      <button class="favbtn ${on ? 'f' : ''}" data-id="${esc(q.id)}" onclick="toggleFav(this.dataset.id)" title="${i18n('saveFav')}">${on ? '★' : '☆'}</button>
+      <button class="favbtn ${on ? 'f' : ''}" data-action="fav" data-id="${esc(q.id)}" title="${i18n('saveFav')}">${on ? '★' : '☆'}</button>
     </div>
     <div class="bar"><i style="width:${Math.max(4, Math.round(100 * q.totalEur / max))}%;background:${heatColor(heatOf(q.totalEur, lo, hi))}"></i></div>${detail(q)}</div>`;
 }
@@ -678,7 +678,7 @@ function heroHome(items) {
   const best = items[0];
   document.getElementById('hero').innerHTML = `<h1>${i18n('h1a')}<span>${i18n('h1b')}</span></h1>
     <p>${kwhTxt()} kWh · <b>${R().nome}</b> <small style="color:#9fc3ae">(${R().iva} · ${R().fuso})</small> · ${AT ? locDate(AT) : ''}</p>
-    <p class="scope-hint" onclick="document.getElementById('scopeBox')?.scrollIntoView({behavior:'smooth',block:'center'})" style="cursor:pointer">${i18n('scopeHint')}</p>
+    <p class="scope-hint" data-action="scopeHint" style="cursor:pointer">${i18n('scopeHint')}</p>
     <div class="live">${best ? `<span class="pill"><span class="livedot"></span>${i18n('nowPrefix')} <b>${esc(best.ceme)}</b> ${eur(best.totalEur)}</span>` : ''}
     <span class="pill">${i18n('avg')} <b>${AVG != null ? eur(AVG) : '—'}</b></span>
     <span class="pill">${items.length} ${i18n('nTariffs')}</span></div>`;
@@ -691,7 +691,7 @@ const CUSTO_MOBIE = 'https://www.mobie.pt/custo-do-carregamento';
 // fica sempre visível (resumida no hero, detalhada aqui).
 function scopeBox() {
   return `<div class="scope${S.scopeClosed ? ' closed' : ''}" id="scopeBox">
-    <h3 onclick="S.scopeClosed=!S.scopeClosed;saveS();document.getElementById('scopeBox').classList.toggle('closed',S.scopeClosed)">
+    <h3 data-action="scopeToggle">
       <span class="caret">▼</span> ${i18n('scopeTitle')}
     </h3>
     <div>
@@ -777,18 +777,40 @@ function renderFavModal() {
     const qs = [...groups[ceme]].sort((a, b) => a.name.localeCompare(b.name, 'pt'));
     const color = qs[0].brand;
     return `<div class="mg"><h4><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${color}"></span>${ceme} <small style="color:var(--mut)">(${qs.length})</small></h4>` +
-      qs.map(tf => `<div class="mi ${fav.includes(tf.id)?'fav':''}" onclick="toggleFav('${tf.id}')"><span class="nm">${tariffName(tf.name)}<br><span class="meta">${tf.kind==='INDEXED'?i18n('kIndexed'):i18n('kFixed')}${tf.bundle?' · '+i18n('tagBundle'):''}${tf.popular?' · '+i18n('tagPopular'):''}${tf.green?' · '+i18n('tagGreen'):''}</span></span><span>${fav.includes(tf.id)?'★':'☆'}</span></div>`).join('') +
+      qs.map(tf => `<div class="mi ${fav.includes(tf.id)?'fav':''}" data-action="fav" data-id="${esc(tf.id)}"><span class="nm">${tariffName(tf.name)}<br><span class="meta">${tf.kind==='INDEXED'?i18n('kIndexed'):i18n('kFixed')}${tf.bundle?' · '+i18n('tagBundle'):''}${tf.popular?' · '+i18n('tagPopular'):''}${tf.green?' · '+i18n('tagGreen'):''}</span></span><span>${fav.includes(tf.id)?'★':'☆'}</span></div>`).join('') +
       `</div>`;
   }).join('') || `<div class="empty">${i18n('fmNoRes')}</div>`;
 }
-window.toggleFav = id => {
+function toggleFav(id) {
   const f = favs(), i = f.indexOf(id);
   i >= 0 ? f.splice(i, 1) : f.push(id);
   try { localStorage.setItem('ceme:favs', JSON.stringify(f)); } catch (e) {} // idem modo privado
   saveS();
   route();
   if (document.getElementById('favModal')?.classList.contains('on')) renderFavModal();
+}
+
+// Cliques nos elementos que os templates desenham (cartões, modal de
+// favoritos, aviso de âmbito): cada um leva data-action, e data-id quando
+// precisa, e este listener único faz o resto. Não há onclick= no HTML porque o
+// CSP da página só deixa correr os scripts com o hash autorizado
+// (PAGE_SECURITY em backend/src/http/pages.js). Um listener no document
+// também serve o que for desenhado depois: não é preciso ligar nada de novo a
+// cada render.
+const ACTIONS = {
+  fav: el => toggleFav(el.dataset.id),
+  scopeHint: () => document.getElementById('scopeBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+  scopeToggle: () => {
+    S.scopeClosed = !S.scopeClosed;
+    saveS();
+    document.getElementById('scopeBox').classList.toggle('closed', S.scopeClosed);
+  },
+  reload: () => location.reload(),
 };
+document.addEventListener('click', e => {
+  const el = e.target.closest && e.target.closest('[data-action]');
+  if (el && Object.hasOwn(ACTIONS, el.dataset.action)) ACTIONS[el.dataset.action](el);
+});
 
 /* ================= COMPARAR ================= */
 // Ordenação alfabética estável. Usa a collation portuguesa de propósito: os
@@ -1071,7 +1093,7 @@ async function init() {
     // outra vez (em vez de uma página em branco).
     setLang(initialLang(), false);
     const app = document.getElementById('app');
-    if (app) app.innerHTML = `<div class="card"><b>${i18n('bootFail')}</b><p>${i18n('bootFailWhy')}</p><button onclick="location.reload()">${i18n('retry')}</button></div>`;
+    if (app) app.innerHTML = `<div class="card"><b>${i18n('bootFail')}</b><p>${i18n('bootFailWhy')}</p><button data-action="reload">${i18n('retry')}</button></div>`;
     return;
   }
   route();           // pinta já

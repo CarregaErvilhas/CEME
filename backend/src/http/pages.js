@@ -3,6 +3,7 @@
 //
 // servePage(req, res, url) devolve true se o pedido era para uma página ou
 // ficheiro daqui (e já respondeu), ou false para o router seguir para a API.
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fail } from './respond.js';
 import { prerender } from './prerender.js';
@@ -44,25 +45,41 @@ const STATIC = {
 
 // Cabeçalhos de segurança de todas as páginas HTML (vê sendHtml).
 //   CSP: tudo vem do próprio site (scripts, CSS, o fetch à API, o service
-//   worker). Os scripts ficam com 'unsafe-inline' porque cada página tem o seu
-//   script inline e o simulador usa onclick= nos templates. O que o CSP fecha
-//   é o resto: scripts e CSS de outros domínios, <base>, <object>, formulários
-//   para fora e o site dentro de iframes de outros (clickjacking). Uma página
-//   que passe a carregar algo de outro domínio tem de o acrescentar aqui (o
-//   teste em server.test.js avisa).
+//   worker). Os scripts inline correm só se o hash deles estiver no
+//   cabeçalho (inlineScriptHashes, calculado em cada resposta: o
+//   window.__LANG__ muda com a língua). Um <script> que alguém consiga
+//   injectar não tem hash e não corre, e um onclick= escrito no HTML também
+//   não: os cliques ligam-se em JavaScript (data-action no index.html). Fecha
+//   ainda scripts e CSS de outros domínios, <base>, <object>, formulários para
+//   fora e o site dentro de iframes de outros (clickjacking). Os estilos inline
+//   (style=) continuam permitidos. Uma página que passe a carregar algo de
+//   outro domínio tem de o acrescentar aqui (o teste em server.test.js avisa).
 //   frame-ancestors 'self' (e X-Frame-Options, para browsers antigos): nenhum
 //   site embebe o comparador. Se um dia o ocarroeletrico.com o fizer, o
 //   domínio dele entra aqui.
 //   Permissions-Policy: nenhuma página usa câmara, microfone, localização,
 //   pagamentos nem USB.
 //   O HSTS não está aqui: põe-no a Cloudflare (infra.md, secção 3).
+const csp = scriptHashes => `default-src 'self'; script-src 'self' ${scriptHashes.join(' ')}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'`;
 const PAGE_SECURITY = {
-  'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'",
   'x-frame-options': 'SAMEORIGIN',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   'cross-origin-opener-policy': 'same-origin',
 };
+
+// Os hashes ('sha256-…') dos scripts inline que o browser vai executar, tal
+// como a página sai: sem src e sem type, ou com um type de JavaScript. O
+// JSON-LD (application/ld+json) não é executado, por isso não conta. O texto
+// é o que fica entre <script…> e o primeiro </script>, como o browser o lê.
+const INLINE_SCRIPT = /<script\b(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi;
+const isJs = attrs => {
+  const type = /\btype\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1];
+  return !type || /^(text|application)\/(java|ecma)script$|^module$/i.test(type);
+};
+export const inlineScriptHashes = html => [...new Set([...html.matchAll(INLINE_SCRIPT)]
+  .filter(m => isJs(m[1]))
+  .map(m => `'sha256-${createHash('sha256').update(m[2]).digest('base64')}'`))];
 
 // /.well-known/security.txt (RFC 9116): a quem escrever se encontrares um
 // problema de segurança. O Expires é obrigatório e uma data fixa apodrecia,
@@ -234,7 +251,10 @@ async function sendHtml(req, res, file, headers = {}) {
   html = seoHead(html, req, lang)
     .replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`)
     .replace(LANG_MARK, `window.__LANG__=${JSON.stringify(lang)}`);
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...NO_STORE, ...NOSNIFF, ...PAGE_SECURITY, vary: 'Accept-Language', ...headers });
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8', ...NO_STORE, ...NOSNIFF, ...PAGE_SECURITY,
+    'content-security-policy': csp(inlineScriptHashes(html)), vary: 'Accept-Language', ...headers,
+  });
   res.end(html);
 }
 

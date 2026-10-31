@@ -338,6 +338,14 @@ Cloudflare acrescenta o HSTS (`Strict-Transport-Security`) às respostas. Os
 outros cabeçalhos de segurança das páginas (CSP e companhia) põe-nos o
 servidor (`PAGE_SECURITY` em `backend/src/http/pages.js`).
 
+O CSP só deixa correr scripts do próprio domínio e os inline cujo hash vai no
+cabeçalho. O que a Cloudflare faz hoje às páginas passa: a *Email Address
+Obfuscation* injecta um script de `/cdn-cgi/` (do próprio domínio) e não
+mexe nos scripts inline, e o link do *AI Labyrinth* é só um link. Uma
+funcionalidade que injecte scripts inline ou de outro domínio (Rocket Loader,
+Zaraz, Web Analytics automático, as *JS detections* do Bot Fight Mode) fica
+bloqueada pelo CSP: se ligares alguma, acrescenta-a lá primeiro.
+
 ### O IP da origem
 
 **O IP da origem está só na Cloudflare e na consola do Zerops, nunca no
