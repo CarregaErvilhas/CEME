@@ -138,4 +138,18 @@ describe('smoke do assistente', () => {
     assert.ok(!/prot[óo]tipo/i.test(HTML), 'o HTML ainda fala em protótipo');
     assert.ok(!/prot[óo]tipo/i.test(JS), 'o JS ainda fala em protótipo');
   });
+
+  it('cota os indexados ao OMIE do quarto de hora da carga (useSpot)', async () => {
+    // Sem useSpot, um indexado é cotado às médias do último dia completo: de
+    // manhã, com o OMIE a ~0, o indexado mais barato nem aparecia.
+    let body = null;
+    const orig = ctx.fetch;
+    ctx.fetch = async (url, opts) => {
+      if (String(url).includes('/v1/simulate')) body = JSON.parse(opts.body);
+      return orig(url, opts);
+    };
+    try { await vm.runInContext('load()', ctx); } finally { ctx.fetch = orig; }
+    assert.ok(body, 'load() não chamou /v1/simulate');
+    assert.equal(body.useSpot, true);
+  });
 });
