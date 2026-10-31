@@ -55,6 +55,8 @@ ctx.__LANG__ = 'pt';
 
 vm.runInContext(STRINGS, ctx, { filename: 'strings.js' });
 vm.runInContext(readFileSync(new URL('../../frontend/tz.js', import.meta.url), 'utf8'), ctx, { filename: 'tz.js' });
+// O cliente da API (sessão + pedidos) também é partilhado: /api.js.
+vm.runInContext(readFileSync(new URL('../../frontend/api.js', import.meta.url), 'utf8'), ctx, { filename: 'api.js' });
 vm.runInContext(JS, ctx, { filename: 'assistente.js' });
 
 // Formato do `POST /v1/simulate` (o que a página usa: totalEur, ceme, name…).

@@ -95,6 +95,7 @@
   <footer id="foot"></footer>
   <script>window.__LANG__=null;</script>
   <script src="/strings.js"></script>
+  <script src="/api.js"></script>
   <script src="/pwa.js"></script>
   <script>
     'use strict';
@@ -196,23 +197,7 @@
     }
 
     /* --- dados ------------------------------------------------------------ */
-    const API = location.origin;
-    let token = null;
-    async function sess() {
-      if (token) return token;
-      const r = await fetch(API + '/v1/session', { method: 'POST' });
-      if (!r.ok) throw new Error('sessão ' + r.status);
-      token = (await r.json()).token;
-      return token;
-    }
-    async function api(path) {
-      const tk = await sess();
-      let r = await fetch(API + path, { headers: { Authorization: 'Bearer ' + tk } });
-      if (r.status === 401) { token = null; const tk2 = await sess(); r = await fetch(API + path, { headers: { Authorization: 'Bearer ' + tk2 } }); }
-      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j?.error?.message || ('erro ' + r.status)); }
-      return r.json();
-    }
-
+    // api() vem de /api.js (sessão web, token partilhado entre páginas).
     (async function () {
       const status = document.getElementById('status');
       try {

@@ -297,6 +297,7 @@
 <script>window.__LANG__=null;</script>
 <script src="/strings.js"></script>
 <script src="/tz.js"></script>
+<script src="/api.js"></script>
 <script src="/pwa.js"></script>
 <script>
 /* O simulador completo. Tudo vive neste ficheiro: CSS em cima, HTML mínimo
@@ -305,7 +306,8 @@
  * Como está organizado:
  *   i18n     textos PT/EN (vêm de strings.js) e tradução dos nomes;
  *   estado   `S`, as escolhas do utilizador, guardadas em localStorage;
- *   api()    fala com o backend (/v1/*), com o token de sessão;
+ *   api()    fala com o backend (/v1/*): vem de /api.js, partilhado com as
+ *            outras páginas;
  *   SIMULAR  o ranking: cartões, detalhe da conta, aviso de âmbito, favoritos;
  *   COMPARAR o comparador indexado vs fixo (#/comparar);
  *   boot     route() decide o que desenhar a partir do hash do URL (#/…),
@@ -452,8 +454,6 @@ function applyChrome() {
 }
 
 /* ================= estado ================= */
-const API = location.origin;
-let token = sessionStorage.getItem('ceme:jwt');
 let LAST = [], AVG = null, AT = null, OMIE = 0.20;
 const favs = () => {
   // localStorage pode ter lixo (dados antigos, edição à mão): se não ler,
@@ -503,37 +503,11 @@ const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: t
   energyMode: 'kwh', batCap: 60, batMin: 20, batMax: 80,
   chargeAt: null, forceServerTime: false, serverNow: null };
 
-async function sess() {
-  if (token) return token;
-  const r = await fetch(API + '/v1/session', { method: 'POST' });
-  if (!r.ok) throw new Error('sessão indisponível (erro ' + r.status + ')');
-  const tk = (await r.json()).token;
-  if (!tk) throw new Error('sessão sem token');
-  token = tk;
-  try { sessionStorage.setItem('ceme:jwt', token); } catch (e) {} // modo privado pode recusar
-  return token;
-}
 // O fuso do browser: a hora de relógio que se mostra ao utilizador é a
 // dele. O backend guarda tudo em UTC e só converte aqui, na apresentação.
 const BROWSER_TZ = (() => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
 })();
-async function api(path, opts = {}) {
-  let tk = await sess();
-  let r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
-  // O token expira ao fim de 24 h. Num 401, pede um token novo e repete o
-  // pedido uma vez.
-  if (r.status === 401) {
-    token = null;
-    try { sessionStorage.removeItem('ceme:jwt'); } catch (e) {}
-    tk = await sess();
-    r = await fetch(API + path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + tk } });
-  }
-  // Qualquer outro erro HTTP vira uma excepção com a mensagem do servidor,
-  // para não ser confundido com uma lista vazia.
-  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j?.error?.message || ('erro ' + r.status)); }
-  return r.json();
-}
 // Escapa texto antes de o meter no HTML (evita que alguém injecte HTML ou
 // scripts, o chamado XSS). Usa-o sempre que mostrares texto vindo do
 // utilizador ou da API.

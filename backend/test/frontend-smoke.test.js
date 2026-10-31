@@ -56,6 +56,8 @@ ctx.setInterval = noop; ctx.clearInterval = noop; ctx.__LANG__ = 'pt';
 // Corta o `init()` (faz fetch), mantendo o resto.
 vm.runInContext(STRINGS, ctx, { filename: 'strings.js' });
 vm.runInContext(readFileSync(new URL('../../frontend/tz.js', import.meta.url), 'utf8'), ctx, { filename: 'tz.js' });
+// O cliente da API (sessão + pedidos) também é partilhado: /api.js.
+vm.runInContext(readFileSync(new URL('../../frontend/api.js', import.meta.url), 'utf8'), ctx, { filename: 'api.js' });
 vm.runInContext(JS.replace(/^init\(\);?$/m, '/* init() removido no teste */'), ctx, { filename: 'frontend.js' });
 
 // Um tarifário de cada tipo, com o formato que `POST /v1/simulate` devolve.

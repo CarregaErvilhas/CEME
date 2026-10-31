@@ -1,8 +1,8 @@
 /* Service worker do CEME: permite instalação como app (PWA) e um arranque
  * offline mínimo.
  *
- * REDE PRIMEIRO para tudo o que muda com um deploy (strings.js, tz.js, theme.js,
- * pages.css, manifest, as páginas): o servidor serve-os com `no-store` de
+ * REDE PRIMEIRO para tudo o que muda com um deploy (strings.js, tz.js, api.js,
+ * theme.js, pages.css, manifest, as páginas): o servidor serve-os com `no-store` de
  * propósito, e um cache-first aqui desfazia isso — a app instalada ficava com
  * o dicionário velho até o próprio sw.js mudar. A cópia em cache só serve
  * quando não há rede.
@@ -12,8 +12,8 @@
  *
  * Mudar a estratégia ou a lista? Subir o CACHE: o `activate` apaga as caches
  * com outro nome. */
-const CACHE = 'ceme-v4';
-const OFFLINE = ['/strings.js', '/tz.js', '/theme.js', '/pages.css', '/manifest.webmanifest'];
+const CACHE = 'ceme-v5';
+const OFFLINE = ['/strings.js', '/tz.js', '/api.js', '/theme.js', '/pages.css', '/manifest.webmanifest'];
 const IMMUTABLE = ['/icon-180.png', '/icon-192.png', '/icon-512.png', '/icon-32.png', '/icon-maskable-512.png'];
 
 self.addEventListener('install', (event) => {

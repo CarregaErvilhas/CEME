@@ -6,7 +6,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir, networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -224,6 +224,65 @@ describe('servidor: hardening HTTP', () => {
 
 it('HTML também leva nosniff', async () => {
     assert.equal((await fetch(`${BASE}/`)).headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  // Os cabeçalhos de segurança das páginas (PAGE_SECURITY em http/pages.js).
+  const PAGINAS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie', '/tabela'];
+  it('HTML: CSP, anti-iframe, referrer e permissions-policy em todas as páginas', async () => {
+    for (const caminho of PAGINAS) {
+      const r = await fetch(`${BASE}${caminho}`);
+      assert.equal(r.status, 200, caminho);
+      const csp = r.headers.get('content-security-policy') || '';
+      for (const d of ["default-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'self'"]) assert.ok(csp.includes(d), `${caminho}: falta ${d}`);
+      assert.equal(r.headers.get('x-frame-options'), 'SAMEORIGIN', caminho);
+      assert.equal(r.headers.get('referrer-policy'), 'strict-origin-when-cross-origin', caminho);
+      assert.match(r.headers.get('permissions-policy') || '', /geolocation=\(\)/, caminho);
+      assert.equal(r.headers.get('cross-origin-opener-policy'), 'same-origin', caminho);
+    }
+  });
+
+  // O CSP só deixa carregar scripts e CSS do próprio site: uma página que
+  // passe a usar um CDN parte em produção sem nenhum erro nos testes. Este
+  // apanha-a antes.
+  it('HTML: scripts e folhas de estilo vêm todos do próprio site (o CSP não deixa outros)', async () => {
+    for (const caminho of PAGINAS) {
+      const html = await (await fetch(`${BASE}${caminho}`)).text();
+      const externos = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"|<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"/g)]
+        .map(m => m[1] || m[2]).filter(u => !u.startsWith('/') || u.startsWith('//'));
+      assert.deepEqual(externos, [], `${caminho} carrega de fora: ${externos.join(', ')}`);
+    }
+  });
+
+  it('/.well-known/security.txt: RFC 9116, sem auth, com o contacto da página de contactos', async () => {
+    const r = await fetch(`${BASE}/.well-known/security.txt`);
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-type'), /^text\/plain; charset=utf-8/);
+    const txt = await r.text();
+    const email = txt.match(/^Contact: mailto:(\S+)$/m)[1];
+    assert.ok(readFileSync(new URL('../../frontend/strings.js', import.meta.url), 'utf8').includes(`mailto:${email}`), 'o contacto é o que as páginas mostram');
+    const dias = (Date.parse(txt.match(/^Expires: (\S+)$/m)[1]) - Date.now()) / 86_400_000;
+    assert.ok(dias > 179 && dias <= 180, `Expires a ${dias} dias`);
+    assert.match(txt, /^Canonical: https:\/\/ceme\.ocarroeletrico\.com\/\.well-known\/security\.txt$/m);
+    // Pelo domínio da página OMIE, o canónico é o dele; um Host inventado não
+    // entra no ficheiro. (O fetch não manda o cabeçalho Host: vai pelo
+    // node:http, como os testes do domínio OMIE mais abaixo.)
+    const comHost = host => new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port: PORT, path: '/.well-known/security.txt', headers: { host } }, res => {
+        let body = '';
+        res.on('data', c => { body += c; });
+        res.on('end', () => resolve(body));
+      }).on('error', reject);
+    });
+    assert.match(await comHost('omie.cocofree.dev'), /^Canonical: https:\/\/omie\.cocofree\.dev\//m);
+    assert.doesNotMatch(await comHost('evil.example'), /evil/);
+  });
+
+  it('/favicon.ico responde com o ícone, sem cair na API (401)', async () => {
+    const r = await fetch(`${BASE}/favicon.ico`);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('content-type'), 'image/png');
+    const png = Buffer.from(await r.arrayBuffer());
+    assert.equal(png.subarray(1, 4).toString('latin1'), 'PNG');
   });
 
   // Rotas do Zerops: sem auth (o balancer tem de as alcançar de dentro do

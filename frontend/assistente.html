@@ -235,6 +235,7 @@ h1 { font-size: 24px; line-height: 1.25; font-weight: 500; letter-spacing: -.01e
 <script>window.__LANG__=null;</script>
 <script src="/strings.js"></script>
 <script src="/tz.js"></script>
+<script src="/api.js"></script>
 <script src="/pwa.js"></script>
 <script>
 'use strict';
@@ -272,20 +273,7 @@ const saveP = () => { try { sessionStorage.setItem('ceme:wizard', JSON.stringify
 const kwh = () => Math.round(P.cap * (P.to - P.from) / 10) / 10;
 
 /* ---------- API ---------- */
-let TK = null;
-async function session() {
-  const r = await fetch('/v1/session', { method: 'POST' });
-  if (!r.ok) throw new Error('session ' + r.status);
-  TK = (await r.json()).token;
-}
-async function api(path, opts = {}) {
-  if (!TK) await session();
-  const go = () => fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + TK } });
-  let r = await go();
-  if (r.status === 401) { await session(); r = await go(); }
-  if (!r.ok) throw new Error(path + ' ' + r.status);
-  return r.json();
-}
+// api() vem de /api.js (sessão web, token partilhado entre páginas).
 // OMIE de referência = último dia real, como no simulador. Arranca logo na
 // landing para estar pronto quando se chega aos resultados.
 const OMIE = (async () => {
