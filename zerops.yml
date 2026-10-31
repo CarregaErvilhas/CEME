@@ -38,8 +38,9 @@ zerops:
         httpGet:
           port: 3001
           path: /readyz
-        # A app faz schema + seed no arranque: pode levar uns segundos.
-        # 120 s dá folga sem passar o limite de 5 min da plataforma.
+        # O arranque verifica o schema e corre o seed (o DDL já correu nos
+        # initCommands): pode levar uns segundos. 120 s dá folga sem passar o
+        # limite de 5 min da plataforma.
         failureTimeout: "120s"
         retryPeriod: "10s"
     run:

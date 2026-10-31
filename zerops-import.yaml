@@ -4,8 +4,10 @@
 #
 # Cria os serviços que o zerops.yml pressupõe: `db` (PostgreSQL) e `api`
 # (o runtime). Os hostnames não são decorativos: o zerops.yml puxa
-# `DATABASE_URL: ${db_connectionString}` do serviço `db`, e o webhook de deploy
-# (e um `zcli push api` à mão) endereça o runtime por hostname.
+# `DATABASE_MIGRATE_URL: ${db_connectionString}` do serviço `db`, e o webhook
+# de deploy (e um `zcli push api` à mão) endereça o runtime por hostname.
+# Depois do import falta a role da API (`DATABASE_APP_URL`): infra.md,
+# «Criar a role ceme_app».
 #yamlPreprocessor=on
 services:
   # --- Gestão de dados, por ordem de prioridade -------------------------
