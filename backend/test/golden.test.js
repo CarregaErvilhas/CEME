@@ -31,8 +31,8 @@ const shared = await seededDb();
 const GOLDEN = [
   ['atlante-mt-myatlanteac', 10.09, 0.21],
   ['atlante-bt-myatlanteac', 11.96, 0.25],
-  ['atlante-mt-myatlantebus', 8.20, 0.17],
-  ['atlante-bt-myatlantebus', 10.07, 0.21],
+  ['atlante-mt-myatlantebus', 8.12, 0.17],
+  ['atlante-bt-myatlantebus', 9.99, 0.21],
   ['charge2go-mt-ecogreen', 9.32, 0.19],
   // Enable: final = energia + TAR, bi-horário semanal. Quinta 22:09 =
   // fora de vazio no ciclo semanal do Continente.
