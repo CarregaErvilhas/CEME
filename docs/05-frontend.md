@@ -135,7 +135,10 @@ o que se mostra. A regra, em `route()`:
 - **Ramal (BT/MT):** a tensão escolhida no cartão de energia.
   `dedupByRamal()` deixa uma entrada por `ceme|nome`, na variante dessa
   tensão. É a mesma função no ranking, no modal de favoritos e no
-  comparador.
+  comparador. Cada cartão mostra um selo `TAR BT` ou `TAR MT` (a TAR com
+  que o tarifário foi cotado, com a explicação no tooltip), e a conta linha
+  a linha repete-o nas linhas da TAR. O assistente cota sempre a variante
+  BT e diz isso por baixo do mais barato.
 - **A conta linha a linha:** o detalhe de cada tarifário mostra o `parts`
   do motor: energia + TAR (separadas quando se sabe), IEC, activação, total
   sem IVA, IVA e total ([02](02-motor-calculo.md)). O período usado na conta

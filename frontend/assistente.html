@@ -484,7 +484,8 @@ function vResults() {
       ${AVG > best.totalEur ? `<div class="save num">${t('below', { v: eur(AVG - best.totalEur) })}</div>` : ''}
       <div>${tags(best)}</div>
     </article>
-    <p class="scope">${t('scope')} <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">${t('scopeLink')}</a></p>` : '';
+    <p class="scope">${t('scope')} <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">${t('scopeLink')}</a></p>
+    <p class="scope">${t('tarBT')}</p>` : '';
   return `<section class="screen">${summary}
     ${bestHtml}
     <div class="list-head"><h2>${t('others')}</h2></div>

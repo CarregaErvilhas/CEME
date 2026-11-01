@@ -246,6 +246,9 @@ IVA), que soma o `totalEur` ao cêntimo ([02](02-motor-calculo.md)).
 
 Notas:
 
+- `voltage` (`BT` ou `MT`) é a TAR com que esse tarifário foi cotado. Cada
+  tarifário vem nas duas variantes (ids diferentes, `-bt-`/`-mt-`); quem
+  mostra o preço escolhe a do nível de tensão do posto e diz qual é.
 - `activation` é a taxa de activação **que o CEME publica**. Vai
   acompanhada de `egme_legal` (o valor legal em vigor) e
   `activation_stale` (`true` quando o CEME ainda publica o valor legal do
