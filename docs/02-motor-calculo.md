@@ -145,6 +145,33 @@ duas mudanças da hora, o sábado semanal antes e depois da mudança, as
 ilhas, a meia-noite com TAR nova) estão em `test/profile.test.js`. A API
 recebe as fatias no `profile` do `/v1/simulate` ([04](04-api-auth.md)).
 
+### Quem cobra pela média do OMIE da sessão (`engine/session.js`)
+
+Cobrar cada kWh ao OMIE do quarto em que entrou (a **curva de carga**) é a
+conta mais justa, mas não é a de todos os CEMEs. A LUZiGÁS factura assim: pega
+no preço OMIE de **cada hora em que o carro esteve ligado**, do início ao fim
+da sessão, faz a média simples dessas horas (todas pesam igual, carregue o
+carro muito ou nada nelas) e aplica esse OMIE, com um só valor de perdas, a
+todos os kWh:
+
+```
+energia = (OMIE_médio + K + CGS) × (1 + perdas_médias) × kWh_total
+TAR     = Σ kWh de cada período × TAR desse período   (à parte, como sempre)
+```
+
+O preço de uma hora é a média dos seus quatro quartos. Repara no efeito: se
+carregas ao meio-dia com o OMIE a zero e deixas o carro ligado até de manhã,
+pagas a média da noite toda. As horas paradas também contam.
+
+Que tarifários cobram assim diz o seed (`billing: 'MEDIA_SESSAO'` em
+`VERSIONS`). Com um `profile` e `useSpot`, a API calcula o OMIE médio das
+horas tocadas (`sessionOmie`) e as perdas médias dos mesmos quartos
+(`sessionLoss`, do perfil da E-REDES). O `quoteOne` desses tarifários dá
+então o total pela média, e a conta pela curva vai ao lado, em `curve`, para
+comparar. Se faltar o OMIE de algum quarto dessas horas, fica a curva. Sem
+profile, o simulador cota um quarto só e mostra um aviso. A sessão da
+facturação que serviu para confirmar a conta está em `test/session.test.js`.
+
 ### O preço final e a separação energia + TAR
 
 O que o CEME publica é, quase sempre, o preço **final** (com a TAR

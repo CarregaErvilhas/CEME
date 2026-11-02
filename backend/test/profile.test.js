@@ -104,6 +104,15 @@ describe('quoteSlices', () => {
     assert.ok(mad.vat < 1.23 && azo.vat < mad.vat, 'IVA da região, uma vez no fim');
   });
 
+  it('uma fatia de 0 kWh (carro parado, ligado) não conta para kwhByPeriod', () => {
+    const q = quoteSlices({ ...BI, cycle: 'DIARIO', slices: [
+      { at: new Date('2026-11-10T21:45:00Z'), kwh: 10, price: { VAZIO: 0.1, FORA_VAZIO: 0.2 } },
+      { at: new Date('2026-11-10T22:00:00Z'), kwh: 0, price: { VAZIO: 0.1, FORA_VAZIO: 0.2 } },
+    ] });
+    assert.deepEqual(q.kwhByPeriod, { FORA_VAZIO: 10 });
+    assert.equal(q.parts.energyTar, 2);
+  });
+
   it('um tarifário SIMPLES não liga a períodos', () => {
     const q = quoteSlices({ schedule: 'SIMPLES', cycle: null, slices: [
       { at: new Date('2026-11-10T21:45:00Z'), kwh: 10, price: { UNICO: 0.2 } },

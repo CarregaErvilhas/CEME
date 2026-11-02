@@ -482,7 +482,7 @@ function vResults() {
   if (LOADING || !LAST && !FAILED) return `<section class="screen">${summary}<div class="loading"><div><div class="bar"><i></i></div>${t('calc')}</div></div>${foot}</section>`;
   if (FAILED) return `<section class="screen">${summary}<p class="empty">${t('err')}</p><button class="btn wide" data-act="retry">${t('retry')}</button>${foot}</section>`;
   const items = LAST.filter(r => (!P.nobundle || !r.bundle) && (!P.green || r.green) && (!P.popular || r.popular));
-  const tags = r => `${r.popular ? `<span class="tag">${t('tagPopular')}</span>` : ''}${r.bundle ? `<span class="tag">${t('tagBundle')}</span>` : ''}${r.green ? `<span class="tag">${t('tagGreen')}</span>` : ''}`;
+  const tags = r => `${r.popular ? `<span class="tag">${t('tagPopular')}</span>` : ''}${r.bundle ? `<span class="tag">${t('tagBundle')}</span>` : ''}${r.green ? `<span class="tag">${t('tagGreen')}</span>` : ''}${r.billing === 'MEDIA_SESSAO' ? `<span class="tag" title="${t('sessionTip')}">${t('tagSession')}</span>` : ''}`;
   const price = r => `${r.estimated ? '~' : ''}${eur(r.totalEur)}`;
   const brand = r => (/^#[0-9a-f]{6}$/i.test(r.brand || '') ? `<i class="brand" style="background:${r.brand}" aria-hidden="true"></i>` : '');
   const best = items[0], rest = items.slice(1), shown = P.all ? rest : rest.slice(0, 8);
@@ -495,6 +495,9 @@ function vResults() {
       <div>${tags(best)}</div>
     </article>
     <p class="scope">${t('scope')} <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">${t('scopeLink')}</a></p>` : '';
+  // O aviso dos indexados facturados pela média da sessão, uma vez, se algum
+  // aparece na lista (a etiqueta de cada um leva o mesmo texto no title).
+  const sessionNote = [best, ...shown].some(r => r?.billing === 'MEDIA_SESSAO') ? `<p class="scope">${t('sessionTip')}</p>` : '';
   return `<section class="screen">${summary}
     ${bestHtml}
     <div class="list-head"><h2>${t('others')}</h2></div>
@@ -507,6 +510,7 @@ function vResults() {
         <div class="p num">${price(r)}<small>${eur(r.totalEur / kwh())}/kWh</small></div></li>`).join('')}</ul>
       ${!P.all && rest.length > shown.length ? `<button class="btn wide more" data-act="all">${t('showAll', { n: items.length })}</button>` : ''}`
       : `<p class="empty">${t('none')}</p>`}
+    ${sessionNote}
     <a class="go-full" href="${esc(fullHref())}"><div><b>${t('fullH')}</b><span>${t('fullP')}</span></div><span class="go-arr" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     <p class="full"><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a></p>
     ${foot}

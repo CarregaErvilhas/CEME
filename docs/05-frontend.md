@@ -233,6 +233,17 @@ Hoje só os tarifários `myAtlante (AC)` da Atlante têm nota: o preço é o dos
 postos AC (corrente alternada); nos postos DC o CEME tem um preço com a
 tarifa do posto incluída, que o simulador não calcula.
 
+### A etiqueta "média OMIE da sessão" (`billing`)
+
+Alguns indexados são facturados pela média do OMIE de todas as horas em que
+o carro esteve ligado, e não pelo quarto de hora de cada kWh (vê
+[02](02-motor-calculo.md)). O servidor marca-os com `billing:
+'MEDIA_SESSAO'`. O simulador e o assistente cotam um quarto de hora só, por
+isso esses tarifários levam a etiqueta `tagSession` com o aviso
+`sessionTip` no title (texto em `common`, em `strings.js`). O aviso aparece
+também numa linha do detalhe da conta, no simulador, e uma vez por baixo da
+lista, no assistente.
+
 ### A etiqueta "com condições" (`bundle`)
 
 `tariff.bundle` é um booleano: o preço só vale se tiveres outra relação com
