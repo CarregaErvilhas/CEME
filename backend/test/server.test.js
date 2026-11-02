@@ -122,6 +122,13 @@ describe('servidor: hardening HTTP', () => {
     assert.deepEqual(dia.kwhByPeriod, { FORA_VAZIO: 20, VAZIO: 20 });
     assert.deepEqual(dia.slices.map(x => x.period), ['FORA_VAZIO', 'FORA_VAZIO', 'VAZIO', 'VAZIO']);
     assert.deepEqual(dia.slices.map(x => x.omie), [0.10, 0.10, 0.05, 0.05], 'OMIE médio do período de cada fatia');
+    // A LUZiGÁS cobra pela média do OMIE da sessão; sem useSpot não há
+    // OMIE das horas, por isso fica pela curva e não há `curve` à parte.
+    const lz = r.data.find(q => q.id === 'luzigas-casa-bt');
+    assert.equal(lz.billing, 'MEDIA_SESSAO');
+    assert.equal(lz.curve, undefined);
+    assert.equal(dia.billing, undefined);
+    assert.equal(r.sessionOmie, undefined);
     // Um tarifário que fica num período só dá o mesmo que sem profile.
     const plain = await sim({ kwh: 40, at: ats[0], omieCycles });
     for (const q of r.data.filter(q => q.kwhByPeriod && Object.keys(q.kwhByPeriod).length === 1)) {

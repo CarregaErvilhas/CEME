@@ -286,15 +286,21 @@ export const PRICES_VERIFIED_ON = '2026-10-15';
 //   cgs:     custos de gestão do sistema, €/kWh
 //   loss:    perdas fixas a usar só se não houver perfil por quarto de hora
 //   formula: 'ynerluz' para a fórmula alternativa; sem isto, 'standard'.
+//   billing: como o CEME junta o OMIE de um carregamento que dura várias
+//            horas. Sem isto, cada kWh paga o OMIE do quarto de hora em que
+//            entrou na bateria (a curva de carga). 'MEDIA_SESSAO': o OMIE é a
+//            média simples do preço de cada hora em que o carro esteve ligado,
+//            do início ao fim da sessão, para todos os kWh (vê
+//            engine/session.js). A TAR continua a ser a do período de cada kWh.
 export const VERSIONS = {
   "ynerluz-bt": { k: 0.02, cgs: 0.025, loss: 0.1531275537, formula: "ynerluz" },
   "ynerluz-mt": { k: 0.02, cgs: 0.025, loss: 0.07127022935, formula: "ynerluz" },
-  "luzigas-ceme-bt": { k: 0.05, cgs: 0.0183 },
-  "luzigas-ceme-mt": { k: 0.05, cgs: 0.0183 },
-  "luzigas-casa-bt": { k: 0.005, cgs: 0.0183 },
-  "luzigas-casa-mt": { k: 0.005, cgs: 0.0183 },
-  "luzigas-k0010-bt": { k: 0.01, cgs: 0.0183 },
-  "luzigas-k0010-mt": { k: 0.01, cgs: 0.0183 },
+  "luzigas-ceme-bt": { k: 0.05, cgs: 0.0183, billing: 'MEDIA_SESSAO' },
+  "luzigas-ceme-mt": { k: 0.05, cgs: 0.0183, billing: 'MEDIA_SESSAO' },
+  "luzigas-casa-bt": { k: 0.005, cgs: 0.0183, billing: 'MEDIA_SESSAO' },
+  "luzigas-casa-mt": { k: 0.005, cgs: 0.0183, billing: 'MEDIA_SESSAO' },
+  "luzigas-k0010-bt": { k: 0.01, cgs: 0.0183, billing: 'MEDIA_SESSAO' },
+  "luzigas-k0010-mt": { k: 0.01, cgs: 0.0183, billing: 'MEDIA_SESSAO' },
   "meo-dinamica-bt": { k: 0.065, cgs: 0.0 },
   "meo-dinamica-mt": { k: 0.065, cgs: 0.0 },
 };

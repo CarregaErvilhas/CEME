@@ -32,6 +32,10 @@
       fPopular: '★ populares', tagPopular: 'popular',
       fGreen: '⚡ verde', tagGreen: 'verde',
       fNoBundle: 'sem condições', tagBundle: 'com condições',
+      // indexados que o CEME factura pela média do OMIE da sessão
+      // (`billing: 'MEDIA_SESSAO'` no /v1/simulate)
+      tagSession: 'média OMIE da sessão',
+      sessionTip: 'Este CEME cobra o OMIE pela média simples do preço de cada hora em que o carro esteve ligado, do início ao fim da sessão — contam também as horas parado depois de carregar —, e não pelo quarto de hora em que cada kWh entrou. Este simulador cota só um quarto de hora (o do início), por isso o valor facturado pode ser bem diferente.',
       retry: 'Tentar outra vez', now: 'Agora', kwhIn: 'Energia a carregar',
       // chrome partilhado por todas as páginas
       logoA: 'Comparador CEME', logoB: '@ O Carro Elétrico',
@@ -53,6 +57,8 @@
       fPopular: '★ popular', tagPopular: 'popular',
       fGreen: '⚡ green', tagGreen: 'green',
       fNoBundle: 'no conditions', tagBundle: 'conditional',
+      tagSession: 'session-average OMIE',
+      sessionTip: 'This CEME bills OMIE as the plain average of the price of every hour the car stayed plugged in, from start to end of the session (idle hours after charging count too), not the quarter-hour each kWh went in. This simulator prices a single quarter-hour (the starting one), so the bill can be quite different.',
       retry: 'Try again', now: 'Now', kwhIn: 'Energy to charge',
       // chrome partilhado por todas as páginas
       logoA: 'EV Tariff Comparison', logoB: '@ O Carro Elétrico',

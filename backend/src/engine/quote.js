@@ -62,7 +62,9 @@ export function quoteSlices({ schedule, cycle, slices, activation = 0, support =
     if (final == null) throw new Error(`sem preço final para ${period}`);
     kwh += sl.kwh;
     raw += sl.kwh * final;
-    kwhByPeriod[period] = (kwhByPeriod[period] || 0) + sl.kwh;
+    // Uma fatia de 0 kWh (o carro ligado, parado) não põe o carregamento
+    // nesse período.
+    if (sl.kwh > 0) kwhByPeriod[period] = (kwhByPeriod[period] || 0) + sl.kwh;
     const s = sl.split && sl.split[period];
     if (s && Number.isFinite(s.tar)) rawTar += sl.kwh * s.tar;
     else knownTar = false;
