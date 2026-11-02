@@ -138,7 +138,7 @@
     <th>${t('thOp')}</th><th>${t('thCycle')}</th>
     <th class="num">${t('thCheias')}</th><th class="num">${t('thVazio')}</th>
     <th class="num">${t('thAct')}</th>
-    <th>${t('thPop')}</th><th>${t('thBundle')}</th><th>${t('thValid')}</th>
+    <th>${t('thPop')}</th><th>${t('thBundle')}</th><th title="${t('thAccessTip')}">${t('thAccess')}</th><th>${t('thValid')}</th>
   </tr></thead>`;
     }
 
@@ -185,6 +185,8 @@
         else cells.push(`<td class="num">${fmt('FORA_VAZIO')}</td><td class="num">${fmt('VAZIO')}</td>`);
         cells.push(`<td class="num">${r.activation ? nf(r.activation) : '—'}</td>`);
         cells.push(`<td>${r.popular ? t('yes') : t('no')}</td><td>${r.bundle ? t('yes') : t('no')}</td>`);
+        // Cartão, app ou os dois (`access` no seed): num posto privado só o cartão serve.
+        cells.push(`<td>${({ CARTAO: t('accCARTAO'), APP: t('accAPP'), AMBOS: t('accAMBOS') })[r.access] ?? '—'}</td>`);
         cells.push(`<td>${validity(r)}</td>`);
         const cls = [region && 'ilha', r.upcoming && 'futuro'].filter(Boolean).join(' ');
         return `<tr${cls ? ` class="${cls}"` : ''}>${cells.join('')}</tr>`;

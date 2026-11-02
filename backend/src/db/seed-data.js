@@ -113,7 +113,11 @@ export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1
 //   voltage   BT (baixa tensão) ou MT (média tensão)
 //   schedule  SIMPLES (um preço) ou BI_HORARIA (vazio / fora de vazio)
 //   cycle     DIARIO, SEMANAL ou SIMPLES (vê engine/regions.js)
-//   access    como se paga: CARTAO (só cartão) ou AMBOS (cartão e app)
+//   access    como se inicia o carregamento: CARTAO (só cartão RFID), APP
+//             (só a app) ou AMBOS. Conta para quem carrega num posto privado
+//             (DPC: garagem, condomínio, empresa): não está na lista pública
+//             da MOBI.E, por isso a app não o encontra e só o cartão serve.
+//             Confirma no site do CEME: o que lá diz é o que vale.
 //   green     true se a energia é 100 % renovável
 //   popular   true se é um dos mais usados (filtro "populares")
 //   bundle    true se o preço exige outra relação com o CEME (ser cliente
@@ -152,10 +156,11 @@ export const TARIFFS = [
   { id: 'charge2go-bt-ecogreen-2', ceme: 'charge2go', name: 'Eco Green', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'CARTAO', prices: { VAZIO: 0.1963, FORA_VAZIO: 0.2889 }, act: 0.1088 },
   { id: 'charge2go-mt-ecogreen', ceme: 'charge2go', name: 'Eco Green', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'CARTAO', prices: { VAZIO: 0.1854, FORA_VAZIO: 0.2509 }, act: 0.1088 },
   { id: 'charge2go-mt-ecogreen-2', ceme: 'charge2go', name: 'Eco Green', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'CARTAO', prices: { VAZIO: 0.1854, FORA_VAZIO: 0.2509 }, act: 0.1088 },
-  { id: 'viaverde-bt-viaverdeelec', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', popular: true, prices: { VAZIO: 0.1746, FORA_VAZIO: 0.2672 }, act: 0.1572 },
-  { id: 'viaverde-bt-viaverdeelec-2', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', popular: true, prices: { VAZIO: 0.1746, FORA_VAZIO: 0.2672 }, act: 0.1572 },
-  { id: 'viaverde-mt-viaverdeelec', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', popular: true, prices: { VAZIO: 0.1637, FORA_VAZIO: 0.2292 }, act: 0.1572 },
-  { id: 'viaverde-mt-viaverdeelec-2', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', popular: true, prices: { VAZIO: 0.1637, FORA_VAZIO: 0.2292 }, act: 0.1572 },
+  // Via Verde Electric: só pela app ("sem necessitar de qualquer cartão", viaverde.pt).
+  { id: 'viaverde-bt-viaverdeelec', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'APP', popular: true, prices: { VAZIO: 0.1746, FORA_VAZIO: 0.2672 }, act: 0.1572 },
+  { id: 'viaverde-bt-viaverdeelec-2', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'APP', popular: true, prices: { VAZIO: 0.1746, FORA_VAZIO: 0.2672 }, act: 0.1572 },
+  { id: 'viaverde-mt-viaverdeelec', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'APP', popular: true, prices: { VAZIO: 0.1637, FORA_VAZIO: 0.2292 }, act: 0.1572 },
+  { id: 'viaverde-mt-viaverdeelec-2', ceme: 'viaverde', name: 'Via Verde Electric by ECOCHOICE', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'APP', popular: true, prices: { VAZIO: 0.1637, FORA_VAZIO: 0.2292 }, act: 0.1572 },
   { id: 'edp-bt-cartoedp', ceme: 'edp', name: 'Cartão EDP Charge (Simples)', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, popular: true, prices: { UNICO: 0.2678 }, act: 0.1088 },
   { id: 'edp-mt-cartoedp', ceme: 'edp', name: 'Cartão EDP Charge (Simples)', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, popular: true, prices: { UNICO: 0.2678 }, act: 0.1088 },
   { id: 'edp-bt-cartoedp-2', ceme: 'edp', name: 'Cartão EDP Charge (Simples) Associados UVE (10%)', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', green: true, popular: true, bundle: true, prices: { UNICO: 0.2411 }, act: 0.1088 },
@@ -228,18 +233,20 @@ export const TARIFFS = [
   { id: 'iberdrola-mt-clienteeletr', ceme: 'iberdrola', name: 'Cliente Eletricidade Iberdrola', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, prices: { UNICO: 0.1989 }, act: 0.1088 },
   { id: 'meo-bt-mobilidadeel-2', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Fixa Cliente MEO Energia e tem MEO M5e/M4e', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, prices: { UNICO: 0.225 }, act: 0.1088 },
   { id: 'meo-mt-mobilidadeel-2', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Fixa Cliente MEO Energia e tem MEO M5e/M4e', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, prices: { UNICO: 0.225 }, act: 0.1088 },
-  { id: 'miio-bt-miiobihor', ceme: 'miio', name: 'miio (Bi-Horário Semanal) sem subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', green: true, popular: true, prices: { VAZIO: 0.2666, FORA_VAZIO: 0.3592 }, act: 0.0 },
-  { id: 'miio-mt-miiobihor', ceme: 'miio', name: 'miio (Bi-Horário Semanal) sem subscrição', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', green: true, popular: true, prices: { VAZIO: 0.2557, FORA_VAZIO: 0.3212 }, act: 0.0 },
+  // miio sem subscrição: só a app; o cartão é do miio one (miio.com/pt/prices/charging).
+  { id: 'miio-bt-miiobihor', ceme: 'miio', name: 'miio (Bi-Horário Semanal) sem subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'APP', green: true, popular: true, prices: { VAZIO: 0.2666, FORA_VAZIO: 0.3592 }, act: 0.0 },
+  { id: 'miio-mt-miiobihor', ceme: 'miio', name: 'miio (Bi-Horário Semanal) sem subscrição', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'APP', green: true, popular: true, prices: { VAZIO: 0.2557, FORA_VAZIO: 0.3212 }, act: 0.0 },
   { id: 'miio-bt-miioonebi', ceme: 'miio', name: 'miio one (Bi-Horário Semanal) subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', green: true, bundle: true, prices: { VAZIO: 0.1966, FORA_VAZIO: 0.2892 }, act: 0.0 },
   { id: 'miio-mt-miioonebi', ceme: 'miio', name: 'miio one (Bi-Horário Semanal) subscrição', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', green: true, bundle: true, prices: { VAZIO: 0.1857, FORA_VAZIO: 0.2512 }, act: 0.0 },
-  { id: 'miio-bt-miiobihor-2', ceme: 'miio', name: 'miio (Bi-Horário Diário) sem subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, prices: { VAZIO: 0.2666, FORA_VAZIO: 0.3592 }, act: 0.0 },
-  { id: 'miio-mt-miiobihor-2', ceme: 'miio', name: 'miio (Bi-Horário Diário) sem subscrição', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, prices: { VAZIO: 0.2557, FORA_VAZIO: 0.3212 }, act: 0.0 },
+  { id: 'miio-bt-miiobihor-2', ceme: 'miio', name: 'miio (Bi-Horário Diário) sem subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'APP', green: true, prices: { VAZIO: 0.2666, FORA_VAZIO: 0.3592 }, act: 0.0 },
+  { id: 'miio-mt-miiobihor-2', ceme: 'miio', name: 'miio (Bi-Horário Diário) sem subscrição', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'APP', green: true, prices: { VAZIO: 0.2557, FORA_VAZIO: 0.3212 }, act: 0.0 },
   { id: 'miio-bt-miioonebi-2', ceme: 'miio', name: 'miio one (Bi-Horário Diário) subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, bundle: true, prices: { VAZIO: 0.1966, FORA_VAZIO: 0.2892 }, act: 0.0 },
   { id: 'miio-mt-miioonebi-2', ceme: 'miio', name: 'miio one (Bi-Horário Diário) subscrição', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, bundle: true, prices: { VAZIO: 0.1857, FORA_VAZIO: 0.2512 }, act: 0.0 },
   { id: 'prio-bt-prioelectric', ceme: 'prio', name: 'Prio Electric (EUR/kWh)', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, popular: true, prices: { VAZIO: 0.1765, FORA_VAZIO: 0.2591 }, act: 0.1088 },
   { id: 'prio-mt-prioelectric', ceme: 'prio', name: 'Prio Electric (EUR/kWh)', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, popular: true, prices: { VAZIO: 0.1656, FORA_VAZIO: 0.2211 }, act: 0.1088 },
-  { id: 'repsol-bt-pessoassingu', ceme: 'repsol', name: 'Pessoas Singulares', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', prices: { UNICO: 0.2868 }, act: 0.1088 },
-  { id: 'repsol-mt-pessoassingu', ceme: 'repsol', name: 'Pessoas Singulares', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', prices: { UNICO: 0.2868 }, act: 0.1088 },
+  // Repsol: o cartão físico já não funciona; só a app My Repsol (FAQ repsol.pt).
+  { id: 'repsol-bt-pessoassingu', ceme: 'repsol', name: 'Pessoas Singulares', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'APP', prices: { UNICO: 0.2868 }, act: 0.1088 },
+  { id: 'repsol-mt-pessoassingu', ceme: 'repsol', name: 'Pessoas Singulares', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'APP', prices: { UNICO: 0.2868 }, act: 0.1088 },
   { id: 'ynerluz-bt', ceme: 'ynerluz', name: 'Mobilidade Elétrica', kind: 'INDEXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, prices: null, act: 0.1572 },
   { id: 'ynerluz-mt', ceme: 'ynerluz', name: 'Mobilidade Elétrica', kind: 'INDEXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'AMBOS', green: true, prices: null, act: 0.1572 },
   { id: 'luzigas-ceme-bt', ceme: 'luzigas', name: 'Tarifário Indexado Cliente CEME', kind: 'INDEXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'CARTAO', popular: true, prices: null, act: 0.1088 },
