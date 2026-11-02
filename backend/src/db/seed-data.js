@@ -139,8 +139,10 @@ export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1
 //             (colaboradores da EDP)… O preço sai no /v1/simulate na mesma,
 //             com o `audience`, e quem o mostra decide (o ohmigo esconde-o
 //             a quem não disse que pertence a esse público)
-//   from, to  só nas campanhas com datas: o primeiro e o último dia em que
-//             o preço vale, inclusive. Fora delas o simulador não o mostra
+//   from, to  o primeiro e o último dia em que o preço vale, inclusive.
+//             Fora deles o simulador não o mostra. `to` só nas campanhas;
+//             `from` sozinho num tarifário lançado depois de
+//             PRICES_VERIFIED_ON, que vale desde esse dia e sem fim
 // Os campos true/false que faltam são false.
 // Os preços finais têm no máximo 4 casas decimais, arredondados para cima
 // quando a fonte tem mais (nunca subestimar o custo).
@@ -252,11 +254,12 @@ export const TARIFFS = [
   { id: 'luzigas-casa-mt', ceme: 'luzigas', name: 'Tarifário Indexado Cliente Casa e CEME', kind: 'INDEXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'CARTAO', popular: true, bundle: true, prices: null, act: 0.1088 },
   { id: 'luzigas-k0010-bt', ceme: 'luzigas', name: 'Tarifário Indexado Cliente CEME (K=0,010)', kind: 'INDEXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', bundle: true, prices: null, act: 0.1088 },
   { id: 'luzigas-k0010-mt', ceme: 'luzigas', name: 'Tarifário Indexado Cliente CEME (K=0,010)', kind: 'INDEXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', bundle: true, prices: null, act: 0.1088 },
-  // Campanha de preço fixo na app, só para novas adesões, de 29/10 a 28/11.
-  { id: 'luzigas-promo-ceme-bt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente CEME', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', prices: { UNICO: 0.3199 }, act: 0.1088, newCustomers: true, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
-  { id: 'luzigas-promo-ceme-mt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente CEME', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', prices: { UNICO: 0.3199 }, act: 0.1088, newCustomers: true, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
-  { id: 'luzigas-promo-casa-bt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente Casa e CEME', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', bundle: true, prices: { UNICO: 0.2599 }, act: 0.1088, newCustomers: true, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
-  { id: 'luzigas-promo-casa-mt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente Casa e CEME', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', bundle: true, prices: { UNICO: 0.2599 }, act: 0.1088, newCustomers: true, from: '2026-10-29', to: '2026-11-28', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
+  // Preço fixo na app desde 29/10, para todos e sem data de fim. O desconto
+  // nos postos Powerdot (PROMOS) é que é só para novas adesões, até 28/11.
+  { id: 'luzigas-promo-ceme-bt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente CEME', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', prices: { UNICO: 0.3199 }, act: 0.1088, from: '2026-10-29', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
+  { id: 'luzigas-promo-ceme-mt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente CEME', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', prices: { UNICO: 0.3199 }, act: 0.1088, from: '2026-10-29', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
+  { id: 'luzigas-promo-casa-bt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente Casa e CEME', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', bundle: true, prices: { UNICO: 0.2599 }, act: 0.1088, from: '2026-10-29', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
+  { id: 'luzigas-promo-casa-mt', ceme: 'luzigas', name: 'Tarifário Promocional Cliente Casa e CEME', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'AMBOS', bundle: true, prices: { UNICO: 0.2599 }, act: 0.1088, from: '2026-10-29', url: 'https://www.luzigas.pt/app-mobilidade-eletrica/' },
   { id: 'meo-dinamica-bt', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Dinâmica Exclusivo Clientes MEO *e* MEO Energia', kind: 'INDEXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'CARTAO', green: true, bundle: true, prices: null, act: 0.1088 },
   { id: 'meo-dinamica-mt', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Dinâmica Exclusivo Clientes MEO *e* MEO Energia', kind: 'INDEXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'DIARIO', access: 'CARTAO', green: true, bundle: true, prices: null, act: 0.1088 },
 ];
@@ -472,8 +475,9 @@ export const RETIRED_CEMES = ['bluecharge', 'evpower', 'factorenergia', 'mobisma
 export const PROMOS = [
   {
     // Só nos tarifários promocionais: 0,3199 − 0,12 = 0,1999 e 0,2599 − 0,12
-    // = 0,1399, os dois preços que a página anuncia, como os tarifários, só
-    // para novas adesões. Quem a aplica é o ohmigo, que sabe se o posto é da
+    // = 0,1399, os dois preços que a página anuncia, só para novas adesões e
+    // só até ao `to`. Os tarifários continuam depois, para todos, sem o
+    // desconto. Quem a aplica é o ohmigo, que sabe se o posto é da
     // Powerdot. A página diz 7 dias depois da activação.
     id: 'luzigas-powerdot-2026-10', ceme: 'luzigas', name: 'LUZiGÁS × Powerdot: −0,12 €/kWh no tarifário promocional',
     tariffs: ['luzigas-promo-ceme-bt', 'luzigas-promo-ceme-mt', 'luzigas-promo-casa-bt', 'luzigas-promo-casa-mt'],

@@ -12,7 +12,7 @@
 // "cobertura" no fim (e não por estas âncoras).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PRICES_VERIFIED_ON } from '../src/db/seed-data.js';
+import { PRICES_VERIFIED_ON, TARIFFS } from '../src/db/seed-data.js';
 import { seededDb, reseed } from './seeded-db.js';
 import { quoteFixed } from '../src/engine/quote.js';
 import { pickComponents } from '../src/db/components.js';
@@ -255,14 +255,29 @@ describe('cobertura do seed', () => {
     const db = await seeded();
     // Só sabemos quando os preços foram verificados, não quando cada contrato
     // começou. Por isso todas as versões usam essa data (PRICES_VERIFIED_ON),
-    // menos as campanhas, cujas datas o CEME publica.
-    const d = db.prepare('SELECT COUNT(*) c FROM tariff_version WHERE campaign = 0 AND (valid_from != ? OR valid_from IS NULL)').get(PRICES_VERIFIED_ON);
-    assert.equal(d.c, 0, `${d.c} versoes com data diferente de ${PRICES_VERIFIED_ON}`);
+    // menos as campanhas e os lançados depois (`from`), cujas datas o CEME
+    // publica.
+    const dated = new Set(TARIFFS.filter(t => t.from).map(t => t.id));
+    const d = db.prepare('SELECT tariff_id FROM tariff_version WHERE campaign = 0 AND (valid_from != ? OR valid_from IS NULL)').all(PRICES_VERIFIED_ON)
+      .filter(r => !dated.has(r.tariff_id));
+    assert.equal(d.length, 0, `${d.length} versoes com data diferente de ${PRICES_VERIFIED_ON}`);
     const aberta = db.prepare("SELECT COUNT(*) c FROM tariff_version WHERE valid_to IS NOT NULL AND status='ACTIVE' AND campaign = 0").get();
     assert.equal(aberta.c, 0, 'uma versao ACTIVE nao pode ter valid_to, a nao ser numa campanha');
-    // Campanha: do `from` ao dia a seguir ao `to` (valid_to é exclusivo).
-    const luz = db.prepare("SELECT valid_from, valid_to FROM tariff_version WHERE tariff_id = 'luzigas-promo-ceme-bt'").get();
-    assert.deepEqual({ ...luz }, { valid_from: '2026-10-29', valid_to: '2026-11-29' });
+    // Lançado depois, sem fim: do `from` em diante, e não é campanha.
+    const luz = db.prepare("SELECT valid_from, valid_to, campaign FROM tariff_version WHERE tariff_id = 'luzigas-promo-ceme-bt'").get();
+    assert.deepEqual({ ...luz }, { valid_from: '2026-10-29', valid_to: null, campaign: 0 });
+  });
+
+  it('uma campanha que perde o `to` reabre; uma versão fechada à mão continua fechada', async () => {
+    const db = await seeded();
+    // Como estava uma BD antiga: a campanha fechada pelo seed, e outra
+    // versão fechada à mão.
+    db.prepare("UPDATE tariff_version SET valid_to = '2026-11-29', campaign = 1 WHERE tariff_id = 'luzigas-promo-ceme-bt'").run();
+    db.prepare("UPDATE tariff_version SET valid_to = '2026-12-01' WHERE tariff_id = 'edp-bt-cartoedp'").run();
+    await reseed(db);
+    const v = id => ({ ...db.prepare('SELECT valid_to, campaign FROM tariff_version WHERE tariff_id = ?').get(id) });
+    assert.deepEqual(v('luzigas-promo-ceme-bt'), { valid_to: null, campaign: 0 });
+    assert.deepEqual(v('edp-bt-cartoedp'), { valid_to: '2026-12-01', campaign: 0 });
   });
 
   it('todo o tarifário tem versão com componente de preço (ou é INDEXED)', async () => {

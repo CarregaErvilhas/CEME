@@ -35,9 +35,11 @@ export async function seed(db) {
       ON CONFLICT (id) DO UPDATE SET ${updateAll(['ceme_id', 'name', 'kind', 'voltage', 'schedule', 'cycle', 'green', 'access', 'popular', 'bundle', 'regions', 'source_url', 'legacy_id', 'new_customers', 'audience'])}`,
       [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url ?? websites[t.ceme], LEGACY_IDS[t.id] ?? null, t.newCustomers ? 1 : 0, t.audience ?? null]);
 
-    // Uma versão por tarifário, a começar em PRICES_VERIFIED_ON. `valid_to`
-    // não entra no UPDATE: se alguém fechou uma versão à mão, o seed não a
-    // reabre. Uma campanha (`from`/`to`, inclusive) começa no seu `from` e
+    // Uma versão por tarifário, a começar em PRICES_VERIFIED_ON. Numa
+    // versão que alguém fechou à mão (campaign = 0) o seed não mexe no
+    // `valid_to`: não a reabre. Numa campanha (campaign = 1) as datas são do
+    // seed, por isso seguem-no: um `to` adiado estende-a, e um `to` que sai
+    // reabre-a e ela deixa de ser campanha. Uma campanha (`from`/`to`, inclusive) começa no seu `from` e
     // fecha no dia a seguir ao `to`, porque `valid_to` é exclusivo. `omie_aggregation` é SPLIT_VAZIO_FORA em todos, porque os
     // indexados do seed são todos bi-horários (vê docs/02).
     const v = VERSIONS[t.id] || {};
@@ -45,7 +47,9 @@ export async function seed(db) {
     await db.run(`INSERT INTO tariff_version
       (tariff_id, valid_from, valid_to, campaign, status, origin, k_index_eur_mwh, cgs_eur_mwh, omie_aggregation, notes)
       VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, 'SPLIT_VAZIO_FORA', $8)
-      ON CONFLICT (tariff_id, valid_from) DO UPDATE SET ${updateAll(['status', 'origin', 'k_index_eur_mwh', 'cgs_eur_mwh', 'omie_aggregation', 'notes'])}`,
+      ON CONFLICT (tariff_id, valid_from) DO UPDATE SET ${updateAll(['status', 'origin', 'k_index_eur_mwh', 'cgs_eur_mwh', 'omie_aggregation', 'notes'])},
+        valid_to = CASE WHEN tariff_version.campaign = 1 THEN EXCLUDED.valid_to ELSE tariff_version.valid_to END,
+        campaign = CASE WHEN tariff_version.campaign = 1 THEN EXCLUDED.campaign ELSE tariff_version.campaign END`,
       [t.id, from, t.to ? shiftDays(t.to, 1) : null, t.to ? 1 : 0, `SEED_${PRICES_VERIFIED_ON}`, v.k ?? null, v.cgs ?? null, NOTES[t.id] ?? null]);
     const [{ id: vid }] = await db.query('SELECT id FROM tariff_version WHERE tariff_id = $1 AND valid_from = $2', [t.id, from]);
 
