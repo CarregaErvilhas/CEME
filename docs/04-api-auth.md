@@ -295,7 +295,7 @@ Notas:
   `curve` (`{ totalEur, eurKwhNoIva, parts }`, mais `slices` com `detail`)
   é a mesma sessão cotada pela curva de carga. Para o carro ficar ligado
   depois de carregar, manda fatias de 0 kWh até à hora em que o desligas:
-  essas horas também entram na média.
+  essas horas também entram na média, e não contam para o `kwhByPeriod`.
 - `newCustomers: true`: o tarifário só o tem quem adere ao CEME (um cliente
   que já o era não pode). Entra no ranking, mas quem mostra o preço a um
   cliente antigo deve deixá-lo de fora ou avisar.
