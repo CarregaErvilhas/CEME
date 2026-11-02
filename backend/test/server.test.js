@@ -146,8 +146,8 @@ describe('servidor: hardening HTTP', () => {
     assert.equal(lp.network, 'Powerdot');
     assert.equal(lp.target, 'ENERGIA');
     assert.equal(lp.newCustomers, true);
-    // O tarifário também é só para novas adesões, e diz até quando vale.
-    assert.deepEqual([luz.newCustomers, luz.valid_until], [true, '2026-11-28']);
+    // O desconto é só para novas adesões; o tarifário é para todos e sem fim.
+    assert.deepEqual([luz.newCustomers, luz.valid_until], [false, null]);
     const idx = nov.find(q => q.id === 'luzigas-ceme-bt');
     assert.deepEqual([idx.newCustomers, idx.valid_until], [false, null]);
     // O dos colaboradores EDP diz a que público é; os outros não.
@@ -182,11 +182,14 @@ describe('servidor: hardening HTTP', () => {
     const dez = await sim('2026-12-02T12:00:00Z');
     assert.equal(dez.find(q => q.id === 'luzigas-ceme-bt').promos, undefined);
     assert.equal(nov.find(q => q.id === 'luzigas-ceme-bt').promos, undefined, 'o indexado não tem o desconto');
-    // Tarifário de campanha: vale até ao `to`, inclusive, e no dia a seguir sai.
-    const promoTotal = async (at) => (await sim(at)).find(q => q.id === 'luzigas-promo-ceme-bt')?.totalEur;
+    // A promoção vale até ao `to`, inclusive, e no dia a seguir sai; o
+    // tarifário fica, ao preço sem desconto.
+    const luzAt = async (at) => (await sim(at)).find(q => q.id === 'luzigas-promo-ceme-bt');
     assert.ok(nov.find(q => q.id === 'luzigas-promo-casa-bt'));
-    assert.ok(await promoTotal('2026-11-28T12:00:00Z'));
-    assert.equal(await promoTotal('2026-11-29T12:00:00Z'), undefined);
+    assert.ok((await luzAt('2026-11-28T12:00:00Z')).promos?.some(p => p.id === 'luzigas-powerdot-2026-10'));
+    const depois = await luzAt('2026-11-29T12:00:00Z');
+    assert.equal(depois?.promos, undefined);
+    assert.equal(depois.totalEur, luz.totalEur);
     // Nas ilhas não valem (regions = CONT).
     const mad = (await (await fetch(`${BASE}/v1/simulate`, {
       method: 'POST', headers: auth, body: JSON.stringify({ kwh: 40, at: '2026-11-10T12:00:00Z', region: 'MAD' }),
