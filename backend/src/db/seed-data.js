@@ -113,7 +113,11 @@ export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1
 //   voltage   BT (baixa tensão) ou MT (média tensão)
 //   schedule  SIMPLES (um preço) ou BI_HORARIA (vazio / fora de vazio)
 //   cycle     DIARIO, SEMANAL ou SIMPLES (vê engine/regions.js)
-//   access    como se paga: CARTAO (só cartão) ou AMBOS (cartão e app)
+//   access    como se inicia o carregamento: CARTAO (só cartão RFID), APP
+//             (só a app) ou AMBOS. Conta para quem carrega num posto privado
+//             (DPC: garagem, condomínio, empresa): não está na lista pública
+//             da MOBI.E, por isso a app não o encontra e só o cartão serve.
+//             Confirma no site do CEME: o que lá diz é o que vale.
 //   green     true se a energia é 100 % renovável
 //   popular   true se é um dos mais usados (filtro "populares")
 //   bundle    true se o preço exige outra relação com o CEME (ser cliente

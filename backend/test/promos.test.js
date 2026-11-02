@@ -11,6 +11,14 @@ import { seededDb, reseed } from './seeded-db.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
+describe('TARIFFS: como se inicia o carregamento', () => {
+  // O ohmigo tira os tarifários sem cartão quando o posto é privado (DPC), e a
+  // /tabela mostra o valor: um valor fora destes ficava sem tradução e sem filtro.
+  it('cada tarifário diz se é cartão, app ou os dois', () => {
+    for (const t of TARIFFS) assert.ok(['CARTAO', 'APP', 'AMBOS'].includes(t.access), `${t.id}: access ${t.access}`);
+  });
+});
+
 describe('PROMOS: os dados do seed', () => {
   it('cada promoção tem o que o schema e o ohmigo precisam', () => {
     const ids = new Set();
