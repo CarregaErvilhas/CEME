@@ -536,6 +536,27 @@ function loadS() {
     if (typeof o.forceServerTime === 'boolean') S.forceServerTime = o.forceServerTime;
   } catch (e) {}
 }
+// O assistente abre o simulador com as respostas na query (fullHref() em
+// assistente.html): /simulador?region=CONT&cap=60&from=20&to=80&at=…&popular=1.
+// Valida-se como em loadS(), sobrepõe-se ao estado guardado e tira-se a query
+// do URL, para um reload não voltar a impor estes valores.
+function applyQuery() {
+  let q;
+  try { q = new URLSearchParams(location.search || ''); } catch (e) { return; }
+  if (!q.has('region') && !q.has('cap')) return;
+  const n = (k, a, b) => { const v = Number(q.get(k)); return q.has(k) && q.get(k) !== '' && Number.isFinite(v) && v >= a && v <= b ? v : null; };
+  if (['CONT', 'MAD', 'AZO'].includes(q.get('region'))) S.region = q.get('region');
+  const cap = n('cap', 1, 300), from = n('from', 0, 99), to = n('to', 1, 100);
+  if (cap !== null && from !== null && to !== null && to > from) {
+    S.energyMode = 'bat'; S.batCap = cap; S.batMin = from; S.batMax = to;
+  }
+  const at = q.has('at') ? new Date(q.get('at')) : null;
+  S.chargeAt = at && Number.isFinite(at.getTime()) ? at.toISOString() : null;
+  for (const k of ['popular', 'nobundle', 'green']) if (q.get(k) === '1' || q.get(k) === '0') S[k] = q.get(k) === '1';
+  // desligar «populares» no assistente foi uma escolha: guarda-a como tal
+  if (q.get('popular') === '0') S.popularPicked = true;
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+}
 function saveS() { try { localStorage.setItem('ceme:S', JSON.stringify(S)); } catch (e) {} }
 const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, popular: true, popularPicked: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
   energyMode: 'kwh', batCap: 60, batMin: 20, batMax: 80,
@@ -1123,6 +1144,7 @@ async function loadOmieRef() {
 async function init() {
   try {
     loadS();
+    applyQuery();
     setLang(initialLang(), false);
     document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang); route(); });
     const tb = document.getElementById('themeBtn'); if (tb) tb.onclick = toggleTheme;

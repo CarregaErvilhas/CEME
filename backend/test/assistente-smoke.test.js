@@ -49,6 +49,7 @@ ctx.navigator = { language: 'pt-PT' };
 ctx.location = { href: 'http://x/', origin: 'http://x', hash: '' };
 ctx.fetch = async () => ({ ok: true, status: 200, json: async () => ({ token: 't', data: [], rows: [] }) });
 ctx.Intl = Intl;
+ctx.URLSearchParams = URLSearchParams;
 ctx.performance = { now: () => 0 };
 ctx.requestAnimationFrame = noop;
 ctx.__LANG__ = 'pt';
@@ -138,6 +139,20 @@ describe('smoke do assistente', () => {
     const results = run('vResults()', "LANG = 'pt';");
     assert.ok(results.includes('href="/simulador"'), 'resultados sem link para o simulador');
     assert.ok(!/href="\/"/.test(landing + results), 'sobrou um href="/" que devolve o assistente');
+  });
+
+  // Muita gente ficava pelo assistente sem saber do completo: os resultados
+  // acabam num cartão que abre o completo com as mesmas respostas.
+  it('os resultados convidam para o completo e levam as respostas na query', () => {
+    const h = run('vResults()', "LANG = 'pt'; Object.assign(P, { region: 'MAD', cap: 64, from: 15, to: 85, when: 'now', popular: false, green: true, nobundle: false });");
+    assert.ok(h.includes('class="go-full"') && h.includes('Ver estes resultados no simulador completo'), 'cartão do completo em falta');
+    const href = run('fullHref()');
+    const q = new URLSearchParams(href.split('?')[1]);
+    assert.ok(href.startsWith('/simulador?'), href);
+    assert.deepEqual({ ...Object.fromEntries(q) }, { region: 'MAD', cap: '64', from: '15', to: '85', popular: '0', nobundle: '0', green: '1' });
+    const comHora = run('fullHref()', "Object.assign(P, { when: 'tomorrow', tTomorrow: '09:00' });");
+    assert.ok(Number.isFinite(new Date(new URLSearchParams(comHora.split('?')[1]).get('at')).getTime()), `hora em falta: ${comHora}`);
+    run('0', 'Object.assign(P, DEF);');
   });
 
   it('a página nunca se apresenta como protótipo', () => {

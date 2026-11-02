@@ -291,6 +291,23 @@ describe('smoke do frontend', () => {
     assert.equal(out.escolhido, false, 'quem desligou à mão tem de o encontrar desligado');
   });
 
+  it('o link do assistente abre o simulador com as mesmas respostas', () => {
+    const out = run(`(() => {
+      const antes = JSON.stringify(S);
+      location.search = '?region=AZO&cap=64&from=15&to=85&at=2026-11-03T09%3A00%3A00.000Z&popular=0&nobundle=0&green=1';
+      applyQuery();
+      const r = { region: S.region, mode: S.energyMode, cap: S.batCap, min: S.batMin, max: S.batMax, at: S.chargeAt, popular: S.popular, picked: S.popularPicked, green: S.green };
+      location.search = '?region=<x>&cap=abc&from=90&to=10&at=lixo';
+      Object.assign(S, JSON.parse(antes)); applyQuery();
+      r.lixo = { region: S.region, mode: S.energyMode, at: S.chargeAt };
+      location.search = ''; Object.assign(S, JSON.parse(antes));
+      return r;
+    })()`, `setLang('pt', false);`);
+    // via JSON: o objecto vem do contexto vm, outro realm
+    assert.deepEqual(JSON.parse(JSON.stringify(out)), { region: 'AZO', mode: 'bat', cap: 64, min: 15, max: 85, at: '2026-11-03T09:00:00.000Z', popular: false, picked: true, green: true,
+      lixo: { region: 'CONT', mode: 'kwh', at: null } });
+  });
+
   it('a pesquisa não depende da língua e ignora acentos', () => {
     const out = run(`(() => {
       S.q = 'luzigas'; const comAcento = filtered().length;

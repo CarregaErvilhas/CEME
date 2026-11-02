@@ -74,6 +74,10 @@ Quatro ecrãs, navegados pelo hash do URL: `#/onde` → `#/quanto` →
 - **resultados:** o mais barato em destaque e a lista dos outros, com os
   mesmos filtros do simulador (populares, sem condições, verde) e um
   "Mostrar todos". «Populares» vem ligado por omissão (`DEF`).
+  No fim há um cartão que abre o simulador completo com as mesmas
+  respostas na query (`fullHref()`: região, bateria, hora e filtros); o
+  completo lê-as em `applyQuery()`, sobrepõe-nas ao estado guardado e tira-as
+  do URL.
 
 As respostas ficam em `sessionStorage['ceme:wizard']` (sobrevivem a um
 reload, desaparecem quando fechas o separador), e o tema em
