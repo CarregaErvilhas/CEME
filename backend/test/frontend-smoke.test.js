@@ -274,6 +274,40 @@ describe('smoke do frontend', () => {
     }
   });
 
+  // «★ populares» vem ligado por omissão; um estado guardado antes disso traz
+  // popular:false sem ninguém o ter escolhido, e esse não conta.
+  it('populares por omissão, e só um false escolhido à mão sobrevive ao reload', () => {
+    const out = run(`(() => {
+      const r = {};
+      S.popular = true; S.popularPicked = false;
+      localStorage.setItem('ceme:S', JSON.stringify({ popular: false }));
+      loadS(); r.antigo = S.popular;
+      localStorage.setItem('ceme:S', JSON.stringify({ popular: false, popularPicked: true }));
+      loadS(); r.escolhido = S.popular;
+      S.popular = true; S.popularPicked = false; localStorage.removeItem('ceme:S');
+      return r;
+    })()`, `setLang('pt', false);`);
+    assert.equal(out.antigo, true, 'um popular:false antigo, não escolhido, não pode desligar o filtro');
+    assert.equal(out.escolhido, false, 'quem desligou à mão tem de o encontrar desligado');
+  });
+
+  it('o link do assistente abre o simulador com as mesmas respostas', () => {
+    const out = run(`(() => {
+      const antes = JSON.stringify(S);
+      location.search = '?region=AZO&cap=64&from=15&to=85&at=2026-11-03T09%3A00%3A00.000Z&popular=0&nobundle=0&green=1';
+      applyQuery();
+      const r = { region: S.region, mode: S.energyMode, cap: S.batCap, min: S.batMin, max: S.batMax, at: S.chargeAt, popular: S.popular, picked: S.popularPicked, green: S.green };
+      location.search = '?region=<x>&cap=abc&from=90&to=10&at=lixo';
+      Object.assign(S, JSON.parse(antes)); applyQuery();
+      r.lixo = { region: S.region, mode: S.energyMode, at: S.chargeAt };
+      location.search = ''; Object.assign(S, JSON.parse(antes));
+      return r;
+    })()`, `setLang('pt', false);`);
+    // via JSON: o objecto vem do contexto vm, outro realm
+    assert.deepEqual(JSON.parse(JSON.stringify(out)), { region: 'AZO', mode: 'bat', cap: 64, min: 15, max: 85, at: '2026-11-03T09:00:00.000Z', popular: false, picked: true, green: true,
+      lixo: { region: 'CONT', mode: 'kwh', at: null } });
+  });
+
   it('a pesquisa não depende da língua e ignora acentos', () => {
     const out = run(`(() => {
       S.q = 'luzigas'; const comAcento = filtered().length;
@@ -282,7 +316,7 @@ describe('smoke do frontend', () => {
       S.q = 'zzzz'; const nada = filtered().length;
       S.q = '';
       return { comAcento, semAcento, emIngles, nada };
-    })()`, `setLang('pt', false);`);
+    })()`, `setLang('pt', false); S.popular = false;`);
     // o dedup BT/MT colapsa os dois indexados LUZiGÁS num só
     assert.equal(out.comAcento, 1, 'luzigas devia encontrar 1');
     assert.equal(out.semAcento, 1, 'LUZiGÁS devia encontrar o mesmo 1');
@@ -312,7 +346,7 @@ describe('smoke do frontend', () => {
       S.ramal = 'MT'; const mt = filtered().map(q => q.id);
       S.ramal = 'BT';
       return { bt, mt };
-    })()`, `setLang('pt', false);`);
+    })()`, `setLang('pt', false); S.popular = false;`);
     assert.equal(JSON.stringify(out.bt), JSON.stringify(['f-bt', 'i-bt']), `lista BT: ${out.bt}`);
     assert.equal(JSON.stringify(out.mt), JSON.stringify(['f-mt', 'f-simples', 'i-mt']), `lista MT: ${out.mt}`);
   });

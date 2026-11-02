@@ -300,6 +300,8 @@
         est: 'estimado',
         showAll: 'Mostrar todos ({n})', none: 'Nenhum tarifário com estes filtros.',
         restart: 'Começar de novo',
+        fullH: 'Ver estes resultados no simulador completo',
+        fullP: 'Compare o indexado com o fixo, veja a conta de cada tarifário e guarde os seus favoritos. Leva a região, a bateria e a hora que escolheu.',
         err: 'Não foi possível calcular. Verifique a ligação à internet.',
       },
       en: {
@@ -324,6 +326,8 @@
         est: 'estimated',
         showAll: 'Show all ({n})', none: 'No tariffs match these filters.',
         restart: 'Start over',
+        fullH: 'See these results in the full simulator',
+        fullP: 'Compare indexed with fixed, see the breakdown of each tariff and save your favourites. Your region, battery and time come along.',
         err: 'Could not calculate. Check your internet connection.',
       },
     },

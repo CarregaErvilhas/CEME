@@ -218,6 +218,16 @@ h1 { font-size: 24px; line-height: 1.25; font-weight: 500; letter-spacing: -.01e
 .loading .bar { width: 140px; height: 2px; background: var(--line); border-radius: 1px; overflow: hidden; margin: 0 auto 12px; }
 .loading .bar i { display: block; height: 100%; width: 40%; background: var(--ink); animation: slide 1s ease-in-out infinite; }
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+/* convite para o simulador completo, no fim dos resultados: muita gente fica
+   pelo assistente sem saber que o completo existe */
+.go-full { display: flex; align-items: center; gap: 14px; margin: 28px 0 0; padding: 16px; border: 1px solid var(--line2); border-left: 3px solid var(--charge); border-radius: var(--r); background: var(--card); color: inherit; text-decoration: none; transition: border-color .15s, transform .15s; }
+.go-full:hover { border-color: var(--ink); border-left-color: var(--charge); }
+.go-full:active { transform: scale(.99); }
+.go-full b { display: block; font-weight: 500; margin-bottom: 4px; }
+.go-full span { display: block; font-size: 13px; color: var(--mute); line-height: 1.45; }
+.go-full .go-arr { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--ink); display: grid; place-items: center; color: var(--ink); transition: transform .2s; }
+.go-full:hover .go-arr { transform: translateX(3px); }
+.go-full .go-arr svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .full { text-align: center; font-size: 12px; margin: 24px 0 8px; }
 .full a { color: var(--mute); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -264,7 +274,7 @@ const dec = (n, d = 1) => new Intl.NumberFormat(loc(), { minimumFractionDigits: 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 const TZ = CEME_TZ.TZ;
-const DEF = { region: 'CONT', cap: 60, capOther: false, from: 20, to: 80, when: 'now', tTonight: '23:00', tTomorrow: '09:00', custom: '', nobundle: false, green: false, popular: false, all: false };
+const DEF = { region: 'CONT', cap: 60, capOther: false, from: 20, to: 80, when: 'now', tTonight: '23:00', tTomorrow: '09:00', custom: '', nobundle: false, green: false, popular: true, all: false };
 const P = { ...DEF };
 // As respostas sobrevivem a um reload (os browsers móveis recarregam separadores
 // em segundo plano); fecha-se o separador e recomeça-se do zero.
@@ -501,9 +511,20 @@ function vResults() {
       ${!P.all && rest.length > shown.length ? `<button class="btn wide more" data-act="all">${t('showAll', { n: items.length })}</button>` : ''}`
       : `<p class="empty">${t('none')}</p>`}
     ${sessionNote}
+    <a class="go-full" href="${esc(fullHref())}"><div><b>${t('fullH')}</b><span>${t('fullP')}</span></div><span class="go-arr" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
     <p class="full"><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a></p>
     ${foot}
   </section>`;
+}
+// O link para o simulador completo leva as respostas do assistente na query
+// (região, bateria, hora e filtros), para o completo abrir já com os mesmos
+// resultados; o completo lê-as em applyQuery() e tira-as do URL. «Agora» não
+// leva hora: o completo fica a seguir o relógio.
+function fullHref() {
+  const q = new URLSearchParams({ region: P.region, cap: P.cap, from: P.from, to: P.to });
+  if (P.when !== 'now') q.set('at', chargeAt().toISOString());
+  for (const k of ['popular', 'nobundle', 'green']) q.set(k, P[k] ? '1' : '0');
+  return `/simulador?${q}`;
 }
 
 /* ---------- router ---------- */
