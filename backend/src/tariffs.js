@@ -11,6 +11,7 @@ import { query } from './db.js';
 import { quoteSlices } from './engine/quote.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from './engine/indexed.js';
 import { lossAt, lossByPeriod } from './engine/losses.js';
+import { sessionLoss } from './engine/session.js';
 import { REGIONS, periodForRegion } from './engine/regions.js';
 import { civilDay } from './omie/convert.js';
 import { shiftDays } from './time.js';
@@ -21,11 +22,11 @@ import { discounted, freeFirst, promosFor } from './promos.js';
 // "Hoje" em Portugal, para escolher a versão em vigor (vê civilDay).
 export const today = () => civilDay();
 
-// Fórmula e perdas fixas de um indexado (VERSIONS no seed).
+// Fórmula, perdas fixas e modo de facturação de um indexado (VERSIONS no seed).
 export function vmeta(tid) {
   const v = VERSIONS[tid] || {};
   const loss = (v.loss != null) ? v.loss : null;
-  return { loss, formula: v.formula || 'standard' };
+  return { loss, formula: v.formula || 'standard', billing: v.billing || null };
 }
 
 // Todos os tarifários, cada um com `vid` = a versão em vigor no dia `day`.
@@ -163,13 +164,17 @@ export async function loadPricing(region = 'CONT') {
 //          cotada no seu período e, nos indexados, com o OMIE, as perdas e a
 //          TAR do seu instante (vê quoteSlices). Os campos `prices`, `loss` e
 //          `omieRef` continuam a ser os do início (`at`).
+//   session: { omieKwh, hours, from, to } (engine/session.js), o OMIE médio
+//          das horas da sessão, para os indexados que cobram assim
+//          (`billing: 'MEDIA_SESSAO'` no seed). Com ele e um profile, o total
+//          é o da média e a conta pela curva vai em `curve`.
 //   pricing: o resultado de loadPricing(region)
 //   discountKwh: €/kWh a menos no preço final de cada período (uma promoção
 //          de ENERGIA, vê promos.js). Os campos `prices` e `split` do cartão
 //          ficam os do tarifário; só a conta usa o preço com desconto.
 //   freeKwh: os primeiros kWh do carregamento sem energia nem TAR (uma
 //          promoção KWH_GRATIS, vê freeFirst).
-export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot, profile, discountKwh = 0, freeKwh = 0 }, pricing) {
+export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot, profile, session, discountKwh = 0, freeKwh = 0 }, pricing) {
   const ver = pricing.version(t.vid);
   const { price, act, iec, sup, split } = pricing.comps(t.vid);
   const meta = {
@@ -232,22 +237,40 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
   // Com perfil, cada fatia leva o preço do SEU período, calculado com o OMIE
   // do seu quarto de hora (se houver; senão as médias), as perdas desse
   // quarto e a TAR do seu dia (o carregamento pode passar a meia-noite).
-  const sliceOf = (p) => {
+  // `avg` ({ omieKwh, loss }): o OMIE e as perdas médios da sessão, iguais
+  // para todas as fatias (quem cobra pela média); a TAR fica a de cada fatia.
+  const sliceOf = (p, avg = null) => {
     const per = periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at: p.at });
     const tar = pricing.tar(t.voltage, per, civilDay(p.at, REGIONS[region].tz));
     if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${civilDay(p.at, REGIONS[region].tz)}`);
-    const loss = p.spot ? (lossAt(t.voltage, p.at) ?? vm.loss) : (lossPer?.[per] ?? vm.loss);
-    const omieKwh = p.spot?.omieKwh ?? omieForPeriod(per);
+    const loss = avg ? avg.loss : p.spot ? (lossAt(t.voltage, p.at) ?? vm.loss) : (lossPer?.[per] ?? vm.loss);
+    const omieKwh = avg ? avg.omieKwh : p.spot?.omieKwh ?? omieForPeriod(per);
     const price = indexedPrice({ omieEurKwh: omieKwh, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tar, loss, formula: vm.formula }).price;
-    return { at: p.at, kwh: p.kwh, ...discounted({ [per]: price }, { [per]: { energy: price - tar, tar } }, discountKwh), omieKwh, omieSpot: !!p.spot };
+    return { at: p.at, kwh: p.kwh, ...discounted({ [per]: price }, { [per]: { energy: price - tar, tar } }, discountKwh), omieKwh, omieSpot: avg ? false : !!p.spot };
   };
-  let q;
+  const bySlices = (avg) => {
+    const slices = freeFirst(profile.map(p => sliceOf(p, avg)), freeKwh);
+    const r = quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices, activation: act, support: sup, iec, region });
+    if (r.slices) r.slices.forEach((d, i) => Object.assign(d, { omie: slices[i].omieKwh, omieSpot: slices[i].omieSpot }));
+    return r;
+  };
+  let q, billed = null;
   if (profile) {
-    const slices = freeFirst(profile.map(sliceOf), freeKwh);
-    q = quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices, activation: act, support: sup, iec, region });
-    if (q.slices) q.slices.forEach((d, i) => Object.assign(d, { omie: slices[i].omieKwh, omieSpot: slices[i].omieSpot }));
+    q = bySlices(null);
+    // Quem cobra pela média da sessão: o total passa a ser esse, e a conta
+    // pela curva de carga fica ao lado, em `curve`, para comparar. As perdas
+    // são a média das mesmas horas (o CEME usa um só valor na conta).
+    if (vm.billing === 'MEDIA_SESSAO' && session) {
+      const loss = sessionLoss(t.voltage, session) ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage];
+      const curve = q;
+      q = bySlices({ omieKwh: session.omieKwh, loss });
+      billed = {
+        sessionOmie: { eurKwh: session.omieKwh, hours: session.hours, from: session.from, to: session.to, loss },
+        curve: { totalEur: curve.totalEur, eurKwhNoIva: curve.eurKwhNoIva, parts: curve.parts, ...(curve.slices && { slices: curve.slices }) },
+      };
+    }
   } else {
     q = quoteSlices({ schedule: t.schedule, cycle: t.cycle, slices: freeFirst([{ at, kwh, ...discounted(out, splitIdx, discountKwh) }], freeKwh), activation: act, support: sup, iec, region });
   }
-  return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: spot?.loss ?? lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], omieSpot: spotKwh != null, lossByPeriod: lossPer, formula: vm.formula, warning: here, avail: t.regions, ...egmeFlags(act), ...q };
+  return { ...meta, activation: act, iec, prices: out, split: splitIdx, estimated: false, omieRef, k: ver.k_index_eur_mwh, cgs: ver.cgs_eur_mwh, loss: spot?.loss ?? lossPer?.[q.period] ?? vm.loss ?? LOSS_PLACEHOLDER[t.voltage], omieSpot: spotKwh != null, lossByPeriod: lossPer, formula: vm.formula, ...(vm.billing && { billing: vm.billing }), warning: here, avail: t.regions, ...egmeFlags(act), ...q, ...billed };
 }

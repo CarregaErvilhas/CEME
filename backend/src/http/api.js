@@ -11,6 +11,7 @@
 import { query, get } from '../db.js';
 import { indexedPrice, LOSS_PLACEHOLDER } from '../engine/indexed.js';
 import { lossAt } from '../engine/losses.js';
+import { hourQuarters, sessionHours, sessionOmie } from '../engine/session.js';
 import { REGIONS, periodForRegion } from '../engine/regions.js';
 import { compareWithFixed, tallyWinners } from '../engine/compare.js';
 import { getDaily, getFutures, getQuarters, getStats, SOURCE_LABEL } from '../omie/pipeline.js';
@@ -393,6 +394,15 @@ async function simulate({ req, res, headers }) {
     const spot = useSpot ? await spotAt(now, days) : null;
     // Com profile, cada fatia leva o OMIE do seu quarto (ou null: médias).
     if (profile && useSpot) profile = await Promise.all(profile.map(async x => ({ ...x, spot: await spotAt(x.at, days) })));
+    // E o OMIE médio das horas da sessão, para os indexados que cobram pela
+    // média (vê engine/session.js). null se faltar algum quarto dessas horas.
+    let session = null;
+    if (profile && useSpot) {
+      const hours = sessionHours(profile[0].at, profile.at(-1).at);
+      const qs = hourQuarters(hours);
+      const spots = new Map((await Promise.all(qs.map(q => spotAt(new Date(q), days)))).map((s, i) => [qs[i], s?.omieKwh]));
+      session = sessionOmie(hours, q => spots.get(q));
+    }
     // Cota cada tarifário. Se um falhar (dados errados, falta de TAR), fica
     // de fora com um aviso no log e os outros seguem ("quarentena").
     const pricing = await loadPricing(region);
@@ -400,10 +410,10 @@ async function simulate({ req, res, headers }) {
     // aviso. A quarentena é para dados errados, não para o calendário.
     const results = list.filter(t => t.vid != null).map(t => {
       try {
-        const input = { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) }, profile };
+        const input = { at: now, day, kwh, region, omie, omieVazio, omieFora, omieCycles, spot: spot && { ...spot, loss: lossAt(t.voltage, now) }, profile, session };
         const q = quoteOne(t, input, pricing);
         // O detalhe por fatia só vai se for pedido (são N fatias × cada tarifário).
-        if (!detail) delete q.slices;
+        if (!detail) { delete q.slices; if (q.curve) delete q.curve.slices; }
         // As promoções deste tarifário nesse dia, à parte: quase todas valem
         // só numa rede de postos, e o simulador não sabe em qual carregas.
         const ps = pricing.promos(t, day);
@@ -418,6 +428,7 @@ async function simulate({ req, res, headers }) {
     const avg = data.length ? data.reduce((s, q) => s + q.totalEur, 0) / data.length : 0;
     json(res, 200, { at: now.toISOString(), kwh, region, omieRef: spot ? spot.omieKwh : omie, omieSpot: spot ? { utc: spot.utc, eurKwh: spot.omieKwh } : null,
       ...(profile && { profile: { slices: profile.length, from: profile[0].at.toISOString(), to: profile.at(-1).at.toISOString(), withSpot: profile.filter(x => x.spot).length } }),
+      ...(profile && useSpot && { sessionOmie: session && { eurKwh: session.omieKwh, hours: session.hours, from: session.from, to: session.to } }),
       avg: Math.round(avg * 100) / 100, data }, headers);
   } catch (e) { fail(res, 400, 'quote_failed', e.message, headers); }
 }

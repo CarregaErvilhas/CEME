@@ -284,6 +284,18 @@ Notas:
   instante, os kWh, o período e o preço final (sem IVA) de cada fatia, e,
   nos indexados, o OMIE usado e se era do quarto (`omieSpot`). Sem
   `detail`, as fatias não vêm (são N fatias × cada tarifário).
+
+  Os indexados que o CEME factura pela média do OMIE da sessão trazem
+  `billing: "MEDIA_SESSAO"` (sempre, com ou sem `profile`; vê
+  [02](02-motor-calculo.md)). Com `profile` e `useSpot`, a resposta traz
+  `sessionOmie` (`{ eurKwh, hours, from, to }`, as horas tocadas, `to`
+  exclusivo; `null` se faltar o OMIE de algum quarto delas), e esses
+  tarifários são cotados por essa média: `totalEur` e `parts` são os da
+  factura, `sessionOmie` repete a média e junta as perdas usadas (`loss`), e
+  `curve` (`{ totalEur, eurKwhNoIva, parts }`, mais `slices` com `detail`)
+  é a mesma sessão cotada pela curva de carga. Para o carro ficar ligado
+  depois de carregar, manda fatias de 0 kWh até à hora em que o desligas:
+  essas horas também entram na média.
 - `newCustomers: true`: o tarifário só o tem quem adere ao CEME (um cliente
   que já o era não pode). Entra no ranking, mas quem mostra o preço a um
   cliente antigo deve deixá-lo de fora ou avisar.

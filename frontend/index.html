@@ -557,6 +557,8 @@ function badges(q) {
   // anterior. Mostra-se um aviso, mas a conta usa o valor publicado.
   if (q.activation_stale) b += `<span class="badge wr" title="${i18n('egmeStaleTip', { act: fmtNum(q.activation), legal: fmtNum(q.egme_legal) })}">${i18n('egmeStale')}</span>`;
   if (q.warning) b += `<span class="badge wr">${i18n(q.warning === 'OMIE_CONT_REF' ? 'warnOmieCont' : q.warning)}</span>`;
+  // O CEME factura pela média do OMIE da sessão; aqui só se cota um quarto.
+  if (q.billing === 'MEDIA_SESSAO') b += `<span class="badge wr" title="${i18n('sessionTip')}">${i18n('tagSession')}</span>`;
   if (!((',' + (q.avail || 'CONT') + ',').includes(',' + S.region + ','))) b += `<span class="badge">${i18n('soldIn', { r: esc(q.avail) })}</span>`;
   if (q.estimated) b += `<span class="badge est" title="${i18n('estTip')}">~</span>`;
   return b;
@@ -600,6 +602,7 @@ function detail(q) {
     ${q.kind === 'INDEXED' ? `<tr><td>${i18n('formula')}</td><td colspan="2">${i18n('formulaVal', { o: Number(q.omieRef).toFixed(3), k: fmtNum(q.k), c: fmtNum(q.cgs), l: fmtNum(Math.round((q.loss || 0) * 10000) / 100) + '%' })}</td></tr>` : ''}
     <tr><td title="${i18n('verifiedTip')}">${i18n('verified')}</td><td colspan="2">${q.valid_from || '—'}</td></tr></table>
     ${q.notes ? `<p class="note-ac">${noteText(q.notes)}</p>` : ''}
+    ${q.billing === 'MEDIA_SESSAO' ? `<p class="note-ac">${i18n('sessionTip')}</p>` : ''}
     <small>${i18n('breakdownNote')}</small><br>
     ${/^https?:\/\//i.test(q.source_url || '') ? `<a class="src" href="${esc(q.source_url)}" target="_blank" rel="noopener">${i18n('confirmSrc')}</a>` : ''}</details>`;
 }
