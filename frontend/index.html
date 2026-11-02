@@ -138,6 +138,40 @@
   button{border-radius:11px;border:1px solid var(--line);padding:9px 15px;background:var(--field);font-size:14px;cursor:pointer;color:var(--ink);font-weight:600;transition:.15s}
   button:hover{background:var(--soft)}
   button.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
+  /* Dica do «★ populares» (popHint): salto + anel dourado, estrelas que se
+     soltam, brilho que atravessa e um «toque fantasma» (desliga/liga). */
+  #fPop{position:relative;isolation:isolate}
+  #fPop.pop-hint{animation:popJump 2.6s cubic-bezier(.3,1.4,.5,1) both}
+  #fPop.pop-hint::before{content:"";position:absolute;inset:-2px;border-radius:13px;pointer-events:none;
+    box-shadow:0 0 0 0 rgba(245,158,11,.7);animation:popRing 2.6s ease-out both}
+  #fPop.pop-hint::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
+    background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.75) 48%,rgba(253,224,71,.6) 52%,transparent 70%) no-repeat;
+    background-size:250% 100%;background-position:150% 0;mix-blend-mode:overlay;animation:popShine 2.6s ease-in-out both}
+  .pop-star{position:absolute;left:50%;top:50%;font-style:normal;font-size:var(--sz);line-height:1;color:var(--gold);
+    pointer-events:none;z-index:2;opacity:0;text-shadow:0 0 6px rgba(245,158,11,.6);
+    animation:popStar 1.1s cubic-bezier(.2,.8,.3,1) calc(.25s + var(--dl)) both}
+  @keyframes popJump{
+    0%{transform:scale(1)} 10%{transform:scale(1.14) rotate(-3deg)} 18%{transform:scale(.97) rotate(2deg)}
+    26%{transform:scale(1.04)} 34%,52%{transform:scale(1)}
+    /* toque fantasma: carrega, desliga, carrega, volta a ligar. As cores
+       ficam fixas fora do toque, senão interpolavam ao longo de segundos. */
+    0%,56%,76%,100%{background:var(--ink);color:var(--card);border-color:var(--ink)}
+    56%{transform:scale(.92)}
+    60%,72%{background:var(--field);color:var(--ink);border-color:var(--gold)}
+    60%{transform:scale(1)} 70%{transform:scale(1)} 74%{transform:scale(.92)}
+    80%{transform:scale(1.07)} 88%,100%{transform:scale(1)}}
+  @keyframes popRing{
+    0%{box-shadow:0 0 0 0 rgba(245,158,11,.75)} 30%{box-shadow:0 0 0 12px rgba(245,158,11,0)}
+    74%{box-shadow:0 0 0 0 rgba(245,158,11,.6)} 100%{box-shadow:0 0 0 14px rgba(245,158,11,0)}}
+  @keyframes popShine{0%,20%{opacity:0;background-position:150% 0} 24%{opacity:1} 48%{opacity:1} 52%,100%{opacity:0;background-position:-60% 0}}
+  @keyframes popStar{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}
+    20%{opacity:1}
+    100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) rotate(var(--rot)) scale(1)}}
+  @media (prefers-reduced-motion:reduce){
+    #fPop.pop-hint{animation:none}
+    #fPop.pop-hint::after,.pop-star{display:none}
+  }
   .seg{display:flex;background:var(--seg);border-radius:13px;padding:4px;gap:3px}
   .seg button{border:none;background:none;flex:1;padding:9px 6px;border-radius:10px;line-height:1.25;font-weight:600;color:var(--mut)}
   .seg button small{display:block;font-size:10px;font-weight:500}
@@ -490,7 +524,11 @@ function loadS() {
     S.scopeClosed = bool(o.scopeClosed, S.scopeClosed);
     S.green = bool(o.green, S.green);
     S.nobundle = bool(o.nobundle, S.nobundle);
-    S.popular = bool(o.popular, S.popular);
+    // `popular` só conta se foi o utilizador a mexer-lhe (popularPicked): o
+    // estado guardado antes de «populares» ser o defeito traz um false que
+    // ninguém escolheu.
+    S.popularPicked = bool(o.popularPicked, false);
+    if (S.popularPicked) S.popular = bool(o.popular, S.popular);
     S.favonly = bool(o.favonly, S.favonly);
     S.omieAuto = bool(o.omieAuto, S.omieAuto);
     if (typeof o.chargeAt === 'string') S.chargeAt = o.chargeAt;
@@ -499,7 +537,7 @@ function loadS() {
   } catch (e) {}
 }
 function saveS() { try { localStorage.setItem('ceme:S', JSON.stringify(S)); } catch (e) {} }
-const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, popular: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
+const S = { kwh: 40, region: 'CONT', scopeClosed: false, omie: 0.20, omieAuto: true, omieVazio: 0.20, omieFora: 0.20, volt: '', ramal: 'BT', green: false, nobundle: false, popular: true, popularPicked: false, favonly: false, q: '', idx: 'luzigas-casa-mt', fix: 'atlante-mt',
   energyMode: 'kwh', batCap: 60, batMin: 20, batMax: 80,
   chargeAt: null, forceServerTime: false, serverNow: null };
 
@@ -1017,7 +1055,7 @@ async function route() {
     if (q) q.oninput = e => { S.q = e.target.value; const pos = e.target.selectionStart; route(); const q2 = document.getElementById('q'); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } };
     document.querySelectorAll('[data-ramal]').forEach(x => x.onclick = () => { S.ramal = x.dataset.ramal; route(); });
     const fG = document.getElementById('fGreen'); if (fG) fG.onclick = () => { S.green = !S.green; route(); };
-    const fP = document.getElementById('fPop'); if (fP) fP.onclick = () => { S.popular = !S.popular; fP.classList.toggle('on', S.popular); route(); };
+    const fP = document.getElementById('fPop'); if (fP) fP.onclick = () => { S.popular = !S.popular; S.popularPicked = true; fP.classList.toggle('on', S.popular); route(); };
     const fB = document.getElementById('fBundle'); if (fB) fB.onclick = () => { S.nobundle = !S.nobundle; route(); };
     const fF = document.getElementById('fFav'); if (fF) fF.onclick = () => { S.favonly = !S.favonly; route(); };
     const ofm = document.getElementById('openFavModal');
@@ -1053,6 +1091,7 @@ async function route() {
     }
     if (cmpIdx) loadCmp();
   }
+  watchPopHint();
   saveS();
 }
 // Vai buscar o OMIE de referência em segundo plano: com a BD vazia pode
@@ -1097,7 +1136,65 @@ async function init() {
     return;
   }
   route();           // pinta já
-  loadOmieRef();     // e depois acerta o OMIE e repinta
+  await loadOmieRef(); // e depois acerta o OMIE e repinta
+  // Só depois do último redesenho automático: um route() a meio cortava a
+  // animação.
+  armPopHint();
+}
+// Dica animada no botão «★ populares»: a lista vem filtrada por omissão e
+// quem chega não percebe que pode ver todos os tarifários. Toca nas primeiras
+// visitas (POP_HINT_MAX), nunca mais depois de o utilizador mexer no botão, e
+// só quando o botão está à vista (no telemóvel fica abaixo da dobra).
+// Sequência (~2,6 s, CSS em .pop-hint): o botão salta com um anel dourado,
+// soltam-se estrelas, um brilho atravessa-o e faz um «toque fantasma»
+// (desliga e volta a ligar) para mostrar que é um interruptor.
+const POP_HINT_MAX = 3;
+let popArmed = false, popObs = null;
+function armPopHint() {
+  try {
+    if (S.popularPicked || !(Number(localStorage.getItem('ceme:popHint') || 0) < POP_HINT_MAX)) return;
+  } catch (e) { return; }
+  popArmed = true;
+  watchPopHint();
+}
+// route() substitui o botão a cada redesenho, por isso volta-se a observar o
+// novo (chamado no fim de route()).
+function watchPopHint() {
+  if (!popArmed) return;
+  if (popObs) popObs.disconnect();
+  const b = document.getElementById('fPop');
+  if (!b) return;
+  if (typeof IntersectionObserver !== 'function') { popArmed = false; playPopHint(); return; }
+  popObs = new IntersectionObserver(es => {
+    if (!es.some(e => e.isIntersecting)) return;
+    popObs.disconnect(); popArmed = false;
+    setTimeout(playPopHint, 350); // deixa o olho chegar ao botão
+  }, { threshold: 1 });
+  popObs.observe(b);
+}
+function playPopHint() {
+  try {
+    const b = document.getElementById('fPop');
+    if (!b || S.popularPicked) return;
+    localStorage.setItem('ceme:popHint', String(Number(localStorage.getItem('ceme:popHint') || 0) + 1));
+    const stars = [];
+    for (let i = 0; i < 9; i++) {
+      const s = document.createElement('i');
+      s.className = 'pop-star';
+      s.setAttribute('aria-hidden', 'true');
+      s.textContent = '★';
+      // em leque à volta do botão, com distâncias e tamanhos um pouco ao acaso
+      const a = (i / 9) * Math.PI * 2 + Math.random() * 0.5, d = 34 + Math.random() * 26;
+      s.style.setProperty('--dx', `${(Math.cos(a) * d * 1.6).toFixed(0)}px`);
+      s.style.setProperty('--dy', `${(Math.sin(a) * d).toFixed(0)}px`);
+      s.style.setProperty('--rot', `${(Math.random() * 360 - 180).toFixed(0)}deg`);
+      s.style.setProperty('--sz', `${(9 + Math.random() * 8).toFixed(0)}px`);
+      s.style.setProperty('--dl', `${(Math.random() * 0.15).toFixed(2)}s`);
+      b.appendChild(s); stars.push(s);
+    }
+    b.classList.add('pop-hint');
+    setTimeout(() => { b.classList.remove('pop-hint'); stars.forEach(s => s.remove()); }, 2800);
+  } catch (e) { /* sem localStorage ou sem DOM: fica sem dica */ }
 }
 window.addEventListener('hashchange', route);
 init();</script>

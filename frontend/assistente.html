@@ -264,7 +264,7 @@ const dec = (n, d = 1) => new Intl.NumberFormat(loc(), { minimumFractionDigits: 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 const TZ = CEME_TZ.TZ;
-const DEF = { region: 'CONT', cap: 60, capOther: false, from: 20, to: 80, when: 'now', tTonight: '23:00', tTomorrow: '09:00', custom: '', nobundle: false, green: false, popular: false, all: false };
+const DEF = { region: 'CONT', cap: 60, capOther: false, from: 20, to: 80, when: 'now', tTonight: '23:00', tTomorrow: '09:00', custom: '', nobundle: false, green: false, popular: true, all: false };
 const P = { ...DEF };
 // As respostas sobrevivem a um reload (os browsers móveis recarregam separadores
 // em segundo plano); fecha-se o separador e recomeça-se do zero.

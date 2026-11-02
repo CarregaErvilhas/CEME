@@ -103,6 +103,10 @@ describe('smoke do assistente', () => {
     assert.ok(en.includes('Mainland') && en.includes('VAT 23%'), 'EN sem região/IVA');
   });
 
+  it('os populares vêm ligados por omissão', () => {
+    assert.equal(run('DEF.popular'), true, 'o assistente tem de arrancar com «★ populares» ligado');
+  });
+
   it('o filtro de populares existe e filtra pela flag da API', () => {
     // o chip tem de estar desenhado, senão não há como o ligar
     const semFiltro = run('vResults()', "LANG = 'pt'; P.popular = false;");

@@ -274,6 +274,23 @@ describe('smoke do frontend', () => {
     }
   });
 
+  // «★ populares» vem ligado por omissão; um estado guardado antes disso traz
+  // popular:false sem ninguém o ter escolhido, e esse não conta.
+  it('populares por omissão, e só um false escolhido à mão sobrevive ao reload', () => {
+    const out = run(`(() => {
+      const r = {};
+      S.popular = true; S.popularPicked = false;
+      localStorage.setItem('ceme:S', JSON.stringify({ popular: false }));
+      loadS(); r.antigo = S.popular;
+      localStorage.setItem('ceme:S', JSON.stringify({ popular: false, popularPicked: true }));
+      loadS(); r.escolhido = S.popular;
+      S.popular = true; S.popularPicked = false; localStorage.removeItem('ceme:S');
+      return r;
+    })()`, `setLang('pt', false);`);
+    assert.equal(out.antigo, true, 'um popular:false antigo, não escolhido, não pode desligar o filtro');
+    assert.equal(out.escolhido, false, 'quem desligou à mão tem de o encontrar desligado');
+  });
+
   it('a pesquisa não depende da língua e ignora acentos', () => {
     const out = run(`(() => {
       S.q = 'luzigas'; const comAcento = filtered().length;
@@ -282,7 +299,7 @@ describe('smoke do frontend', () => {
       S.q = 'zzzz'; const nada = filtered().length;
       S.q = '';
       return { comAcento, semAcento, emIngles, nada };
-    })()`, `setLang('pt', false);`);
+    })()`, `setLang('pt', false); S.popular = false;`);
     // o dedup BT/MT colapsa os dois indexados LUZiGÁS num só
     assert.equal(out.comAcento, 1, 'luzigas devia encontrar 1');
     assert.equal(out.semAcento, 1, 'LUZiGÁS devia encontrar o mesmo 1');
@@ -312,7 +329,7 @@ describe('smoke do frontend', () => {
       S.ramal = 'MT'; const mt = filtered().map(q => q.id);
       S.ramal = 'BT';
       return { bt, mt };
-    })()`, `setLang('pt', false);`);
+    })()`, `setLang('pt', false); S.popular = false;`);
     assert.equal(JSON.stringify(out.bt), JSON.stringify(['f-bt', 'i-bt']), `lista BT: ${out.bt}`);
     assert.equal(JSON.stringify(out.mt), JSON.stringify(['f-mt', 'f-simples', 'i-mt']), `lista MT: ${out.mt}`);
   });

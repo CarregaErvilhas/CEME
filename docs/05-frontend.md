@@ -73,7 +73,7 @@ Quatro ecrãs, navegados pelo hash do URL: `#/onde` → `#/quanto` →
 - **quando:** agora, esta noite, amanhã ou uma data à escolha;
 - **resultados:** o mais barato em destaque e a lista dos outros, com os
   mesmos filtros do simulador (populares, sem condições, verde) e um
-  "Mostrar todos".
+  "Mostrar todos". «Populares» vem ligado por omissão (`DEF`).
 
 As respostas ficam em `sessionStorage['ceme:wizard']` (sobrevivem a um
 reload, desaparecem quando fechas o separador), e o tema em
@@ -86,7 +86,11 @@ Duas vistas, também pelo hash:
 - `#/` — o ranking (`POST /v1/simulate`): energia em kWh ou pela bateria,
   região, data e hora do carregamento, pesquisa e filtros (verde,
   populares, sem condições, favoritos), o aviso de âmbito e o detalhe da
-  conta de cada tarifário.
+  conta de cada tarifário. «Populares» vem ligado por omissão; o estado
+  guardado em `localStorage['ceme:S']` só o desliga se fores tu a mexer-lhe
+  (`popularPicked`). Nas primeiras visitas o botão faz uma animação curta
+  quando aparece no ecrã, para mostrar que se pode desligar (`popHint`,
+  contador em `localStorage['ceme:popHint']`).
 - `#/comparar` — indexado vs fixo: o preço actual lado a lado, um gráfico
   de 60 dias e a tabela de quartos de hora com o preço do indexado **e do
   fixo**, marcando onde cada um ganha.
