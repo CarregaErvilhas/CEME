@@ -1,0 +1,52 @@
+name: CLA
+
+# Verifica que cada autor de pull request assinou o CLA.md, com o CLA Assistant
+# Lite. Assinar é comentar no pull request a frase exacta do CLA.md ("How to
+# sign"); a action guarda-a em signatures/v1/cla.json no branch
+# cla-signatures, que o ruleset do main não cobre.
+#
+# pull_request_target corre com permissões de escrita mesmo para pull
+# requests de forks, portanto este workflow nunca pode fazer checkout nem
+# correr o código do pull request. A action não o faz.
+#
+# Quando os termos do CLA.md mudarem, passa o caminho para
+# signatures/v2/cla.json: toda a gente tem de assinar a versão nova no
+# próximo pull request.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+       (github.event.comment.body == 'recheck' ||
+        github.event.comment.body == 'I have read CLA.md and I agree to it, for my past and future contributions to CEME.'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/CarregaErvilhas/CEME/blob/main/CLA.md
+          path-to-signatures: signatures/v1/cla.json
+          branch: cla-signatures
+          allowlist: FernandoMiguel,*[bot]
+          custom-pr-sign-comment: I have read CLA.md and I agree to it, for my past and future contributions to CEME.
+          custom-notsigned-prcomment: >-
+            Obrigado por contribuíres para o CEME. Antes de isto poder entrar,
+            lê o [Contributor License Agreement](https://github.com/CarregaErvilhas/CEME/blob/main/CLA.md)
+            e assina-o comentando neste pull request exactamente a frase abaixo.
+            Só assinas uma vez.
+          custom-allsigned-prcomment: Todos os autores assinaram o CLA. Obrigado!
+          lock-pullrequest-aftermerge: false
