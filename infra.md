@@ -321,16 +321,11 @@ anterior continua a servir). O procedimento está em
 Domínios em produção:
 
 - **`https://ceme.ocarroeletrico.com`** — o site e a API.
-- **`https://ceme-beta.ocarroeletrico.com`** — domínio antigo: o servidor
-  redirecciona (301, ou 308 fora de GET/HEAD) para o mesmo caminho em
-  `ceme.ocarroeletrico.com`. Precisa de continuar associado ao routing
-  enquanto o redirect for útil.
 - **`https://omie.cocofree.dev`** — a página de estatísticas OMIE
   (`docs/09-omie-estatisticas.md`). Mesmo balanceador e mesmo serviço
-  `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a
-  página OMIE.
+  `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a página OMIE.
 
-Nos três: na Cloudflare, **só um registo `AAAA`** para o IPv6 dedicado do
+Nos dois: na Cloudflare, **só um registo `AAAA`** para o IPv6 dedicado do
 projecto, com **proxy activo**; no Zerops, o domínio registado no
 balanceador L7 (`public-http-routing`) com certificado Let's Encrypt.
 As zonas têm `ssl: strict`, `ipv6: on` e `always_use_https: on`, e a
