@@ -168,6 +168,8 @@ Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
 .
   README.md
   LICENSE                     # PolyForm Noncommercial 1.0.0
+  CLA.md                      # acordo que quem contribui assina
+  CONTRIBUTING.md             # como contribuir
   THIRD-PARTY-NOTICES.md      # licenças e créditos dos dados de terceiros
   infra.md                    # Zerops + Cloudflare + CI/CD
   zerops.yml                  # configuração do serviço `api`
@@ -244,3 +246,7 @@ O código, a documentação, o motor de cálculo e o seed estão sob
 Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não**
 estão sob a PolyForm: mantêm as suas licenças e créditos. Vê
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+Queres contribuir? Antes do primeiro pull request entrar, assinas o
+[CLA](CLA.md) com um comentário no pull request: vê
+[CONTRIBUTING.md](CONTRIBUTING.md).

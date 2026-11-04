@@ -45,7 +45,7 @@ There's no linter or formatter config. Without `DATABASE_URL` the DB is SQLite (
 - Golden anchors in `golden.test.js` change only when a published price changes, and are re-frozen by running the engine, never by hand.
 - Tariff verification against CEME websites: follow `.opencode/commands/ceme-check.md` and the cookbook `.memories/ceme-tarifas-verificacao.md` (values change only with explicit approval; backup DB first).
 - `CEME_READONLY=1` must never write (guarded in `db.js` `run()`/`exec()`); `CEME_SKIP_SEED=1` skips the seed (previews: `docs/preview-envs.md`).
-- Deploy is the Zerops webhook on push to `main` (no Zerops credential in GitHub); CI only runs `npm test` (`.github/workflows/ci.yml`). Infra is documented only in `infra.md`.
+- Deploy is the Zerops webhook on push to `main` (no Zerops credential in GitHub); CI only runs `npm test` (`.github/workflows/ci.yml`); `cla.yml` checks every PR author signed `CLA.md` (signatures on the `cla-signatures` branch). Infra is documented only in `infra.md`.
 - Third-party data (ERSE sheet dumps, OMIE files) never goes into the repo; `backend/seed/` and `backend/data/` are gitignored.
 
 Deeper references: `docs/00` (glossary of EV/energy terms, start here if the domain is new), `docs/02` (engine), `docs/03` (OMIE ingestion), `docs/04` (API/auth), `docs/06` (roadmap — only open work), `docs/07` (islands), `docs/08` (SQLite/Postgres), `docs/09` (OMIE stats page).
