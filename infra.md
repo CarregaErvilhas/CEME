@@ -323,12 +323,7 @@ Domínios em produção:
 - **`https://ceme.ocarroeletrico.com`** — o site e a API.
 - **`https://omie.cocofree.dev`** — a página de estatísticas OMIE
   (`docs/09-omie-estatisticas.md`). Mesmo balanceador e mesmo serviço
-  `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a
-  página OMIE.
-- **`https://seme.ocarroeletrico.com`** — só redirect: quem escreve «CEME»
-  como se ouve cai aqui. Vive inteiro na Cloudflare, sem Zerops: um `AAAA`
-  `100::` com proxy e uma *Redirect Rule* (301, mesmo caminho e query) para
-  `ceme.ocarroeletrico.com`.
+  `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a página OMIE.
 
 Nos dois: na Cloudflare, **só um registo `AAAA`** para o IPv6 dedicado do
 projecto, com **proxy activo**; no Zerops, o domínio registado no
