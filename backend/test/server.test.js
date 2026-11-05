@@ -820,7 +820,7 @@ it('HTML também leva nosniff', async () => {
     assert.equal(r.status, 200);
     const j = await r.json();
     // todos menos o myAtlanteMT em quarentena (e o EZU BT fechado acima)
-    assert.ok(j.data.length >= 90 && j.data.length < 112, `ranking continua (${j.data.length})`);
+    assert.ok(j.data.length >= 90 && j.data.length < 114, `ranking continua (${j.data.length})`);
     assert.ok(!j.data.find(x => x.id === 'atlante-mt-myatlanteac'), 'o corrompido sai do ranking');
   });
 });

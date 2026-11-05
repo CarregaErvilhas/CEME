@@ -151,17 +151,18 @@ describe('golden: preços por região (price_component_region)', () => {
 });
 
 describe('cobertura do seed', () => {
-  it('todas as 20 CEME e 112 tarifários', async () => {
+  it('todas as 20 CEME e 114 tarifários', async () => {
     const db = await seeded();
     assert.equal(db.prepare('SELECT COUNT(*) c FROM ceme').get().c, 20);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 112);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tariff').get().c, 114);
   });
 
   it('todos os tarifários da folha original têm o número dela (legacy_id)', async () => {
     const db = await seeded();
     // Os que vieram depois da folha não ganham número.
     assert.deepEqual(db.prepare('SELECT id FROM tariff WHERE legacy_id IS NULL ORDER BY id').all().map(r => r.id),
-      ['luzigas-promo-casa-bt', 'luzigas-promo-casa-mt', 'luzigas-promo-ceme-bt', 'luzigas-promo-ceme-mt']);
+      ['luzigas-promo-casa-bt', 'luzigas-promo-casa-mt', 'luzigas-promo-ceme-bt', 'luzigas-promo-ceme-mt',
+        'meo-bt-colaboradores', 'meo-mt-colaboradores']);
     // Uma linha "BT/MT" da folha dá dois tarifários, um por tensão.
     assert.deepEqual(db.prepare('SELECT id FROM tariff WHERE legacy_id = 121 ORDER BY id').all().map(r => r.id),
       ['enable-bt-tarifasimple', 'enable-mt-tarifasimple']);
