@@ -136,7 +136,8 @@ export const regionFinal = (energy, tar) => Math.ceil((energy + tar) * 10000 - 1
 //             do CEME (vê CEMES)
 //   newCustomers  true se só o tem quem adere ao CEME
 //   audience  só para um público, que tem de o dizer: 'edp-staff'
-//             (colaboradores da EDP)… O preço sai no /v1/simulate na mesma,
+//             (colaboradores da EDP), 'meo-staff' (colaboradores da MEO)…
+//             O preço sai no /v1/simulate na mesma,
 //             com o `audience`, e quem o mostra decide (o ohmigo esconde-o
 //             a quem não disse que pertence a esse público)
 //   from, to  o primeiro e o último dia em que o preço vale, inclusive.
@@ -234,6 +235,8 @@ export const TARIFFS = [
   { id: 'iberdrola-mt-clienteeletr', ceme: 'iberdrola', name: 'Cliente Eletricidade Iberdrola', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, prices: { UNICO: 0.1989 }, act: 0.1088 },
   { id: 'meo-bt-mobilidadeel-2', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Fixa Cliente MEO Energia e tem MEO M5e/M4e', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, prices: { UNICO: 0.225 }, act: 0.1088 },
   { id: 'meo-mt-mobilidadeel-2', ceme: 'meo', name: 'Mobilidade Elétrica com Tarifa Fixa Cliente MEO Energia e tem MEO M5e/M4e', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, prices: { UNICO: 0.225 }, act: 0.1088 },
+  { id: 'meo-bt-colaboradores', ceme: 'meo', name: 'Mobilidade Elétrica Colaboradores', kind: 'FIXED', voltage: 'BT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, audience: 'meo-staff', prices: { UNICO: 0.195 }, act: 0.1088 },
+  { id: 'meo-mt-colaboradores', ceme: 'meo', name: 'Mobilidade Elétrica Colaboradores', kind: 'FIXED', voltage: 'MT', schedule: 'SIMPLES', cycle: 'SIMPLES', access: 'CARTAO', green: true, bundle: true, audience: 'meo-staff', prices: { UNICO: 0.195 }, act: 0.1088 },
   { id: 'miio-bt-miiobihor', ceme: 'miio', name: 'miio (Bi-Horário Semanal) sem subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', green: true, popular: true, prices: { VAZIO: 0.2666, FORA_VAZIO: 0.3592 }, act: 0.0 },
   { id: 'miio-mt-miiobihor', ceme: 'miio', name: 'miio (Bi-Horário Semanal) sem subscrição', kind: 'FIXED', voltage: 'MT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', green: true, popular: true, prices: { VAZIO: 0.2557, FORA_VAZIO: 0.3212 }, act: 0.0 },
   { id: 'miio-bt-miioonebi', ceme: 'miio', name: 'miio one (Bi-Horário Semanal) subscrição', kind: 'FIXED', voltage: 'BT', schedule: 'BI_HORARIA', cycle: 'SEMANAL', access: 'AMBOS', green: true, bundle: true, prices: { VAZIO: 0.1966, FORA_VAZIO: 0.2892 }, act: 0.0 },
