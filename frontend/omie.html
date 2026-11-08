@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/a11y.css">
+<script src="/a11y.js"></script>
 <title>Estatísticas OMIE</title>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comparador CEME">
@@ -492,6 +494,12 @@ function setLang(l, persist = true) {
 }
 document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => setLang(b.dataset.lang));
 setLang(LANG, false);
+
+// O painel de acessibilidade (a11y.js) também muda a paleta (ao repor).
+document.addEventListener('ceme:paleta', () => {
+  aplicarPaleta(document.documentElement.dataset.paleta);
+  if (lastData) draw(lastData);
+});
 
 const cvdCb = document.getElementById('cvd');
 if (cvdCb) cvdCb.addEventListener('change', (e) => {

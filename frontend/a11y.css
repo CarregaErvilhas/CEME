@@ -1,0 +1,80 @@
+/* Acessibilidade partilhada por todas as páginas (a11y.js põe os atributos
+ * data-paleta, data-contraste e data-texto no <html>).
+ *
+ * Os selectores levam `html:root` à frente para ganhar em especificidade às
+ * variáveis que cada página declara no seu <style>, venha este ficheiro antes
+ * ou depois. */
+
+/* ---------- ligação «saltar para o conteúdo» ---------- */
+.skip { position: fixed; left: 12px; top: -64px; z-index: 1000; padding: 10px 16px; border-radius: 8px; background: #fff; color: #0f172a; font: 700 14px/1.2 system-ui, sans-serif; text-decoration: none; box-shadow: 0 0 0 2px #0f172a; transition: top .12s; }
+.skip:focus { top: 12px; }
+main:focus { outline: none; }
+
+/* ---------- foco sempre visível ---------- */
+html:root :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+/* ---------- botão e painel ---------- */
+.a11ybtn { flex: 0 0 auto; width: 32px; height: 32px; padding: 0; margin-left: 2px; border: 0; border-radius: 8px; background: none; color: #cbd5e1; display: grid; place-items: center; cursor: pointer; }
+.a11ybtn:hover, .a11ybtn[aria-expanded="true"] { background: rgba(255, 255, 255, .1); color: #fff; }
+.a11ybtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* Sem header com botão de tema (assistente, OMIE, guia da API): botão solto. */
+.a11ybtn.fab { position: fixed; z-index: 90; left: 12px; bottom: 12px; width: 40px; height: 40px; margin: 0; border-radius: 50%; background: #0f172a; color: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, .35), 0 0 0 1px rgba(255, 255, 255, .25); }
+.a11ybtn.fab svg { width: 22px; height: 22px; }
+.a11ypanel { position: fixed; z-index: 1001; width: min(320px, calc(100vw - 24px)); padding: 14px 16px 12px; border-radius: 12px; background: #fff; color: #0f172a; border: 1px solid #94a3b8; box-shadow: 0 12px 40px rgba(0, 0, 0, .3); font: 400 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.a11ypanel[hidden] { display: none; }
+.a11ypanel h2 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+.a11ypanel label { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; cursor: pointer; }
+.a11ypanel input { width: 18px; height: 18px; margin: 1px 0 0; flex: 0 0 auto; accent-color: #0072B2; }
+.a11ypanel small { display: block; color: #475569; font-size: 12.5px; }
+.a11ypanel .row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+.a11ypanel button { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 6px; border: 1px solid #94a3b8; background: #f8fafc; color: #0f172a; cursor: pointer; }
+html[data-theme="dark"] .a11ypanel { background: #131c2e; color: #e2e8f0; border-color: #475569; }
+html[data-theme="dark"] .a11ypanel small { color: #94a3b8; }
+html[data-theme="dark"] .a11ypanel .row { border-top-color: #253147; }
+html[data-theme="dark"] .a11ypanel button { background: #1b2639; color: #e2e8f0; border-color: #475569; }
+
+/* ---------- texto maior ---------- */
+html[data-texto="grande"] body { zoom: 1.15; }
+
+/* ---------- paleta para daltonismo ----------
+ * Azul e laranja/vermelhão (Okabe-Ito) no lugar do verde e do vermelho: o
+ * par que protanopia e deuteranopia confundem. O significado nunca depende só
+ * da cor (✓/✗ e texto vão a par), mas isto tira o verde↔vermelho do caminho.
+ * A página OMIE tem as suas escalas próprias (vê omie.html, data-paleta). */
+html:root[data-paleta="daltonismo"] {
+  --acc: #56B4E9; --accD: #005f93; --accH: #004b75; --hi: #e6f2fa; --link: #005f93;
+  --yes: #005f93; --no: #b34700; --rose: #d55e00; --gold: #e69f00;
+  --cFix: #e69f00; --cFixOff: #f3cf80; --cIdx: #0072b2; --cIdxOff: #8fc4e4;
+  --charge: #0072b2;
+}
+html:root[data-paleta="daltonismo"][data-theme="dark"] {
+  --accD: #7cc4f0; --accH: #a6d8f6; --hi: #10283a; --link: #7cc4f0;
+  --yes: #7cc4f0; --no: #f0a060; --rose: #f0a060;
+  --cFix: #f0b840; --cFixOff: #a87a10; --cIdx: #56b4e9; --cIdxOff: #1d6fa5;
+  --charge: #56b4e9;
+}
+html:root[data-paleta="daltonismo"] nav a.on { background: #56B4E9; color: #00243a; }
+
+/* ---------- contraste elevado ---------- */
+html:root[data-contraste="mais"] {
+  --ink: #000; --mut: #1e293b; --mute: #1e293b; --line: #475569; --line2: #1e293b; --ital: #000; --sep: #475569;
+  --bg: #fff; --card: #fff; --soft: #f1f5f9;
+}
+html:root[data-contraste="mais"][data-theme="dark"] {
+  --ink: #fff; --mut: #e2e8f0; --mute: #e2e8f0; --line: #94a3b8; --line2: #cbd5e1; --ital: #fff; --sep: #94a3b8;
+  --bg: #000; --card: #0b1120; --soft: #131c2e; --bg0: #000; --bg1: #000;
+}
+html:root[data-contraste="mais"] :where(main, footer) a { text-decoration: underline; text-decoration-thickness: 2px; }
+html:root[data-contraste="mais"] :where(.card, .fs-card, article, table, input, select, button) { border-color: currentColor; }
+
+/* ---------- sistema operativo em contraste forçado ---------- */
+@media (forced-colors: active) {
+  .a11ybtn, .a11ypanel { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:root *, html:root *::before, html:root *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+
+/* O cabeçalho verde das páginas passa a azul-petróleo no modo daltonismo. */
+html:root[data-paleta="daltonismo"] .hero { background: radial-gradient(1200px 400px at 15% -10%, #0b5d8f 0%, transparent 60%), radial-gradient(900px 300px at 95% 10%, #7a3e00 0%, transparent 55%), linear-gradient(135deg, #06243a 0%, #0a3552 45%, #1c2a3a 100%); }
+html:root[data-paleta="daltonismo"] .hero :is(span, p) { color: #bfe3f8; }
