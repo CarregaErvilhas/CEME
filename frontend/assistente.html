@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="/a11y.css">
+<script src="/a11y.js"></script>
 <title>CEME — tarifário mais barato</title>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comparador CEME">
@@ -386,7 +388,7 @@ const STEPS = ['onde', 'quanto', 'quando'];
 function header(step) {
   const i = STEPS.indexOf(step);
   const left = step === 'landing'
-    ? '<a class="home" href="#/"><img src="/icon-192.png?v=2" alt="" width="28" height="28">CEME</a>'
+    ? '<a class="home" href="#/"><img src="/icon-32.png?v=2" srcset="/icon-32.png?v=2 1x, /icon-64.png?v=2 2x, /icon-96.png?v=2 3x" alt="" width="28" height="28">CEME</a>'
     : `<button class="iconbtn back" data-act="back" aria-label="${t('back')}"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>`;
   const mid = i >= 0 ? `<div class="progress" aria-label="${i + 1} / 3">${STEPS.map((_, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>` : '';
   document.getElementById('top').innerHTML = `${left}${mid}<span class="spacer"></span>

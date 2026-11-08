@@ -24,6 +24,8 @@ const STATIC = {
   '/pwa.js': { file: 'pwa.js', headers: JS },
   '/api.js': { file: 'api.js', headers: JS },
   '/theme.js': { file: 'theme.js', headers: JS },
+  '/a11y.js': { file: 'a11y.js', headers: JS },
+  '/a11y.css': { file: 'a11y.css', headers: { 'content-type': 'text/css; charset=utf-8', ...NO_STORE } },
   '/pages.css': { file: 'pages.css', headers: { 'content-type': 'text/css; charset=utf-8', ...NO_STORE } },
   // PWA (app instalável): manifest, service worker e ícones.
   '/manifest.webmanifest': { file: 'manifest.webmanifest', headers: { 'content-type': 'application/manifest+json; charset=utf-8', ...NO_STORE } },
@@ -34,6 +36,9 @@ const STATIC = {
   '/icon-512.png': { file: 'icon-512.png', headers: ICON, missing: 404 },
   '/icon-180.png': { file: 'icon-180.png', headers: ICON, missing: 404 },
   '/icon-32.png': { file: 'icon-32.png', headers: ICON, missing: 404 },
+  // 64 e 96 px: o logo das páginas (28 px) usa-os em ecrãs 2x e 3x (srcset).
+  '/icon-64.png': { file: 'icon-64.png', headers: ICON, missing: 404 },
+  '/icon-96.png': { file: 'icon-96.png', headers: ICON, missing: 404 },
   '/icon-maskable-512.png': { file: 'icon-maskable-512.png', headers: ICON, missing: 404 },
   // Imagem das pré-visualizações de links (WhatsApp, Facebook, X).
   '/og.png': { file: 'og.png', headers: ICON, missing: 404 },
@@ -100,7 +105,7 @@ const robots = origin => `User-agent: *\nDisallow: /v1/\nSitemap: ${origin}/site
 
 // Páginas no sitemap.xml. Só um caminho por página (sem /about, /contact,
 // /index.html) e sem a /tabela. No domínio OMIE só existe a raiz.
-const SITEMAP_PATHS = ['/', '/simulador', '/sobre', '/contactos', '/api', '/omie'];
+const SITEMAP_PATHS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie'];
 const sitemap = (origin, paths) => '<?xml version="1.0" encoding="UTF-8"?>\n'
   + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
   + paths.map(p => `  <url><loc>${origin}${p}</loc></url>\n`).join('')
@@ -258,6 +263,25 @@ async function sendHtml(req, res, file, headers = {}) {
   res.end(html);
 }
 
+// Quem abre um endereço que não existe num browser (Accept: text/html) vê uma
+// página com saída, não um JSON 401. Só GET/HEAD fora de /v1/: a API continua
+// a responder 401 a quem não traz credencial, para não revelar que rotas existem.
+const wantsHtml = req => /\btext\/html\b/.test(String(req.headers.accept || ''));
+async function notFoundPage(req, res) {
+  const lang = negotiateLang(req.headers['accept-language']);
+  let html;
+  try { html = await readFile(new URL('404.html', FRONTEND), 'utf8'); }
+  catch { return false; }
+  html = html.replace('<html lang="pt-PT">', `<html lang="${lang === 'en' ? 'en' : 'pt-PT'}">`);
+  res.writeHead(404, {
+    'content-type': 'text/html; charset=utf-8', ...NO_STORE, ...NOSNIFF, ...PAGE_SECURITY,
+    'content-security-policy': csp(inlineScriptHashes(html)), vary: 'Accept-Language',
+    'x-robots-tag': 'noindex',
+  });
+  res.end(html);
+  return true;
+}
+
 export async function servePage(req, res, url) {
   // Só GET e HEAD (o HEAD sem corpo, o node trata disso). O resto segue
   // para a API, que responde 405 ou 401.
@@ -309,5 +333,7 @@ export async function servePage(req, res, url) {
     });
     return true;
   }
+  // Nenhuma rota: a API trata dos /v1/ (e de quem não é um browser).
+  if (!p.startsWith('/v1/') && wantsHtml(req)) return notFoundPage(req, res);
   return false;
 }

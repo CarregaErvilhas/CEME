@@ -596,7 +596,27 @@ it('HTML também leva nosniff', async () => {
       assert.match(r.headers.get('content-type'), /xml/);
       const xml = await r.text();
       assert.match(xml, /<loc>https?:\/\/[^<]+\/sobre<\/loc>/);
+      assert.match(xml, /<loc>https?:\/\/[^<]+\/privacidade<\/loc>/);
       assert.doesNotMatch(xml, /tabela/);
+    });
+
+    it('um browser que abre um endereço desconhecido vê uma página 404; a API continua a dar 401/JSON', async () => {
+      const r = await fetch(`${BASE}/nao-existe`, { headers: { accept: 'text/html,application/xhtml+xml' } });
+      assert.equal(r.status, 404);
+      assert.match(r.headers.get('content-type'), /text\/html/);
+      assert.match(r.headers.get('x-robots-tag'), /noindex/);
+      assert.match(await r.text(), /não existe/);
+      assert.equal((await fetch(`${BASE}/nao-existe`)).status, 401);
+      assert.equal((await fetch(`${BASE}/v1/nada`, { headers: { accept: 'text/html' } })).status, 401);
+    });
+
+    it('as páginas carregam a acessibilidade partilhada (a11y.js/.css) e servem os ficheiros', async () => {
+      for (const c of ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie']) {
+        const { html } = await abrir(c);
+        assert.match(html, /href="\/a11y\.css"/, c);
+        assert.match(html, /src="\/a11y\.js"/, c);
+      }
+      for (const f of ['/a11y.js', '/a11y.css', '/icon-64.png', '/icon-96.png']) assert.equal((await fetch(`${BASE}${f}`)).status, 200, f);
     });
 
     it('as páginas chegam com o texto lá dentro, para quem não corre JavaScript', async () => {
