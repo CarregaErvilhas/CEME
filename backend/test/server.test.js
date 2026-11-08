@@ -600,6 +600,17 @@ it('HTML também leva nosniff', async () => {
       assert.doesNotMatch(xml, /tabela/);
     });
 
+    it('/llms.txt é público, em Markdown, e aponta para a API e as páginas', async () => {
+      const r = await fetch(`${BASE}/llms.txt`);
+      assert.equal(r.status, 200);
+      assert.match(r.headers.get('content-type'), /text\/plain/);
+      const txt = await r.text();
+      assert.match(txt, /^# CEME v2$/m);
+      assert.match(txt, /\]\(https?:\/\/[^)]+\/api\)/);
+      assert.match(txt, /\]\(https?:\/\/[^)]+\/simulador\)/);
+      assert.doesNotMatch(txt, /tabela/);
+    });
+
     it('um browser que abre um endereço desconhecido vê uma página 404; a API continua a dar 401/JSON', async () => {
       const r = await fetch(`${BASE}/nao-existe`, { headers: { accept: 'text/html,application/xhtml+xml' } });
       assert.equal(r.status, 404);

@@ -103,6 +103,45 @@ const securityTxt = origin => [
 // absoluto, por isso leva o domínio do pedido.
 const robots = origin => `User-agent: *\nDisallow: /v1/\nSitemap: ${origin}/sitemap.xml\n`;
 
+// /llms.txt (https://llmstxt.org): o que o site é e onde está cada coisa, em
+// Markdown curto, para quem lê o site por um assistente ou ferramenta de
+// código. É em inglês, como o guia da API. Os links levam o domínio do pedido.
+// Os valores (preços, contagens) não se copiam para aqui: vêm da API.
+const llmsTxt = (origin, omieHost) => (omieHost ? `# OMIE statistics (Portugal)
+
+> Monthly averages of the OMIE wholesale electricity price for Portugal, today's and tomorrow's prices and a month forecast. Community project, not for profit; part of CEME v2.
+
+## Pages
+
+- [OMIE statistics](${origin}/): the page itself (pt-PT and English)
+
+## Related
+
+- [CEME v2 simulator](${PUBLIC_ORIGIN}/): cost of the energy part of an EV charge on the Mobi.E network
+- [API guide](${PUBLIC_ORIGIN}/api): the same OMIE series as JSON (\`/v1/omie/*\`)
+` : `# CEME v2
+
+> Simulator for the energy part of an EV charge on Portugal's Mobi.E network: the CEME (energy supplier) tariff including TAR, plus IEC, VAT and the activation fee (EGME). It does not include the charge point operator's (OPC) fee. Community project, not for profit. The site is in pt-PT and English.
+
+## Pages
+
+- [Assistant](${origin}/): three questions (where, how much, when) and the cheapest tariff
+- [Full simulator](${origin}/simulador): ranking of every tariff, line-by-line bill, indexed vs fixed comparison
+- [OMIE statistics](${origin}/omie): monthly OMIE price averages, today's and tomorrow's prices
+- [About](${origin}/sobre)
+- [Privacy](${origin}/privacidade)
+
+## API
+
+- [API guide](${origin}/api): JSON endpoints (tariffs, CEMEs, TAR, OMIE series, \`POST /v1/simulate\`) and how to get a key. All \`/v1/\` routes need authentication; read-only.
+
+## Optional
+
+- [Source code and docs](https://github.com/CarregaErvilhas/CEME): glossary of EV and energy terms in \`docs/00-glossario.md\` (pt-PT)
+- [ohmigo](https://github.com/CarregaErvilhas/ohmigo-mcp): MCP server that prices charging at every public charger in Portugal, using this site's energy prices
+- [O Carro Elétrico](https://ocarroeletrico.com): guides for EV drivers in Portugal
+`);
+
 // Páginas no sitemap.xml. Só um caminho por página (sem /about, /contact,
 // /index.html) e sem a /tabela. No domínio OMIE só existe a raiz.
 const SITEMAP_PATHS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie'];
@@ -302,6 +341,11 @@ export async function servePage(req, res, url) {
   if (p === '/robots.txt') {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', vary: 'Host', ...NOSNIFF });
     res.end(robots(originOf(req)));
+    return true;
+  }
+  if (p === '/llms.txt') {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', vary: 'Host', ...NOSNIFF });
+    res.end(llmsTxt(publicOrigin(host), host === OMIE_HOST));
     return true;
   }
   if (p === '/sitemap.xml') {
