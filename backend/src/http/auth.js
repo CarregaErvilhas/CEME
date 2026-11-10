@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { get } from '../db.js';
 import { signJwt, verifyJwt, hashKey } from '../auth/tokens.js';
 import { json, fail, clientIp } from './respond.js';
-import { rateBucket, rateOver, rateLimited, RATE_SESSION, RATE_AUTH_FAIL } from './ratelimit.js';
+import { rateBucket, rateOver, rateLimited, rlHeaders, RATE_SESSION, RATE_AUTH_FAIL } from './ratelimit.js';
 
 // O segredo que assina os JWT. Sem JWT_SECRET usa-se um valor de dev
 // conhecido, para correres local sem configurar nada. Em produção
@@ -24,10 +24,11 @@ const SESSION_TTL = 86400; // 24 h, em segundos
 // auth, por isso tem o seu próprio rate limit, mais apertado.
 export function issueSession(req, res) {
   const rl = rateBucket(`sess:${clientIp(req)}`, RATE_SESSION);
+  const headers = rlHeaders(rl, RATE_SESSION);
   if (!rl.allowed) return rateLimited(res, rl, RATE_SESSION);
-  if (WEAK_IN_PROD) return fail(res, 503, 'no_secret', 'JWT_SECRET em falta: export JWT_SECRET=<openssl rand -hex 32>');
+  if (WEAK_IN_PROD) return fail(res, 503, 'no_secret', 'JWT_SECRET em falta: export JWT_SECRET=<openssl rand -hex 32>', headers);
   const token = signJwt({ kind: 'WEB_SESSION', sid: randomUUID() }, SECRET, SESSION_TTL);
-  return json(res, 200, { token, expires_in: SESSION_TTL });
+  return json(res, 200, { token, expires_in: SESSION_TTL }, headers);
 }
 
 // Chaves que passaram na BD há pouco (hash -> fim da validade). Só servem
