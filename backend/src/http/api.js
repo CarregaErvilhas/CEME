@@ -22,6 +22,7 @@ import { finalTotal, promoOut } from '../promos.js';
 import { json, fail, clientIp } from './respond.js';
 import { rateBucket, rlHeaders, rateLimited, RATE_DEFAULT } from './ratelimit.js';
 import { auth, issueSession } from './auth.js';
+import { ExpectedError, failFromError } from './expected.js';
 
 const MAX_BODY = 64 * 1024; // tamanho máximo do corpo de um POST (64 KB)
 
@@ -145,7 +146,7 @@ async function tabela({ res, headers }) {
 // baixo e nada na BD), respondem 502.
 const omieRoute = (load, what) => async ({ res, url, headers }) => {
   try { json(res, 200, await load(url), headers); }
-  catch (e) { fail(res, 502, 'omie_unavailable', `${what} indisponíveis: ${e.message}`, headers); }
+  catch (e) { failFromError(res, e, headers, { where: `omie ${what}`, status: 502, code: 'omie_unavailable', message: `${what} indisponíveis` }); }
 };
 const omieDaily = omieRoute((url) => {
   const nDays = Number(url.searchParams.get('days') || 60);
@@ -201,7 +202,7 @@ async function indexedQuarters({ res, url, headers }) {
 
   let q;
   try { q = await getQuarters(quarterDay(url.searchParams.get('date'))); }
-  catch (e) { return fail(res, 502, 'omie_unavailable', e.message, headers); }
+  catch (e) { return failFromError(res, e, headers, { where: 'indexed quarters', status: 502, code: 'omie_unavailable', message: 'OMIE indisponível' }); }
 
   try {
     const vm = vmeta(t.id);
@@ -219,7 +220,7 @@ async function indexedQuarters({ res, url, headers }) {
       // Preço do indexado neste quarto, com a TAR da região e as perdas do
       // próprio quarto.
       const tarEurKwh = tarByPeriod[period];
-      if (tarEurKwh == null) throw new Error(`sem TAR ${region}/${t.voltage}/${period} em ${q.date}`);
+      if (tarEurKwh == null) throw new ExpectedError(`sem TAR ${region}/${t.voltage}/${period} em ${q.date}`);
       const loss = lossAt(t.voltage, r.utc) ?? vm.loss;
       const { price } = indexedPrice({ omieEurKwh: r.pt / 1000, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh, loss, formula: vm.formula });
       return {
@@ -249,7 +250,7 @@ async function indexedQuarters({ res, url, headers }) {
       wins: tallyWinners(comp),
       quarters: comp.map(x => ({ ...x, cheap: cheap.has(x.utc) })),
     }, headers);
-  } catch (e) { fail(res, 400, 'quote_failed', e.message, headers); }
+  } catch (e) { failFromError(res, e, headers, { where: 'indexed' }); }
 }
 
 // Lê o corpo de um POST até MAX_BODY. Devolve o texto, ou null se passou do
@@ -430,7 +431,7 @@ async function simulate({ req, res, headers }) {
       ...(profile && { profile: { slices: profile.length, from: profile[0].at.toISOString(), to: profile.at(-1).at.toISOString(), withSpot: profile.filter(x => x.spot).length } }),
       ...(profile && useSpot && { sessionOmie: session && { eurKwh: session.omieKwh, hours: session.hours, from: session.from, to: session.to } }),
       avg: Math.round(avg * 100) / 100, data }, headers);
-  } catch (e) { fail(res, 400, 'quote_failed', e.message, headers); }
+  } catch (e) { failFromError(res, e, headers, { where: 'simulate' }); }
 }
 
 // As rotas: caminho → { método aceite, handler }. Um GET aceita também HEAD.
