@@ -434,6 +434,39 @@ As listas oficiais estão em `https://www.cloudflare.com/ips-v4` e
 > **Cuidado:** um `accessPolicy` mal configurado corta também o tráfego
 > legítimo. Depois de mexeres, confirma que o site responde 200.
 
+### O IP do cliente
+
+Os rate limits por IP (`docs/04-api-auth.md`) precisam do IP real do
+cliente, e a ligação TCP chega sempre do balanceador. Há dois proxies à
+frente: a Cloudflare acrescenta o IP do cliente ao `X-Forwarded-For`, e o
+balanceador L7 do Zerops acrescenta o de quem lhe ligou (a Cloudflare, ou o
+cliente, se o `realIpHeader` acima estiver em efeito). A entrada que a
+Cloudflare escreveu é a 2.ª a contar da direita nos dois casos, por isso o
+`zerops.yml` define `CEME_TRUST_PROXY: 2`.
+
+Se o valor estiver errado, todos os visitantes partilham um contador e um
+só cliente com chaves erradas bloqueia as API keys de todos:
+
+- se o balanceador substituir o `X-Forwarded-For` por uma só entrada, não
+  há 2.ª entrada e o servidor cai para o IP da ligação (o do balanceador);
+- se o balanceador acrescentar o IP da Cloudflare e o valor for `1`, o
+  contador é por nó da Cloudflare.
+
+Para confirmar, de duas redes diferentes (o telemóvel em dados móveis e
+casa), um pedido de cada:
+
+```bash
+curl -s -o /dev/null -D - -X POST https://ceme.ocarroeletrico.com/v1/session | grep -i x-ratelimit-remaining
+```
+
+O primeiro pedido de cada rede tem de mostrar `9`. Se o segundo mostrar `8`,
+o contador é partilhado e o valor está errado.
+
+O valor só é de confiança com o `accessPolicy` acima activo (`defaultPolicy:
+deny`): sem ele, quem vá directo à origem escreve o `X-Forwarded-For` que
+quiser. E se a variável estiver também definida na GUI do serviço, as duas
+têm de dizer o mesmo.
+
 ### SSL e o certificado
 
 `ssl: strict` e `ipv6: on` são o que o Zerops pede. Com

@@ -97,7 +97,7 @@ estáticos (`grants.test.js`), porque não há servidor nos testes.
 | `JWT_SECRET` | assina as sessões ([04](04-api-auth.md)) | variável secreta do serviço `api` |
 | `NODE_ENV` | `production` faz o servidor recusar o segredo de dev | `zerops.yml` |
 | `CEME_API_KEY` | chave de terceiros ([04](04-api-auth.md)) | variável secreta, opcional |
-| `CEME_TRUST_PROXY` | quantos proxies de confiança há à frente ([04](04-api-auth.md)) | variável do serviço |
+| `CEME_TRUST_PROXY` | quantos proxies de confiança há à frente ([04](04-api-auth.md)) | `zerops.yml` (`2`) |
 | `CEME_API_KEY_RATE_LIMIT` | pedidos por minuto da `CEME_API_KEY` ([04](04-api-auth.md)) | variável do serviço |
 | `CEME_CACHE_DIR` | onde fica a cache dos CSV do TF (por omissão `backend/data/`) | `zerops.yml` (`/tmp/ceme-cache`) |
 | `PUBLIC_ORIGIN` | o domínio canónico das páginas (por omissão `https://ceme.ocarroeletrico.com`) | local, previews |

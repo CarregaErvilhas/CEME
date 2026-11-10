@@ -7,6 +7,7 @@ import { fail } from './respond.js';
 const RATE_WINDOW_MS = 60_000;
 export const RATE_DEFAULT = 60;        // pedidos/minuto por defeito
 export const RATE_SESSION = 10;        // POST /v1/session por IP e minuto
+export const RATE_AUTH_FAIL = 20;      // X-API-Key falhadas por IP e minuto
 const RATE_MAX_BUCKETS = 10_000;
 const buckets = new Map();             // chave -> { count, resetAt }
 
@@ -26,6 +27,14 @@ export function rateBucket(key, limit) {
   }
   b.count += 1;
   return { allowed: b.count <= limit, remaining: Math.max(0, limit - b.count), reset: b.resetAt };
+}
+
+// Vê o contador de `key` sem contar mais um pedido. Devolve o mesmo que
+// rateBucket, ou null se não houver contador em curso.
+export function rateOver(key, limit) {
+  const b = buckets.get(key);
+  if (!b || Date.now() > b.resetAt) return null;
+  return { allowed: b.count < limit, remaining: Math.max(0, limit - b.count), reset: b.resetAt };
 }
 
 // Os cabeçalhos x-ratelimit-* que vão em cada resposta da API, para o

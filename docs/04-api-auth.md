@@ -122,6 +122,15 @@ servidor.
 - API key: pela chave (os primeiros 8 caracteres), 60 por minuto ou o
   `api_client.rate_limit` da BD. Para a chave da env, quem manda nesse
   valor é `CEME_API_KEY_RATE_LIMIT` (vê abaixo).
+- X-API-Key falhadas: por IP, 20 por minuto. Passado o limite, as chaves
+  desse IP levam 429 sem ir à BD, para quem tenta chaves ao calhas não
+  gastar uma query por pedido. Não conta nem bloqueia o Bearer (verifica-se
+  sem BD), nem os pedidos sem credencial (continuam a dar 401, mesmo num
+  caminho que não existe). Uma chave que passou na BD na última hora, a
+  partir de qualquer IP, continua a entrar mesmo de um IP bloqueado; a BD é
+  consultada na mesma, por isso revogar tem efeito imediato. Uma chave
+  válida usada pela primeira vez a partir de um IP bloqueado espera pelo fim
+  do minuto.
 
 Ao passar o limite recebes **429**, com os cabeçalhos
 `x-ratelimit-limit/remaining/reset` e `retry-after`. O mapa de contadores
@@ -133,7 +142,10 @@ Cloudflare e do balanceador, por isso o IP da ligação é sempre o do proxy.
 A variável `CEME_TRUST_PROXY=N` diz quantos proxies de confiança há à
 frente: o IP do cliente passa a ser a N-ésima entrada a contar da direita
 do cabeçalho `X-Forwarded-For` (as da esquerda o cliente pode inventar).
-Sem a variável, usa-se o IP da ligação.
+Sem a variável, usa-se o IP da ligação. Em produção vale `2` (no
+`zerops.yml`; vê `infra.md`, «O IP do cliente»): sem ela, todos os
+visitantes partilhavam o mesmo contador, e 20 chaves erradas de um só
+cliente bloqueavam as API keys de todos.
 
 Todas as respostas JSON e o HTML levam `x-content-type-options: nosniff`.
 

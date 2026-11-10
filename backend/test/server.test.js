@@ -989,3 +989,57 @@ describe('servidor: /v1/indexed/quarters com fixo de outro ciclo', () => {
     assert.ok(at('15:00').price < at('20:00').price, 'o indexado sobe às 20:00 (TAR de fora)');
   });
 });
+
+// X-API-Key falhadas contam por IP: passado o limite, 429 sem ir à BD. O
+// Bearer, a falta de credencial e uma chave que já passou não são bloqueados.
+describe('servidor: limite de X-API-Key falhadas por IP', () => {
+  const P = PORT + 11, URL_ = `http://127.0.0.1:${P}`;
+  const KEY = 'test-key-authfail-0123456789';
+  let p;
+  const get = (pathname, ip, headers = {}) =>
+    fetch(`${URL_}${pathname}`, { headers: { 'x-forwarded-for': ip, ...headers } });
+
+  before(async () => {
+    const { CEME_API_KEY, ...base } = process.env;
+    void CEME_API_KEY;
+    p = spawnServer({ ...base, JWT_SECRET: 'test-secret-authfail', CEME_API_KEY: KEY, CEME_TRUST_PROXY: '1' }, P);
+    await waitUp(`${URL_}/`);
+  });
+  after(() => { if (p) p.kill('SIGTERM'); });
+
+  it('20 chaves erradas dão 401; a 21.ª dá 429 com retry-after', async () => {
+    const ip = '203.0.113.1';
+    for (let i = 0; i < 20; i++) {
+      const r = await get('/v1/nao-existe', ip, { 'X-API-Key': `errada-${i}` });
+      assert.equal(r.status, 401, `pedido ${i + 1}: ainda dentro do limite`);
+    }
+    const r = await get('/v1/health', ip, { 'X-API-Key': 'errada-x' });
+    assert.equal(r.status, 429);
+    assert.ok(Number(r.headers.get('retry-after')) >= 1);
+  });
+
+  it('do IP bloqueado: sem credencial num caminho desconhecido continua 401, não 404', async () => {
+    const ip = '203.0.113.2';
+    for (let i = 0; i < 21; i++) await get('/v1/health', ip, { 'X-API-Key': `errada-${i}` });
+    assert.equal((await get('/v1/nao-existe', ip)).status, 401);
+  });
+
+  it('do IP bloqueado: Bearer passa', async () => {
+    const ip = '203.0.113.3';
+    const token = signJwt({ kind: 'WEB_SESSION', sid: 'x' }, 'test-secret-authfail', 60);
+    for (let i = 0; i < 21; i++) await get('/v1/health', ip, { 'X-API-Key': `errada-${i}` });
+    assert.equal((await get('/v1/health', ip, { Authorization: `Bearer ${token}` })).status, 200);
+  });
+
+  it('do IP bloqueado: uma chave que já passou na BD continua a entrar', async () => {
+    const ip = '203.0.113.4';
+    assert.equal((await get('/v1/health', '198.51.100.9', { 'X-API-Key': KEY })).status, 200);
+    for (let i = 0; i < 21; i++) await get('/v1/health', ip, { 'X-API-Key': `errada-${i}` });
+    assert.equal((await get('/v1/health', ip, { 'X-API-Key': 'errada-y' })).status, 429);
+    assert.equal((await get('/v1/health', ip, { 'X-API-Key': KEY })).status, 200);
+  });
+
+  it('outro IP não é afectado', async () => {
+    assert.equal((await get('/v1/health', '203.0.113.99', { 'X-API-Key': 'errada' })).status, 401);
+  });
+});
