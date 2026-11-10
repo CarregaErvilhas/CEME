@@ -236,7 +236,8 @@ fixo nesse quarto) e `winner` (`IDX`, `FIX`, `EQ` ou `null`), e a resposta
 traz `wins` com as contagens. Sem `fixed`, `winner` é sempre `null`.
 
 Um `tariff` que não seja indexado é trocado pelo primeiro indexado. Erros:
-400 `bad_region`, 404 `no_indexed`, 502 `omie_unavailable`.
+400 `bad_region`, 400 `quote_failed` (dados em falta, como a TAR), 404 `no_indexed`,
+502 `omie_unavailable`, 500 `internal_error`.
 
 ### `POST /v1/simulate`
 

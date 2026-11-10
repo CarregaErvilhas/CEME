@@ -18,6 +18,7 @@ import { shiftDays } from './time.js';
 import { pickComponents } from './db/components.js';
 import { VERSIONS } from './db/seed-data.js';
 import { discounted, freeFirst, promosFor } from './promos.js';
+import { ExpectedError } from './http/expected.js';
 
 // "Hoje" em Portugal, para escolher a versão em vigor (vê civilDay).
 export const today = () => civilDay();
@@ -228,7 +229,7 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
   for (const per of ['VAZIO', 'FORA_VAZIO']) {
     // A TAR é a da região do carregamento. Sem TAR, erro (quarentena).
     const tar = pricing.tar(t.voltage, per, day);
-    if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${day}`);
+    if (tar == null) throw new ExpectedError(`sem TAR ${region}/${t.voltage}/${per} em ${day}`);
     const price = indexedPrice({ omieEurKwh: spotKwh ?? omieForPeriod(per), kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tar, loss: spot?.loss ?? lossPer?.[per] ?? vm.loss, formula: vm.formula }).price;
     out[per] = price;
     splitIdx[per] = { energy: price - tar, tar };
@@ -242,7 +243,7 @@ export function quoteOne(t, { at, day, kwh, region, omie, omieVazio, omieFora, o
   const sliceOf = (p, avg = null) => {
     const per = periodForRegion({ region, schedule: t.schedule, cycle: t.cycle, at: p.at });
     const tar = pricing.tar(t.voltage, per, civilDay(p.at, REGIONS[region].tz));
-    if (tar == null) throw new Error(`sem TAR ${region}/${t.voltage}/${per} em ${civilDay(p.at, REGIONS[region].tz)}`);
+    if (tar == null) throw new ExpectedError(`sem TAR ${region}/${t.voltage}/${per} em ${civilDay(p.at, REGIONS[region].tz)}`);
     const loss = avg ? avg.loss : p.spot ? (lossAt(t.voltage, p.at) ?? vm.loss) : (lossPer?.[per] ?? vm.loss);
     const omieKwh = avg ? avg.omieKwh : p.spot?.omieKwh ?? omieForPeriod(per);
     const price = indexedPrice({ omieEurKwh: omieKwh, kIndex: ver.k_index_eur_mwh ?? 0, cgs: ver.cgs_eur_mwh ?? 0, voltage: t.voltage, tarEurKwh: tar, loss, formula: vm.formula }).price;
