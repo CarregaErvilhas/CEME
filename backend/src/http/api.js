@@ -470,6 +470,7 @@ export async function serveApi(req, res, url) {
   // Qualquer outro caminho (mesmo um que não existe) pede credencial: um
   // desconhecido sem credencial dá 401, não 404.
   const a = await auth(req);
+  if (!a.ok && a.error === 'rate_limited') return rateLimited(res, a.rl, a.limit);
   if (!a.ok) return fail(res, 401, 'unauthorized', AUTH_MESSAGES[a.error] || AUTH_MESSAGES.invalid_token);
 
   // Rate limit, depois da auth: por chave (API key) ou por IP (sessão web).

@@ -94,6 +94,10 @@ zerops:
       envVariables:
         PORT: 3001
         NODE_ENV: production
+        # Proxies de confiança à frente (Cloudflare e balanceador L7): o IP do
+        # cliente é a 2.ª entrada do X-Forwarded-For a contar da direita.
+        # Vê infra.md, «O IP do cliente».
+        CEME_TRUST_PROXY: 2
         # Referência às variáveis de sistema do serviço managed `db` — o pg
         # gera connectionString, hostname, user, password e port
         # automaticamente (ref: docs.zerops.io/features/env-variables).
