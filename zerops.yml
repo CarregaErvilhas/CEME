@@ -103,5 +103,5 @@ zerops:
         DATABASE_MIGRATE_URL: ${db_connectionString}
         # O arranque não faz DDL: só verifica o schema.
         CEME_SCHEMA_EXTERNAL: 1
-        # Cache dos CSV do TF: o `ceme` não pode escrever em /var/www.
+        # Cache dos CSV do TF: o `cocofree` não pode escrever em /var/www.
         CEME_CACHE_DIR: /tmp/ceme-cache
