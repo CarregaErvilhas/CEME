@@ -4,6 +4,7 @@
 // servePage(req, res, url) devolve true se o pedido era para uma página ou
 // ficheiro daqui (e já respondeu), ou false para o router seguir para a API.
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fail } from './respond.js';
 import { prerender } from './prerender.js';
@@ -236,6 +237,17 @@ const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || 'https://ceme.ocarroeletrico
 // comparador.
 const publicOrigin = host => (host === OMIE_HOST ? `https://${OMIE_HOST}` : PUBLIC_ORIGIN);
 
+// O endereço da imagem das pré-visualizações leva um hash do ficheiro. O X (e
+// o Facebook, o LinkedIn) guardam durante dias o que buscaram de cada endereço
+// de imagem, falhas incluídas, e aí mostram uma caixa cinzenta: com o hash, uma
+// imagem nova é um endereço novo e eles voltam a buscá-la. A rota /og.png
+// ignora o ?v=.
+const OG_IMAGE = (() => {
+  try {
+    return `${PUBLIC_ORIGIN}/og.png?v=${createHash('sha256').update(readFileSync(new URL('og.png', FRONTEND))).digest('hex').slice(0, 10)}`;
+  } catch { return `${PUBLIC_ORIGIN}/og.png`; }
+})();
+
 // Páginas cujo texto o servidor já põe no HTML (prerender.js). A OMIE vive
 // de dados da API e a /tabela não é indexada; a /api já é HTML estático.
 const PRERENDER = new Set(['assistente.html', 'index.html', 'about.html', 'contact.html', 'privacy.html']);
@@ -276,9 +288,16 @@ function seoHead(html, req, lang) {
   const tags = [];
   if (!/rel="canonical"/.test(html)) tags.push(`<link rel="canonical" href="${url}">`);
   if (!/property="og:url"/.test(html)) tags.push(`<meta property="og:url" content="${url}">`);
-  if (!/property="og:image"/.test(html)) tags.push(`<meta property="og:image" content="${PUBLIC_ORIGIN}/og.png">`, '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">');
+  if (!/property="og:image"/.test(html)) tags.push(`<meta property="og:image" content="${OG_IMAGE}">`, '<meta property="og:image:type" content="image/png">', '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">');
   if (lang === 'en') html = html.replace(/<meta property="og:locale" content="pt_PT">/, '<meta property="og:locale" content="en_GB">');
   html = html.replace(/<meta name="twitter:card" content="summary">/, '<meta name="twitter:card" content="summary_large_image">');
+  // Em teoria o X lê o og:* quando falta o twitter:*; na prática o cartão sai
+  // mais certo com as etiquetas dele. Copiam as og: que a página já tem.
+  for (const k of ['title', 'description']) {
+    const og = html.match(new RegExp(`<meta property="og:${k}" content="([^"]*)">`));
+    if (og && !html.includes(`name="twitter:${k}"`)) tags.push(`<meta name="twitter:${k}" content="${og[1]}">`);
+  }
+  if (!/name="twitter:image"/.test(html)) tags.push(`<meta name="twitter:image" content="${(html.match(/<meta property="og:image" content="([^"]*)">/) || [])[1] || OG_IMAGE}">`);
   if (path === '/' || path === '/simulador') tags.push(`<script type="application/ld+json">${appLd(url, lang)}</script>`);
   if (!tags.length) return html;
   // Algumas páginas não escrevem <head> (é opcional em HTML): aí as etiquetas
