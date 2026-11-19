@@ -651,13 +651,18 @@ it('HTML também leva nosniff', async () => {
     it('etiquetas para os motores de busca: canónico, og:image, JSON-LD, links para os outros projectos', async () => {
       const { html } = await abrir('/about');
       assert.match(html, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/sobre">/);
-      assert.match(html, /property="og:image" content="https:\/\/ceme\.ocarroeletrico\.com\/og\.png"/);
+      assert.match(html, /property="og:image" content="https:\/\/ceme\.ocarroeletrico\.com\/og\.png\?v=[0-9a-f]{10}"/);
+      assert.match(html, /name="twitter:image" content="https:\/\/ceme\.ocarroeletrico\.com\/og\.png\?v=[0-9a-f]{10}"/);
+      assert.match(html, /name="twitter:title" content="[^"]+"/);
+      assert.match(html, /name="twitter:description" content="[^"]+"/);
+      assert.match(html, /name="twitter:card" content="summary_large_image"/);
       assert.match(html, /href="https:\/\/ohmigo\.ocarroeletrico\.com\/"/);
       assert.match(html, /href="https:\/\/nap\.ocarroeletrico\.com\/"/);
       const raiz = (await abrir('/')).html;
       assert.match(raiz, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/">/);
       assert.equal(JSON.parse(raiz.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1])['@type'], 'WebApplication');
       assert.equal((await fetch(`${BASE}/og.png`)).headers.get('content-type'), 'image/png');
+      assert.equal((await fetch(`${BASE}/og.png?v=1`)).headers.get('content-type'), 'image/png');
     });
 
     it('/tabela leva X-Robots-Tag noindex', async () => {
