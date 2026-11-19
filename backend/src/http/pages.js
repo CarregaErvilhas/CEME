@@ -40,6 +40,10 @@ const STATIC = {
   '/icon-64.png': { file: 'icon-64.png', headers: ICON, missing: 404 },
   '/icon-96.png': { file: 'icon-96.png', headers: ICON, missing: 404 },
   '/icon-maskable-512.png': { file: 'icon-maskable-512.png', headers: ICON, missing: 404 },
+  // O ícone das abas em SVG, com regras próprias para o tema escuro do browser
+  // (prefers-color-scheme dentro do ficheiro). O Safari ignora-as e mostra o
+  // claro; os PNG ficam para quem não lê SVG.
+  '/icon.svg': { file: 'icon.svg', headers: { ...ICON, 'content-type': 'image/svg+xml' }, missing: 404 },
   // Imagem das pré-visualizações de links (WhatsApp, Facebook, X).
   '/og.png': { file: 'og.png', headers: ICON, missing: 404 },
   // Browsers, leitores de feeds e crawlers pedem /favicon.ico sem olhar para o
