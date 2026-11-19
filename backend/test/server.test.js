@@ -327,6 +327,22 @@ it('HTML também leva nosniff', async () => {
     assert.match(await r.text(), /prefers-color-scheme:\s*dark/);
   });
 
+  // Na aba, o Firefox escolhe sempre o SVG; o Chrome também, desde que o PNG
+  // declare um tamanho (sem sizes empata com o SVG e ganha por vir primeiro).
+  // Mas o Firefox usa como ícone grande (atalhos da nova aba) o maior
+  // rel="icon" com 96 px ou mais, que não segue o tema: esse fica só no manifest.
+  it('HTML: o ícone das abas é o SVG; o PNG de recurso tem tamanho e é pequeno', async () => {
+    for (const caminho of PAGINAS) {
+      const html = await (await fetch(`${BASE}${caminho}`)).text();
+      const icones = [...html.matchAll(/<link rel="icon"[^>]*>/g)].map(m => m[0]);
+      assert.ok(icones.some(l => l.includes('href="/icon.svg"')), `${caminho}: falta o SVG`);
+      for (const l of icones.filter(l => !l.includes('/icon.svg'))) {
+        const lado = Number(/sizes="(\d+)x\d+"/.exec(l)?.[1]);
+        assert.ok(lado > 0 && lado < 96, `${caminho}: ${l}`);
+      }
+    }
+  });
+
   // Rotas do Zerops: sem auth (o balancer tem de as alcançar de dentro do
   // container) e sem rate limit (o check corre a cada 10 s).
   it('/healthz: liveness sem auth, 200 com ok=true', async () => {

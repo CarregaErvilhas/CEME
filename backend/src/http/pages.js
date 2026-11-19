@@ -43,7 +43,9 @@ const STATIC = {
   '/icon-maskable-512.png': { file: 'icon-maskable-512.png', headers: ICON, missing: 404 },
   // O ícone das abas em SVG, com regras próprias para o tema escuro do browser
   // (prefers-color-scheme dentro do ficheiro). O Safari ignora-as e mostra o
-  // claro; os PNG ficam para quem não lê SVG.
+  // claro. As páginas só declaram mais o PNG de 32 px, para quem não lê SVG: um
+  // rel="icon" de 96 px ou mais seria o ícone grande do Firefox (atalhos da nova
+  // aba), que não segue o tema. O de 192 fica só no manifest.
   '/icon.svg': { file: 'icon.svg', headers: { ...ICON, 'content-type': 'image/svg+xml' }, missing: 404 },
   // Imagem das pré-visualizações de links (WhatsApp, Facebook, X).
   '/og.png': { file: 'og.png', headers: ICON, missing: 404 },
