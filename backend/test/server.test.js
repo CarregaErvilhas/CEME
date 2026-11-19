@@ -320,6 +320,13 @@ it('HTML também leva nosniff', async () => {
     assert.equal(png.subarray(1, 4).toString('latin1'), 'PNG');
   });
 
+  it('/icon.svg responde com o SVG do ícone e as regras do tema escuro', async () => {
+    const r = await fetch(`${BASE}/icon.svg`);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('content-type'), 'image/svg+xml');
+    assert.match(await r.text(), /prefers-color-scheme:\s*dark/);
+  });
+
   // Rotas do Zerops: sem auth (o balancer tem de as alcançar de dentro do
   // container) e sem rate limit (o check corre a cada 10 s).
   it('/healthz: liveness sem auth, 200 com ok=true', async () => {

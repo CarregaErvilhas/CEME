@@ -34,6 +34,7 @@ E ainda: as páginas **Sobre** e **Contactos** (texto, sem API), as
 | `GET /pages.css` | estilo das páginas Sobre e Contactos |
 | `GET /manifest.webmanifest` (`/manifest.json`), `/sw.js` (`/service-worker.js`), `/pwa.js`, `/icon-*.png` | PWA |
 | `GET /favicon.ico` | o ícone de 32 px (PNG), para quem o pede sem ler o `<link rel="icon">` |
+| `GET /icon.svg` | o ícone das abas em SVG: traz as suas próprias regras `prefers-color-scheme`, por isso escurece com o tema escuro do browser (o Safari ignora-as e mostra o claro). Os PNG continuam a ser o desenho original |
 | `GET /.well-known/security.txt` | o contacto para problemas de segurança (RFC 9116), com o `Expires` sempre 180 dias à frente |
 
 JS, CSS e HTML vão com `cache-control: no-store`, para o browser nunca
