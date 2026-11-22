@@ -653,6 +653,23 @@ it('HTML também leva nosniff', async () => {
       assert.doesNotMatch(xml, /tabela/);
     });
 
+    it('/<chave>.txt do IndexNow devolve a chave, e o aviso leva os URLs do sitemap', async () => {
+      const { INDEXNOW_KEY, indexNowSubmit } = await import('../src/http/indexnow.js');
+      const { indexNowSites } = await import('../src/http/pages.js');
+      const { status, html } = await abrir(`/${INDEXNOW_KEY}.txt`);
+      assert.equal(status, 200);
+      assert.equal(html, INDEXNOW_KEY);
+      const pedidos = [];
+      const fetchImpl = async (url, opts) => { pedidos.push(JSON.parse(opts.body)); return { status: 202 }; };
+      await indexNowSubmit(indexNowSites(), { fetchImpl, log: { log() {}, warn() {} } });
+      assert.equal(pedidos.length, 2);
+      assert.ok(pedidos[0].urlList.some(u => u.endsWith('/grupo')));
+      for (const p of pedidos) {
+        assert.equal(p.keyLocation, `https://${p.host}/${INDEXNOW_KEY}.txt`);
+        assert.ok(p.urlList.every(u => new URL(u).host === p.host));
+      }
+    });
+
     it('/llms.txt é público, em Markdown, e aponta para a API e as páginas', async () => {
       const r = await fetch(`${BASE}/llms.txt`);
       assert.equal(r.status, 200);
