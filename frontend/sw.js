@@ -12,7 +12,7 @@
  *
  * Mudar a estratégia ou a lista? Subir o CACHE: o `activate` apaga as caches
  * com outro nome. */
-const CACHE = 'ceme-v7';
+const CACHE = 'ceme-v8';
 const OFFLINE = ['/strings.js', '/tz.js', '/api.js', '/theme.js', '/a11y.js', '/a11y.css', '/pages.css', '/manifest.webmanifest'];
 const IMMUTABLE = ['/icon-180.png', '/icon-192.png', '/icon-512.png', '/icon-32.png', '/icon-64.png', '/icon-96.png', '/icon-maskable-512.png', '/icon.svg'];
 
