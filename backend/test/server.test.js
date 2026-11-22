@@ -238,7 +238,7 @@ it('HTML também leva nosniff', async () => {
   });
 
   // Os cabeçalhos de segurança das páginas (PAGE_SECURITY em http/pages.js).
-  const PAGINAS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie', '/tabela'];
+  const PAGINAS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/grupo', '/api', '/omie', '/tabela'];
   it('HTML: CSP, anti-iframe, referrer e permissions-policy em todas as páginas', async () => {
     for (const caminho of PAGINAS) {
       const r = await fetch(`${BASE}${caminho}`);
@@ -473,6 +473,35 @@ it('HTML também leva nosniff', async () => {
       return { status: r.status, html: await r.text(), cookie: r.headers.get('set-cookie') || '', r };
     };
 
+    // A página do grupo: as seis mascotes vêm do próprio site, o comparador
+    // diz "Estás aqui" em vez do botão do site, e o AmpereArchive (sem página)
+    // só tem o GitHub, com cadeado.
+    it('/grupo e /group: os sites do grupo, com as mascotes locais', async () => {
+      for (const [caminho, lingua, aqui] of [['/grupo', 'pt', 'Estás aqui'], ['/group', 'en', 'You are here']]) {
+        const { status, html: pagina } = await abrir(caminho, { 'accept-language': lingua });
+        assert.equal(status, 200, caminho);
+        assert.match(pagina, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/grupo">/);
+        // O que vem já escrito no HTML (prerender), sem o script da página.
+        const html = pagina.replace(/<script[\s\S]*?<\/script>/g, '');
+        const imgs = [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)].map(m => m[1]).filter(u => u.startsWith('/grupo/'));
+        assert.deepEqual([...new Set(imgs)].sort(), ['ampere', 'carro', 'ceme', 'nap', 'ohmigo', 'voltaria'].map(id => `/grupo/${id}.svg`));
+        assert.ok(html.includes(aqui), `${caminho} sem "${aqui}"`);
+        assert.equal((html.match(/class="here"/g) || []).length, 1, 'só o comparador diz "Estás aqui"');
+        assert.doesNotMatch(html, /href="https:\/\/ceme\.ocarroeletrico\.com\/"/, 'o comparador não se liga a si próprio');
+        assert.match(html, /href="https:\/\/ocarroeletrico\.com\/"/);
+        assert.match(html, /href="https:\/\/github\.com\/CarregaErvilhas\/AmpereArchive"/);
+        assert.doesNotMatch(html, /href="https:\/\/ohm-age\./, 'o AmpereArchive não tem página');
+        assert.doesNotMatch(html, /<img\b[^>]*\bsrc="(https?:)?\/\//, 'imagens de outro domínio');
+      }
+      for (const id of ['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'ampere']) {
+        const r = await fetch(`${BASE}/grupo/${id}.svg`);
+        assert.equal(r.status, 200, id);
+        assert.match(r.headers.get('content-type'), /^image\/svg\+xml/);
+        assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+      }
+      assert.match((await abrir('/sobre')).html, /href="\/grupo"/, 'o rodapé liga ao /grupo');
+    });
+
     it('/sobre e /about servem a mesma página', async () => {
       for (const caminho of ['/sobre', '/about']) {
         const { status, html, cookie } = await abrir(caminho);
@@ -620,6 +649,7 @@ it('HTML também leva nosniff', async () => {
       const xml = await r.text();
       assert.match(xml, /<loc>https?:\/\/[^<]+\/sobre<\/loc>/);
       assert.match(xml, /<loc>https?:\/\/[^<]+\/privacidade<\/loc>/);
+      assert.match(xml, /<loc>https?:\/\/[^<]+\/grupo<\/loc>/);
       assert.doesNotMatch(xml, /tabela/);
     });
 
@@ -645,7 +675,7 @@ it('HTML também leva nosniff', async () => {
     });
 
     it('as páginas carregam a acessibilidade partilhada (a11y.js/.css) e servem os ficheiros', async () => {
-      for (const c of ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie']) {
+      for (const c of ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/grupo', '/api', '/omie']) {
         const { html } = await abrir(c);
         assert.match(html, /href="\/a11y\.css"/, c);
         assert.match(html, /src="\/a11y\.js"/, c);
@@ -655,7 +685,7 @@ it('HTML também leva nosniff', async () => {
 
     it('as páginas chegam com o texto lá dentro, para quem não corre JavaScript', async () => {
       const semScripts = h => h.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ');
-      for (const [caminho, frase] of [['/', 'Qual tarifário'], ['/simulador', 'Quanto custa'], ['/sobre', 'Porque é que isto existe'], ['/contactos', 'Fala connosco'], ['/privacidade', 'Quem é responsável']]) {
+      for (const [caminho, frase] of [['/', 'Qual tarifário'], ['/simulador', 'Quanto custa'], ['/sobre', 'Porque é que isto existe'], ['/contactos', 'Fala connosco'], ['/privacidade', 'Quem é responsável'], ['/grupo', 'Eu só faço contas']]) {
         const { html } = await abrir(caminho);
         assert.ok(semScripts(html).includes(frase), `${caminho} sem "${frase}" no HTML`);
       }

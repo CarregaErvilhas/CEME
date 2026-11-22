@@ -247,6 +247,10 @@ Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não**
 estão sob a PolyForm: mantêm as suas licenças e créditos. Vê
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+As mascotes dos outros sites do grupo, na página `/grupo`
+(`frontend/grupo/`), são marca de cada um desses sites: também ficam fora
+da PolyForm e destas licenças.
+
 Queres contribuir? Antes do primeiro pull request entrar, assinas o
 [CLA](CLA.md) com um comentário no pull request: vê
 [CONTRIBUTING.md](CONTRIBUTING.md).
