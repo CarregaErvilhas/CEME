@@ -45,6 +45,13 @@ nav a.on { background: #22c55e; color: #052e16; font-weight: 800; }
 /* Abaixo desta largura já não há espaço para o sufixo do logo («@ O Carro
    Elétrico»): fica o nome, sem cortar o texto a meio. */
 @media (max-width:799px) { .logo .lg2 { display: none; } }
+/* Na mesma largura a nav passa para uma segunda linha, para não comer o nome do site. */
+@media (max-width:799px) {
+  header .wrap { flex-wrap: wrap; row-gap: 6px; }
+  .langs { margin-left: auto; }
+  nav { order: 3; flex: 1 0 100%; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  nav::-webkit-scrollbar { display: none; }
+}
 .langs { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
 .langs button { padding: 0; border: 0; background: none; cursor: pointer; line-height: 0; font-size: 0; opacity: .45; transition: opacity .15s; }
 .langs button svg { display: block; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .28); }
