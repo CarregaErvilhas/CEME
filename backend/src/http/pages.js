@@ -15,6 +15,9 @@ const NOSNIFF = { 'x-content-type-options': 'nosniff' };
 // depois de um deploy. Os ícones não mudam, por isso guardam-se um dia.
 const NO_STORE = { 'cache-control': 'no-store' };
 const ICON = { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400, immutable' };
+// As mascotes do /grupo podem mudar com um deploy (o endereço não leva hash),
+// por isso guardam-se um dia mas sem `immutable`.
+const MASCOT = { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' };
 const JS = { 'content-type': 'text/javascript; charset=utf-8', ...NO_STORE };
 
 // Ficheiros estáticos: caminho pedido → ficheiro em frontend/ e cabeçalhos.
@@ -53,6 +56,9 @@ const STATIC = {
   // <link rel="icon"> das páginas. Sem esta rota caía na API e levava um 401.
   // Um PNG servido neste caminho é aceite por todos os browsers actuais.
   '/favicon.ico': { file: 'icon-32.png', headers: ICON, missing: 404 },
+  // As mascotes dos sites do grupo, na página /grupo. São marca de cada site.
+  ...Object.fromEntries(['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'ampere'].map(id =>
+    [`/grupo/${id}.svg`, { file: `grupo/${id}.svg`, headers: MASCOT, missing: 404 }])),
 };
 
 // Cabeçalhos de segurança de todas as páginas HTML (vê sendHtml).
@@ -137,6 +143,7 @@ const llmsTxt = (origin, omieHost) => (omieHost ? `# OMIE statistics (Portugal)
 - [OMIE statistics](${origin}/omie): monthly OMIE price averages, today's and tomorrow's prices
 - [About](${origin}/sobre)
 - [Privacy](${origin}/privacidade)
+- [The group](${origin}/grupo): the other sites of the O Carro Elétrico group, what each one does and where its code is
 
 ## API
 
@@ -151,7 +158,7 @@ const llmsTxt = (origin, omieHost) => (omieHost ? `# OMIE statistics (Portugal)
 
 // Páginas no sitemap.xml. Só um caminho por página (sem /about, /contact,
 // /index.html) e sem a /tabela. No domínio OMIE só existe a raiz.
-const SITEMAP_PATHS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie'];
+const SITEMAP_PATHS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/grupo', '/api', '/omie'];
 const sitemap = (origin, paths) => '<?xml version="1.0" encoding="UTF-8"?>\n'
   + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
   + paths.map(p => `  <url><loc>${origin}${p}</loc></url>\n`).join('')
@@ -198,6 +205,8 @@ const INFO_ROUTES = {
   '/sobre': 'about.html', '/about': 'about.html',
   '/contactos': 'contact.html', '/contact': 'contact.html',
   '/privacidade': 'privacy.html', '/privacy': 'privacy.html',
+  // Os outros sites do grupo d'O Carro Elétrico.
+  '/grupo': 'grupo.html', '/group': 'grupo.html',
   '/api': 'api.html',
   // Tabela em bruto dos tarifários em vigor. Não tem links a apontar para
   // ela e não é indexada pelos motores de busca.
@@ -252,7 +261,7 @@ const OG_IMAGE = (() => {
 
 // Páginas cujo texto o servidor já põe no HTML (prerender.js). A OMIE vive
 // de dados da API e a /tabela não é indexada; a /api já é HTML estático.
-const PRERENDER = new Set(['assistente.html', 'index.html', 'about.html', 'contact.html', 'privacy.html']);
+const PRERENDER = new Set(['assistente.html', 'index.html', 'about.html', 'contact.html', 'privacy.html', 'grupo.html']);
 
 // O endereço canónico de cada caminho: os sinónimos (/about, /index.html)
 // apontam para o caminho que está no sitemap. `/` e `/assistente` mostram o
@@ -260,7 +269,8 @@ const PRERENDER = new Set(['assistente.html', 'index.html', 'about.html', 'conta
 const CANONICAL = {
   '/': '/', '/index.html': '/', '/assistente': '/', '/simulador': '/simulador',
   '/sobre': '/sobre', '/about': '/sobre', '/contactos': '/contactos', '/contact': '/contactos',
-  '/privacidade': '/privacidade', '/privacy': '/privacidade', '/api': '/api', '/omie': '/omie', '/omie.html': '/omie',
+  '/privacidade': '/privacidade', '/privacy': '/privacidade',
+  '/grupo': '/grupo', '/group': '/grupo', '/api': '/api', '/omie': '/omie', '/omie.html': '/omie',
 };
 
 // Dados estruturados (schema.org) das duas interfaces do simulador.

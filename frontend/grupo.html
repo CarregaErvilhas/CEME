@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/a11y.css">
+<script src="/a11y.js"></script>
+<title>Os sites do grupo — Comparador CEME</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Comparador CEME">
+<meta property="og:title" content="Os sites do grupo — Comparador CEME">
+<meta property="og:description" content="O Carro Elétrico, o ohmigo, o Voltaria, o Comparador CEME, o Postos PT e o AmpereArchive: o que faz cada um e onde está o código.">
+<meta property="og:locale" content="pt_PT">
+<meta name="twitter:card" content="summary">
+<meta name="description" content="O Carro Elétrico, o ohmigo, o Voltaria, o Comparador CEME, o Postos PT e o AmpereArchive: o que faz cada um e onde está o código.">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#22c55e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="CEME">
+<link rel="apple-touch-icon" href="/icon-180.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=2"><link rel="icon" type="image/svg+xml" sizes="any" href="/icon.svg">
+<link rel="stylesheet" href="/pages.css">
+<script src="/theme.js"></script>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="logo" href="/"><span class="mark"><img src="/icon-32.png?v=2" srcset="/icon-32.png?v=2 1x, /icon-64.png?v=2 2x, /icon-96.png?v=2 3x" alt="" width="28" height="28"></span><span class="ttl" id="logoTxt"></span></a>
+  <nav>
+    <a href="/simulador" id="nSim"></a>
+    <a href="/assistente" id="nAssistant"></a>
+    <a href="/sobre" id="nSobre"></a>
+    <a href="/contactos" id="nContactos"></a>
+  </nav>
+  <span class="langs" role="group" aria-label="Idioma / Language">
+    <button data-lang="pt" title="Português" aria-label="Português"><svg viewBox="0 0 35 20" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="14" height="20" fill="#046A38"/><rect x="14" width="21" height="20" fill="#DA291C"/><circle cx="14" cy="10" r="4.8" fill="#FFCC00" stroke="#fff" stroke-width=".7"/><circle cx="14" cy="10" r="2.2" fill="#DA291C"/></svg></button>
+    <button data-lang="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="uJack"><path d="M0,0 H60 V30 H0 Z"/></clipPath></defs><g clip-path="url(#uJack)"><rect width="60" height="30" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" stroke-width="6"/><path d="M30,0 V30 M0,15 H60" stroke="#FFFFFF" stroke-width="10"/></g><path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" stroke-width="4"/><path d="M30,0 V30 M0,15 H60" stroke="#C8102E" stroke-width="6"/></svg></button>
+  </span>
+  <button id="themeBtn" class="themebtn" type="button"></button>
+</div></header>
+<div class="hero grupo-hero"><div class="in" id="hero"></div></div>
+<main id="app"></main>
+<footer id="foot"></footer>
+<script>window.__LANG__=null;</script>
+<script src="/strings.js"></script>
+<script src="/pwa.js"></script>
+<script>
+'use strict';
+/* Página "O grupo": os outros sites do grupo d'O Carro Elétrico, cada um num
+ * balão ao lado da sua mascote, com a descrição e as ligações para o site e
+ * para o GitHub. O próprio comparador aparece no seu lugar, com "Estás aqui".
+ *
+ * Os textos vivem em strings.js (namespace "grupo"); as mascotes são
+ * ficheiros locais em frontend/grupo/ (servidos em /grupo/<id>.svg). A ordem e
+ * os endereços seguem a página igual do ocarroeletrico.com. */
+const STR = CEME_STR('grupo');
+let LANG = (function () {
+  try { const s = localStorage.getItem('ceme:lang'); if (s === 'pt' || s === 'en') return s; } catch (e) {}
+  return (typeof window.__LANG__ === 'string' && window.__LANG__ === 'en') ? 'en' : 'pt';
+})();
+const t = (k) => STR[LANG][k] ?? STR.pt[k] ?? k;
+const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+const attr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+const GH = 'https://github.com/CarregaErvilhas/';
+// w/h: o tamanho do viewBox de cada SVG, para a imagem não saltar ao carregar.
+const SITES = () => [
+  { id: 'carro', host: 'ocarroeletrico.com', site: 'https://ocarroeletrico.com/', repo: GH + 'OCarroEletrico', w: 270, h: 300,
+    name: t('carroName'), desc: t('carroDesc'), alt: t('carroMascot') },
+  { id: 'ohmigo', host: 'ohmigo.ocarroeletrico.com', site: 'https://ohmigo.ocarroeletrico.com/', repo: GH + 'ohmigo-mcp', w: 260, h: 300,
+    name: 'ohmigo', desc: t('ohmigoDesc'), alt: t('ohmigoMascot') },
+  { id: 'voltaria', host: 'voltaria.ocarroeletrico.com', site: 'https://voltaria.ocarroeletrico.com/', repo: GH + 'voltaria', w: 260, h: 300,
+    name: 'Voltaria', desc: t('voltariaDesc'), alt: t('voltariaMascot') },
+  { id: 'ceme', host: 'ceme.ocarroeletrico.com', here: true, repo: GH + 'CEME', w: 260, h: 300,
+    name: t('logoA'), desc: t('cemeDesc'), alt: t('cemeMascot') },
+  { id: 'nap', host: 'nap.ocarroeletrico.com', site: 'https://nap.ocarroeletrico.com/', repo: GH + 'nap-dashboard', w: 212, h: 252,
+    name: 'Postos PT', desc: t('napDesc'), alt: t('napMascot') },
+  // Arquivo de dados, sem página: não tem botão do site, e o repositório é
+  // privado por agora.
+  { id: 'ampere', host: 'ohm-age.ocarroeletrico.com', private: true, repo: GH + 'AmpereArchive', w: 280, h: 300,
+    name: 'AmpereArchive', desc: t('ampereDesc'), alt: t('ampereMascot'), note: t('ampereNote') },
+];
+const ICON = {
+  code: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 3 12l5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>',
+};
+
+function chrome() {
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
+  document.title = t('docTitle');
+  set('logoTxt', t('logoA') + ' <b class="lg2">' + t('logoB') + '</b>');
+  set('nSim', t('navSim'));
+  set('nAssistant', t('navAssistant'));
+  set('nSobre', t('navSobre'));
+  set('nContactos', t('navContactos'));
+  document.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === LANG));
+  if (window.CEME_THEME) CEME_THEME.paint();
+}
+
+function mate(g) {
+  const go = g.here ? `<span class="here">${t('here')}</span>`
+    : g.site ? `<a class="go" href="${g.site}" target="_blank" rel="noopener">${t('open')} →</a>` : '';
+  const code = `<a class="gh" href="${g.repo}" target="_blank" rel="noopener">${g.private ? ICON.lock + t('private') : ICON.code + t('code')}</a>`;
+  return `
+      <li class="mate m-${g.id}">
+        <div class="mate-pic"><img src="/grupo/${g.id}.svg" alt="${attr(g.alt)}" width="${g.w}" height="${g.h}" loading="lazy"></div>
+        <div class="mate-bubble">
+          <p class="mate-host">${g.host}</p>
+          <h2>${g.name}</h2>
+          <p>${g.desc}</p>${g.note ? `<p class="mate-note">${g.note}</p>` : ''}
+          <p class="mate-links">${go}${code}</p>
+        </div>
+      </li>`;
+}
+
+function render() {
+  chrome();
+  set('hero', `
+    <div class="grupo-text">
+      <span class="eyebrow">${t('eyebrow')}</span>
+      <h1>${t('h1')}</h1>
+      <p>${t('lede')}</p>
+    </div>
+    <div class="stage">
+      <img class="mascot" src="/grupo/ceme.svg" alt="${attr(t('cemeMascot'))}" width="260" height="300">
+      <p class="bubble">${t('bubble')}</p>
+    </div>`);
+  set('app', `<ol class="mates">${SITES().map(mate).join('')}
+    </ol>`);
+  set('foot', `${t('footNote')} <a href="/simulador">${t('navSim')}</a><span class="sep">·</span><a href="/sobre">${t('navSobre')}</a><span class="sep">·</span><a href="/contactos">${t('navContactos')}</a><span class="sep">·</span><a href="/privacidade">${t('navPriv')}</a>`);
+}
+
+document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => {
+  LANG = b.dataset.lang === 'en' ? 'en' : 'pt';
+  try { localStorage.setItem('ceme:lang', LANG); } catch (e) {}
+  render();
+});
+render();
+</script>
+</body>
+</html>
