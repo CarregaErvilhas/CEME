@@ -651,6 +651,15 @@ duração, que dá acesso de leitura a variáveis sensíveis (`JWT_SECRET`,
 (OIDC). Com o webhook, não há credencial nenhuma no GitHub. O que garante
 que nada chega a `main` sem testes verdes é a protecção do `main` (4.3).
 
+### 4.2.1 Aviso ao IndexNow depois do deploy
+
+Com `INDEXNOW: "on"` (no `zerops.yml`), um minuto depois de arrancar o
+processo envia ao IndexNow os URLs do sitemap de cada domínio público
+(`backend/src/http/indexnow.js`). É assim que o Bing sabe que há páginas
+novas sem esperar pelo rastreio. A chave é pública e é servida em
+`/<chave>.txt`. Uma falha só aparece no log. Em local e nas previews a
+variável não está definida, por isso não se envia nada.
+
 ### 4.3 Protecção do `main`
 
 Feita com um **ruleset** do GitHub (e não com a branch protection clássica:

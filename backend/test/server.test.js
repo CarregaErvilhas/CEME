@@ -238,7 +238,7 @@ it('HTML também leva nosniff', async () => {
   });
 
   // Os cabeçalhos de segurança das páginas (PAGE_SECURITY em http/pages.js).
-  const PAGINAS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie', '/tabela'];
+  const PAGINAS = ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/grupo', '/api', '/omie', '/tabela'];
   it('HTML: CSP, anti-iframe, referrer e permissions-policy em todas as páginas', async () => {
     for (const caminho of PAGINAS) {
       const r = await fetch(`${BASE}${caminho}`);
@@ -318,6 +318,29 @@ it('HTML também leva nosniff', async () => {
     assert.equal(r.headers.get('content-type'), 'image/png');
     const png = Buffer.from(await r.arrayBuffer());
     assert.equal(png.subarray(1, 4).toString('latin1'), 'PNG');
+  });
+
+  it('/icon.svg responde com o SVG do ícone e as regras do tema escuro', async () => {
+    const r = await fetch(`${BASE}/icon.svg`);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('content-type'), 'image/svg+xml');
+    assert.match(await r.text(), /prefers-color-scheme:\s*dark/);
+  });
+
+  // Na aba, o Firefox escolhe sempre o SVG; o Chrome também, desde que o PNG
+  // declare um tamanho (sem sizes empata com o SVG e ganha por vir primeiro).
+  // Mas o Firefox usa como ícone grande (atalhos da nova aba) o maior
+  // rel="icon" com 96 px ou mais, que não segue o tema: esse fica só no manifest.
+  it('HTML: o ícone das abas é o SVG; o PNG de recurso tem tamanho e é pequeno', async () => {
+    for (const caminho of PAGINAS) {
+      const html = await (await fetch(`${BASE}${caminho}`)).text();
+      const icones = [...html.matchAll(/<link rel="icon"[^>]*>/g)].map(m => m[0]);
+      assert.ok(icones.some(l => l.includes('href="/icon.svg"')), `${caminho}: falta o SVG`);
+      for (const l of icones.filter(l => !l.includes('/icon.svg'))) {
+        const lado = Number(/sizes="(\d+)x\d+"/.exec(l)?.[1]);
+        assert.ok(lado > 0 && lado < 96, `${caminho}: ${l}`);
+      }
+    }
   });
 
   // Rotas do Zerops: sem auth (o balancer tem de as alcançar de dentro do
@@ -449,6 +472,35 @@ it('HTML também leva nosniff', async () => {
       const r = await fetch(`${BASE}${caminho}`, { headers });
       return { status: r.status, html: await r.text(), cookie: r.headers.get('set-cookie') || '', r };
     };
+
+    // A página do grupo: as seis mascotes vêm do próprio site, o comparador
+    // diz "Estás aqui" em vez do botão do site, e o AmpereArchive (sem página)
+    // só tem o GitHub, com cadeado.
+    it('/grupo e /group: os sites do grupo, com as mascotes locais', async () => {
+      for (const [caminho, lingua, aqui] of [['/grupo', 'pt', 'Estás aqui'], ['/group', 'en', 'You are here']]) {
+        const { status, html: pagina } = await abrir(caminho, { 'accept-language': lingua });
+        assert.equal(status, 200, caminho);
+        assert.match(pagina, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/grupo">/);
+        // O que vem já escrito no HTML (prerender), sem o script da página.
+        const html = pagina.replace(/<script[\s\S]*?<\/script>/g, '');
+        const imgs = [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)].map(m => m[1]).filter(u => u.startsWith('/grupo/'));
+        assert.deepEqual([...new Set(imgs)].sort(), ['ampere', 'carro', 'ceme', 'nap', 'ohmigo', 'voltaria'].map(id => `/grupo/${id}.svg`));
+        assert.ok(html.includes(aqui), `${caminho} sem "${aqui}"`);
+        assert.equal((html.match(/class="here"/g) || []).length, 1, 'só o comparador diz "Estás aqui"');
+        assert.doesNotMatch(html, /href="https:\/\/ceme\.ocarroeletrico\.com\/"/, 'o comparador não se liga a si próprio');
+        assert.match(html, /href="https:\/\/ocarroeletrico\.com\/"/);
+        assert.match(html, /href="https:\/\/github\.com\/CarregaErvilhas\/AmpereArchive"/);
+        assert.doesNotMatch(html, /href="https:\/\/ohm-age\./, 'o AmpereArchive não tem página');
+        assert.doesNotMatch(html, /<img\b[^>]*\bsrc="(https?:)?\/\//, 'imagens de outro domínio');
+      }
+      for (const id of ['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'ampere']) {
+        const r = await fetch(`${BASE}/grupo/${id}.svg`);
+        assert.equal(r.status, 200, id);
+        assert.match(r.headers.get('content-type'), /^image\/svg\+xml/);
+        assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+      }
+      assert.match((await abrir('/sobre')).html, /href="\/grupo"/, 'o rodapé liga ao /grupo');
+    });
 
     it('/sobre e /about servem a mesma página', async () => {
       for (const caminho of ['/sobre', '/about']) {
@@ -597,7 +649,25 @@ it('HTML também leva nosniff', async () => {
       const xml = await r.text();
       assert.match(xml, /<loc>https?:\/\/[^<]+\/sobre<\/loc>/);
       assert.match(xml, /<loc>https?:\/\/[^<]+\/privacidade<\/loc>/);
+      assert.match(xml, /<loc>https?:\/\/[^<]+\/grupo<\/loc>/);
       assert.doesNotMatch(xml, /tabela/);
+    });
+
+    it('/<chave>.txt do IndexNow devolve a chave, e o aviso leva os URLs do sitemap', async () => {
+      const { INDEXNOW_KEY, indexNowSubmit } = await import('../src/http/indexnow.js');
+      const { indexNowSites } = await import('../src/http/pages.js');
+      const { status, html } = await abrir(`/${INDEXNOW_KEY}.txt`);
+      assert.equal(status, 200);
+      assert.equal(html, INDEXNOW_KEY);
+      const pedidos = [];
+      const fetchImpl = async (url, opts) => { pedidos.push(JSON.parse(opts.body)); return { status: 202 }; };
+      await indexNowSubmit(indexNowSites(), { fetchImpl, log: { log() {}, warn() {} } });
+      assert.equal(pedidos.length, 2);
+      assert.ok(pedidos[0].urlList.some(u => u.endsWith('/grupo')));
+      for (const p of pedidos) {
+        assert.equal(p.keyLocation, `https://${p.host}/${INDEXNOW_KEY}.txt`);
+        assert.ok(p.urlList.every(u => new URL(u).host === p.host));
+      }
     });
 
     it('/llms.txt é público, em Markdown, e aponta para a API e as páginas', async () => {
@@ -622,7 +692,7 @@ it('HTML também leva nosniff', async () => {
     });
 
     it('as páginas carregam a acessibilidade partilhada (a11y.js/.css) e servem os ficheiros', async () => {
-      for (const c of ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/api', '/omie']) {
+      for (const c of ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/grupo', '/api', '/omie']) {
         const { html } = await abrir(c);
         assert.match(html, /href="\/a11y\.css"/, c);
         assert.match(html, /src="\/a11y\.js"/, c);
@@ -632,7 +702,7 @@ it('HTML também leva nosniff', async () => {
 
     it('as páginas chegam com o texto lá dentro, para quem não corre JavaScript', async () => {
       const semScripts = h => h.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ');
-      for (const [caminho, frase] of [['/', 'Qual tarifário'], ['/simulador', 'Quanto custa'], ['/sobre', 'Porque é que isto existe'], ['/contactos', 'Fala connosco'], ['/privacidade', 'Quem é responsável']]) {
+      for (const [caminho, frase] of [['/', 'Qual tarifário'], ['/simulador', 'Quanto custa'], ['/sobre', 'Porque é que isto existe'], ['/contactos', 'Fala connosco'], ['/privacidade', 'Quem é responsável'], ['/grupo', 'Eu só faço contas']]) {
         const { html } = await abrir(caminho);
         assert.ok(semScripts(html).includes(frase), `${caminho} sem "${frase}" no HTML`);
       }
@@ -644,13 +714,18 @@ it('HTML também leva nosniff', async () => {
     it('etiquetas para os motores de busca: canónico, og:image, JSON-LD, links para os outros projectos', async () => {
       const { html } = await abrir('/about');
       assert.match(html, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/sobre">/);
-      assert.match(html, /property="og:image" content="https:\/\/ceme\.ocarroeletrico\.com\/og\.png"/);
+      assert.match(html, /property="og:image" content="https:\/\/ceme\.ocarroeletrico\.com\/og\.png\?v=[0-9a-f]{10}"/);
+      assert.match(html, /name="twitter:image" content="https:\/\/ceme\.ocarroeletrico\.com\/og\.png\?v=[0-9a-f]{10}"/);
+      assert.match(html, /name="twitter:title" content="[^"]+"/);
+      assert.match(html, /name="twitter:description" content="[^"]+"/);
+      assert.match(html, /name="twitter:card" content="summary_large_image"/);
       assert.match(html, /href="https:\/\/ohmigo\.ocarroeletrico\.com\/"/);
       assert.match(html, /href="https:\/\/nap\.ocarroeletrico\.com\/"/);
       const raiz = (await abrir('/')).html;
       assert.match(raiz, /<link rel="canonical" href="https:\/\/ceme\.ocarroeletrico\.com\/">/);
       assert.equal(JSON.parse(raiz.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1])['@type'], 'WebApplication');
       assert.equal((await fetch(`${BASE}/og.png`)).headers.get('content-type'), 'image/png');
+      assert.equal((await fetch(`${BASE}/og.png?v=1`)).headers.get('content-type'), 'image/png');
     });
 
     it('/tabela leva X-Robots-Tag noindex', async () => {

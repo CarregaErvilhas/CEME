@@ -19,8 +19,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="CEME">
-<link rel="apple-touch-icon" href="/icon-180.png?v=2">
-<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=2"><link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
+<link rel="apple-touch-icon" href="/icon-180.png?v=3">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=3"><link rel="icon" type="image/svg+xml" sizes="any" href="/icon.svg">
 <style>
 :root {
   --bg0: #F7F7F7; --bg1: #EDEDED;
@@ -388,7 +388,7 @@ const STEPS = ['onde', 'quanto', 'quando'];
 function header(step) {
   const i = STEPS.indexOf(step);
   const left = step === 'landing'
-    ? '<a class="home" href="#/"><img src="/icon-32.png?v=2" srcset="/icon-32.png?v=2 1x, /icon-64.png?v=2 2x, /icon-96.png?v=2 3x" alt="" width="28" height="28">CEME</a>'
+    ? '<a class="home" href="#/"><img src="/icon-32.png?v=3" srcset="/icon-32.png?v=3 1x, /icon-64.png?v=3 2x, /icon-96.png?v=3 3x" alt="" width="28" height="28">CEME</a>'
     : `<button class="iconbtn back" data-act="back" aria-label="${t('back')}"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>`;
   const mid = i >= 0 ? `<div class="progress" aria-label="${i + 1} / 3">${STEPS.map((_, j) => `<i class="${j <= i ? 'on' : ''}"></i>`).join('')}</div>` : '';
   document.getElementById('top').innerHTML = `${left}${mid}<span class="spacer"></span>

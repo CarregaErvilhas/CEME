@@ -247,6 +247,13 @@ Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não**
 estão sob a PolyForm: mantêm as suas licenças e créditos. Vê
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+A mascote (a calculadora cor-de-rosa, em `frontend/icon.svg`, nos ícones
+`frontend/icon-*.png`, no `frontend/og.png` e em `frontend/grupo/ceme.svg`)
+faz parte da marca O Carro Elétrico, como as mascotes dos outros sites do
+grupo, e fica fora das licenças: não a uses noutro projecto sem autorização.
+As mascotes dos outros sites, na página `/grupo` (`frontend/grupo/`),
+pertencem a cada um desses sites e também ficam fora das licenças.
+
 Queres contribuir? Antes do primeiro pull request entrar, assinas o
 [CLA](CLA.md) com um comentário no pull request: vê
 [CONTRIBUTING.md](CONTRIBUTING.md).
