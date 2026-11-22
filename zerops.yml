@@ -94,6 +94,8 @@ zerops:
       envVariables:
         PORT: 3001
         NODE_ENV: production
+        # Avisa o IndexNow ao arrancar (backend/src/http/indexnow.js).
+        INDEXNOW: "on"
         # Proxies de confiança à frente (Cloudflare e balanceador L7): o IP do
         # cliente é a 2.ª entrada do X-Forwarded-For a contar da direita.
         # Vê infra.md, «O IP do cliente».

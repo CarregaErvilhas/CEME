@@ -21,7 +21,8 @@ import http from 'node:http';
 import { query, USE_PG } from './db.js';
 import { boot } from './boot.js';
 import { json, fail, isLoopback } from './http/respond.js';
-import { servePage } from './http/pages.js';
+import { servePage, indexNowSites } from './http/pages.js';
+import { indexNowSubmit } from './http/indexnow.js';
 import { serveApi } from './http/api.js';
 
 const PORT = Number(process.env.PORT || 3001);
@@ -108,3 +109,7 @@ server.on('error', (e) => {
   console.error('[ceme-v2] erro no servidor:', e);
 });
 server.listen(PORT, () => console.log(`ceme-v2 http://localhost:${PORT}/ db=${USE_PG ? 'postgresql' : 'sqlite'}`));
+
+// Depois de um deploy, avisa o IndexNow (vê http/indexnow.js). Espera um
+// minuto para o pod novo já estar a servir quando o motor vier buscar a chave.
+if (process.env.INDEXNOW === 'on') setTimeout(() => indexNowSubmit(indexNowSites()), 60_000).unref();

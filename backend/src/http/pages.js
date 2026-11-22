@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fail } from './respond.js';
 import { prerender } from './prerender.js';
+import { INDEXNOW_KEY } from './indexnow.js';
 
 const FRONTEND = new URL('../../../frontend/', import.meta.url);
 const NOSNIFF = { 'x-content-type-options': 'nosniff' };
@@ -248,6 +249,13 @@ const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || 'https://ceme.ocarroeletrico
 // comparador.
 const publicOrigin = host => (host === OMIE_HOST ? `https://${OMIE_HOST}` : PUBLIC_ORIGIN);
 
+// Os URLs do sitemap de cada domínio público, para o aviso ao IndexNow
+// (indexnow.js) depois de um deploy.
+export const indexNowSites = () => [
+  { origin: PUBLIC_ORIGIN, urls: SITEMAP_PATHS.map(p => PUBLIC_ORIGIN + p) },
+  { origin: `https://${OMIE_HOST}`, urls: [`https://${OMIE_HOST}/`] },
+];
+
 // O endereço da imagem das pré-visualizações leva um hash do ficheiro. O X (e
 // o Facebook, o LinkedIn) guardam durante dias o que buscaram de cada endereço
 // de imagem, falhas incluídas, e aí mostram uma caixa cinzenta: com o hash, uma
@@ -381,6 +389,11 @@ export async function servePage(req, res, url) {
   if (p === '/llms.txt') {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600', vary: 'Host', ...NOSNIFF });
     res.end(llmsTxt(publicOrigin(host), host === OMIE_HOST));
+    return true;
+  }
+  if (p === `/${INDEXNOW_KEY}.txt`) {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400', ...NOSNIFF });
+    res.end(INDEXNOW_KEY);
     return true;
   }
   if (p === '/sitemap.xml') {
