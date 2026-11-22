@@ -314,6 +314,116 @@ não a encontra, recusa-se a arrancar e o deploy chumba no readiness (a versão
 anterior continua a servir). O procedimento está em
 `docs/08-sqlite-postgres.md` («Para acrescentares uma coluna»).
 
+### Actualizar o Postgres (recriar o `db`)
+
+O `db` é `postgresql:single`, e o Zerops **não actualiza** um serviço
+`single`: fica na versão menor com que foi criado, sem patches de segurança.
+Para passares para a versão menor mais recente tens de criar o serviço de
+novo e repor os dados. (Num serviço HA o Zerops troca os containers um a um,
+mas o projecto fica em `single` por custo; a BD só se alcança pela rede
+privada, por isso o risco de ficar atrás é pequeno.)
+
+Fá-lo quando sair um aviso de segurança do PostgreSQL que te afecte, e de
+vez em quando mesmo sem aviso. Conta com **alguns minutos sem API**: o
+serviço novo tem de se chamar `db` (o `zerops.yml` lê
+`${db_connectionString}` e a `DATABASE_APP_URL` aponta ao host `db`), e dois
+serviços não podem ter o mesmo nome, por isso o antigo sai antes de o novo
+entrar.
+
+Precisas de acesso à rede privada (`zcli vpn up`; troca o host `db` dos URLs
+pelo que a VPN resolver) e de um `psql`/`pg_dump` da **mesma versão maior**
+que o serviço. Como na criação da `ceme_app`: credenciais com `read -rs`,
+nunca impressas nem coladas em chats.
+
+1. **Congelar as escritas.** No serviço `api`, acrescenta
+   `CEME_READONLY=1` às variáveis de ambiente e reinicia o `api`. A partir
+   daqui a app não escreve (nem o OMIE), por isso o dump apanha tudo e nada
+   se perde entre o dump e o fim. As leituras continuam a funcionar; o que
+   precisar de escrever dá erro (`CEME_READONLY: escrita recusada`, em
+   `db.js`) até ao passo 8.
+
+2. **Fazer o dump** (o `connectionString` do `db` está nas variáveis do
+   serviço, na consola):
+
+   ```bash
+   read -rs OLD_URL                     # connectionString do db actual
+   psql "$OLD_URL" -Atc "SELECT version()"
+   psql "$OLD_URL" -Atc "SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY 1" > antes.txt
+   pg_dump "$OLD_URL" -Fc --no-owner --no-privileges -f ceme.dump
+   pg_restore --list ceme.dump | grep -c 'TABLE DATA'   # uma linha por tabela
+   ```
+
+   `--no-owner --no-privileges` porque as roles não vão no dump: o dono é o
+   utilizador principal do serviço novo, e os privilégios da `ceme_app`
+   voltam pelo `migrate-cli`.
+
+3. **Testar o dump antes de apagares seja o que for.** Repõe-no num
+   Postgres local da mesma versão e compara as contagens com `antes.txt`:
+
+   ```bash
+   createdb ceme_teste && pg_restore -d ceme_teste --no-owner ceme.dump
+   psql -d ceme_teste -Atc "SELECT count(*) FROM tariff"
+   ```
+
+   O backup automático do Zerops é a segunda rede, não a primeira: confirma
+   na consola que tens um recente, mas não contes que sobreviva a apagares o
+   serviço. O `ceme.dump` que acabaste de testar é o que garante a reposição.
+
+4. **Apagar o `db` antigo** (consola → `db` → apagar o serviço). A API fica
+   sem BD a partir daqui: `/healthz` continua 200, os pedidos a `/v1/*` dão
+   erro.
+
+5. **Criar o `db` novo.** Copia o bloco `db` de `zerops-import.yaml` (só esse,
+   com o `#yamlPreprocessor=on` e o `services:`) para um ficheiro temporário
+   e importa-o:
+
+   ```bash
+   zcli project service-import db-only.yaml -P <project-id>
+   ```
+
+   Depois confirma os limites de recursos (`GET /service-stack/{id}`,
+   «Recursos» acima): se o `customAutoscaling` vier `null`, fixa-os com o
+   `PUT` dessa secção.
+
+6. **Repor os dados** no serviço novo (o `connectionString` é outro):
+
+   ```bash
+   read -rs NEW_URL                     # connectionString do db novo
+   psql "$NEW_URL" -Atc "SELECT version()"   # a versão menor nova
+   pg_restore -d "$NEW_URL" --no-owner --no-privileges -v ceme.dump
+   psql "$NEW_URL" -Atc "SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY 1" > depois.txt
+   diff antes.txt depois.txt            # as mesmas tabelas e contagens
+   ```
+
+   O `n_live_tup` é uma estimativa e pode vir a 0 logo a seguir à reposição;
+   corre `ANALYZE;` no `psql` antes do segundo `SELECT` se o `diff` mostrar
+   diferenças.
+
+7. **Recriar a `ceme_app`** com uma palavra-passe nova: passos 1 a 4 de
+   «Criar a role `ceme_app`», com `MAIN_URL="$NEW_URL"`. O passo 4 actualiza
+   a `DATABASE_APP_URL` do `api`.
+
+8. **Descongelar e fazer deploy.** Tira a `CEME_READONLY` do `api` e faz um
+   deploy (consola, ou `zcli push api --setup api`), para os `initCommands`
+   correrem o `migrate-cli` contra o `db` novo e o processo ler a
+   `DATABASE_APP_URL` nova. Um reinício não chega: não corre os
+   `initCommands`.
+
+9. **Verificar**, como no passo 5 de «Criar a role `ceme_app`»:
+   `/readyz` com `db: ok`, o processo como `cocofree`, e
+   `SELECT usename, count(*) FROM pg_stat_activity GROUP BY 1;` com ligações
+   da `ceme_app`. No fim:
+
+   ```bash
+   unset OLD_URL NEW_URL
+   rm ceme.dump antes.txt depois.txt && dropdb ceme_teste
+   ```
+
+**Se algo correr mal depois do passo 4**, o caminho de volta é o mesmo
+para a frente: o serviço antigo já não existe, por isso repetes os passos 5
+a 8 com o mesmo `ceme.dump`. Enquanto a `CEME_READONLY` estiver ligada não
+há escritas novas a perder.
+
 ---
 
 ## 3. DNS e Cloudflare
