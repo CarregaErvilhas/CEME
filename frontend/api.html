@@ -23,11 +23,12 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=3"><link rel="icon" type="image/svg+xml" sizes="any" href="/icon.svg">
 <link rel="stylesheet" href="/pages.css">
 <script src="/pwa.js"></script>
+<script src="/theme.js"></script>
 <style>
   main { max-width: 900px; }
   article { scroll-margin-top: 80px; }
   pre { overflow-x: auto; background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 14px; margin: 10px 0; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  code { font: .92em ui-monospace, SFMono-Regular, Menlo, monospace; background: #f1f5f9; border-radius: 4px; padding: 1px 4px; }
+  code { font: .92em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--soft); border-radius: 4px; padding: 1px 4px; }
   pre code { background: none; padding: 0; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 10px 0; }
   th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 8px; }
@@ -41,6 +42,7 @@
 <header class="top"><div class="wrap">
   <a class="logo" href="/"><span class="mark"><img src="/icon-32.png?v=3" srcset="/icon-32.png?v=3 1x, /icon-64.png?v=3 2x, /icon-96.png?v=3 3x" alt="" width="28" height="28"></span><span class="ttl">CEME Comparator</span></a>
   <nav><a href="/">Site</a><a href="/api" class="on">API guide</a><a href="/sobre">About</a></nav>
+  <button id="themeBtn" class="themebtn" type="button" aria-label="Theme"></button>
 </div></header>
 <div class="hero"><div class="in">
   <h1>API integration guide</h1>
