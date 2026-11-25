@@ -2,6 +2,7 @@
 <html lang="pt-PT">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/a11y.css">
 <script src="/a11y.js"></script>
@@ -146,9 +147,21 @@ table.tb tr.total td { font-weight: 700; }
 .langs button.on svg { box-shadow: 0 0 0 1.5px #424242; }
 
 .err { color: #B3261E; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Tema escuro do sistema: só a página (fundo e texto solto). Os cartões e as
+ * células das tabelas mantêm as cores da folha original, que são a informação. */
+@media (prefers-color-scheme: dark) {
+  body { background: #0b1120; color: #e2e8f0; }
+  .caption, .note, #status { color: #cbd5e1; }
+  .partial { color: #fdba74; }
+  .err { color: #fca5a5; }
+  .langs button.on svg { box-shadow: 0 0 0 1.5px #e2e8f0; }
+}
 </style>
 </head>
 <body>
+<h1 id="h1" class="sr"></h1>
 <main class="grid">
   <aside class="cards" id="cards"></aside>
   <section class="tables">
@@ -437,6 +450,7 @@ function draw(d) {
   lastData = d;
   document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-PT';
   document.title = t('docTitle');
+  document.getElementById('h1').textContent = t('docTitle');
   document.getElementById('capAnnual').textContent = t('capAnnual');
   const cvdLbl = document.getElementById('cvdLabel'); if (cvdLbl) cvdLbl.textContent = t('cvdToggle');
   document.getElementById('capMonthly').textContent = t('capMonthly');
