@@ -44,7 +44,7 @@
       footNote: 'Ferramenta comunitária, sem fins lucrativos.',
       // links para os outros projectos d'O Carro Elétrico, no rodapé de todas
       // as páginas
-      footSister: 'Também d\'O Carro Elétrico: <a href="https://ohmigo.ocarroeletrico.com/">ohmigo</a>, o custo de carregar em cada posto, no ChatGPT e no Claude · <a href="https://nap.ocarroeletrico.com/">mapa dos postos de carregamento</a> · <a href="https://ocarroeletrico.com/">ocarroeletrico.com</a> · <a href="/grupo">todos os sites do grupo</a>',
+      footSister: 'Também d\'O Carro Elétrico: <a href="https://ohmigo.ocarroeletrico.com/" target="_blank" rel="noopener">ohmigo</a>, o custo de carregar em cada posto, no ChatGPT e no Claude · <a href="https://nap.ocarroeletrico.com/" target="_blank" rel="noopener">mapa dos postos de carregamento</a> · <a href="https://ocarroeletrico.com/" target="_blank" rel="noopener">ocarroeletrico.com</a> · <a href="/grupo">todos os sites do grupo</a>',
       theme: 'Tema claro / escuro',
       // conceitos partilhados: a tarifa de preço único e a marca de
       // "estimativa OMIP" são as mesmas no simulador e na página de
@@ -65,7 +65,7 @@
       navSim: 'Simulator', navAssistant: 'Assistant',
       navSobre: 'About', navContactos: 'Contact', navPriv: 'Privacy',
       footNote: 'A community tool, non-profit.',
-      footSister: 'Also from O Carro Elétrico: <a href="https://ohmigo.ocarroeletrico.com/en">ohmigo</a>, the cost of charging at each charger, in ChatGPT and Claude · <a href="https://nap.ocarroeletrico.com/">map of Portugal\'s chargers</a> · <a href="https://ocarroeletrico.com/">ocarroeletrico.com</a> · <a href="/grupo">all the group\'s sites</a>',
+      footSister: 'Also from O Carro Elétrico: <a href="https://ohmigo.ocarroeletrico.com/en" target="_blank" rel="noopener">ohmigo</a>, the cost of charging at each charger, in ChatGPT and Claude · <a href="https://nap.ocarroeletrico.com/" target="_blank" rel="noopener">map of Portugal\'s chargers</a> · <a href="https://ocarroeletrico.com/" target="_blank" rel="noopener">ocarroeletrico.com</a> · <a href="/grupo">all the group\'s sites</a>',
       theme: 'Light / dark theme',
       simple: 'Simple rate',
       omipEst: 'OMIP estimate',
@@ -370,12 +370,12 @@
         s8p1: 'Este projecto é de todos, mas há duas pessoas a quem se deve mais do que uma linha de agradecimento. Ao <a href="https://dados.tiagofelicia.pt" target="_blank" rel="noopener">Tiago Felicia</a>, pelos dados: as séries do OMIE/MIBEL — diárias, de quartos-horários e os futuros — que alimentam o comparador. E ao <b>Miguel Simões</b>, pela inspiração, pelos dados e pelas discussões: o que está aqui saiu de muitas conversas — e das boas.',
         // 6 — limites
         s9h: 'Outros projectos d\'O Carro Elétrico',
-        s9li1: '<a href="https://ohmigo.ocarroeletrico.com/"><b>ohmigo</b></a> — pergunta ao ChatGPT ou ao Claude onde é mais barato carregar: soma a energia do teu CEME (com os preços daqui), a tarifa OPC de cada posto e as alternativas sem CEME (app do operador, TPA).',
-        s9li2: '<a href="https://nap.ocarroeletrico.com/"><b>Mapa dos postos (NAP)</b></a> — todos os postos de carregamento públicos de Portugal, com o estado em tempo real, potências e tarifas OPC, a partir do Ponto de Acesso Nacional.',
-        s9li3: '<a href="https://ocarroeletrico.com/"><b>O Carro Elétrico</b></a> — guias e boas práticas de carregamento, e a <a href="https://simuladores.ocarroeletrico.com/">lista de simuladores</a>.',
+        s9li1: '<a href="https://ohmigo.ocarroeletrico.com/" target="_blank" rel="noopener"><b>ohmigo</b></a> — pergunta ao ChatGPT ou ao Claude onde é mais barato carregar: soma a energia do teu CEME (com os preços daqui), a tarifa OPC de cada posto e as alternativas sem CEME (app do operador, TPA).',
+        s9li2: '<a href="https://nap.ocarroeletrico.com/" target="_blank" rel="noopener"><b>Mapa dos postos (NAP)</b></a> — todos os postos de carregamento públicos de Portugal, com o estado em tempo real, potências e tarifas OPC, a partir do Ponto de Acesso Nacional.',
+        s9li3: '<a href="https://ocarroeletrico.com/" target="_blank" rel="noopener"><b>O Carro Elétrico</b></a> — guias e boas práticas de carregamento, e a <a href="https://simuladores.ocarroeletrico.com/" target="_blank" rel="noopener">lista de simuladores</a>.',
         s6h: 'O que este projecto não é',
         s6li1: 'Não é um comercializador de energia. É uma ferramenta da comunidade, sem fins lucrativos: não vendemos nada, não há anúncios, e os teus favoritos não saem do teu browser.',
-        s6li2: 'Não calcula a tarifa de utilização do posto (OPC) — cada operador publica a sua, no próprio posto. Para o custo total num posto concreto, com a tarifa OPC, há o <a href="https://ohmigo.ocarroeletrico.com/">ohmigo</a>.',
+        s6li2: 'Não calcula a tarifa de utilização do posto (OPC) — cada operador publica a sua, no próprio posto. Para o custo total num posto concreto, com a tarifa OPC, há o <a href="https://ohmigo.ocarroeletrico.com/" target="_blank" rel="noopener">ohmigo</a>.',
         s6li3: 'Não substitui o CEME nem a ERSE. Em caso de dúvida, o valor que vale é o do teu comercializador.',
         // 7 — erros
         s7h: 'Encontraste um erro?',
@@ -410,12 +410,12 @@
         s8h: 'Thanks',
         s8p1: 'This project belongs to everyone, but two people deserve more than a line of credit. To <a href="https://dados.tiagofelicia.pt" target="_blank" rel="noopener">Tiago Felicia</a>, for the data: the OMIE/MIBEL series — daily, quarter-hourly and the futures — that feed the comparison. And to <b>Miguel Simões</b>, for the inspiration, the data and the discussions: what is here came out of a lot of conversations — good ones.',
         s9h: 'Other O Carro Elétrico projects',
-        s9li1: '<a href="https://ohmigo.ocarroeletrico.com/en"><b>ohmigo</b></a> — ask ChatGPT or Claude where charging is cheapest: it adds your CEME\'s energy (priced here), each charger\'s CPO fee and the ways to pay without a CEME (operator app, card terminal).',
-        s9li2: '<a href="https://nap.ocarroeletrico.com/"><b>Charger map (NAP)</b></a> — every public charger in Portugal, with live status, power and CPO fees, from the National Access Point.',
-        s9li3: '<a href="https://ocarroeletrico.com/"><b>O Carro Elétrico</b></a> — charging guides and good practice, and the <a href="https://simuladores.ocarroeletrico.com/">list of simulators</a>.',
+        s9li1: '<a href="https://ohmigo.ocarroeletrico.com/en" target="_blank" rel="noopener"><b>ohmigo</b></a> — ask ChatGPT or Claude where charging is cheapest: it adds your CEME\'s energy (priced here), each charger\'s CPO fee and the ways to pay without a CEME (operator app, card terminal).',
+        s9li2: '<a href="https://nap.ocarroeletrico.com/" target="_blank" rel="noopener"><b>Charger map (NAP)</b></a> — every public charger in Portugal, with live status, power and CPO fees, from the National Access Point.',
+        s9li3: '<a href="https://ocarroeletrico.com/" target="_blank" rel="noopener"><b>O Carro Elétrico</b></a> — charging guides and good practice, and the <a href="https://simuladores.ocarroeletrico.com/" target="_blank" rel="noopener">list of simulators</a>.',
         s6h: 'What this project is not',
         s6li1: 'It is not an energy retailer. It is a community tool, non-profit: we sell nothing, there are no ads, and your saved tariffs never leave your browser.',
-        s6li2: 'It does not calculate the charging point operator tariff (CPO) — each operator publishes their own, at the point itself. For the total at a given charger, CPO fee included, there\'s <a href="https://ohmigo.ocarroeletrico.com/en">ohmigo</a>.',
+        s6li2: 'It does not calculate the charging point operator tariff (CPO) — each operator publishes their own, at the point itself. For the total at a given charger, CPO fee included, there\'s <a href="https://ohmigo.ocarroeletrico.com/en" target="_blank" rel="noopener">ohmigo</a>.',
         s6li3: 'It does not replace your CEME or the ERSE. If in doubt, the number that counts is the one from your retailer.',
         s7h: 'Spotted a mistake?',
         s7p1: 'Tell us. The <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">issues on GitHub</a> are the shortest way to a fix, and the <a href="/contactos">contact page</a> is good for everything else. And if you would rather show us how it should look, the original spreadsheet is here: <a href="https://docs.google.com/spreadsheets/d/1WMaiaShTwp1-QzWXi-SlcB3uTigp5nfYO-v3veCcn84/edit" target="_blank" rel="noopener">the sheet</a>.',
