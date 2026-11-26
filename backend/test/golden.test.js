@@ -12,7 +12,8 @@
 // "cobertura" no fim (e não por estas âncoras).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PRICES_VERIFIED_ON, TARIFFS } from '../src/db/seed-data.js';
+import { PRICES_VERIFIED_ON, TARIFFS, PRICE_CHANGES } from '../src/db/seed-data.js';
+import { civilDay } from '../src/omie/convert.js';
 import { seededDb, reseed } from './seeded-db.js';
 import { quoteFixed } from '../src/engine/quote.js';
 import { pickComponents } from '../src/db/components.js';
@@ -45,7 +46,11 @@ const GOLDEN = [
 function quoteFromDb(db, id, { kwh = KWH, at = AT, region = 'CONT' } = {}) {
   const t = db.prepare('SELECT * FROM tariff WHERE id=?').get(id);
   assert.ok(t, `tarifário ${id} não existe no seed`);
-  const v = db.prepare('SELECT * FROM tariff_version WHERE tariff_id=? ORDER BY id DESC LIMIT 1').get(id);
+  // A versão em vigor no dia do carregamento, como em allTariffs() (tariffs.js).
+  const day = civilDay(at);
+  const v = db.prepare(`SELECT * FROM tariff_version WHERE tariff_id=? AND valid_from <= ?
+    AND (valid_to IS NULL OR valid_to > ?) ORDER BY valid_from DESC LIMIT 1`).get(id, day, day);
+  assert.ok(v, `${id} sem versão em vigor a ${day}`);
   const rows = db.prepare('SELECT * FROM price_component WHERE tariff_version_id=?').all(v.id);
   // Mesmas semântica e ordem do loadPricing() de tariffs.js: as linhas de região
   // (price_component_region) vão POR CIMA das de omissão — a última vence.
@@ -187,10 +192,10 @@ describe('cobertura do seed', () => {
 
   it('ACP não-sócio, Hyundai Blue e miio têm decomposição energia + TAR', async () => {
     const db = await seeded();
-    const check = (id, period, energy, tar, final) => {
+    const check = (id, period, energy, tar, final, from = PRICES_VERIFIED_ON) => {
       const row = db.prepare(`SELECT p.energy_eur_kwh, p.energy_only_eur_kwh, p.tar_eur_kwh
         FROM price_component p JOIN tariff_version v ON v.id=p.tariff_version_id
-        WHERE v.tariff_id=? AND p.period=?`).get(id, period);
+        WHERE v.tariff_id=? AND p.period=? AND v.valid_from=?`).get(id, period, from);
       assert.ok(row, `${id}/${period} não existe`);
       assert.equal(row.energy_only_eur_kwh, energy);
       assert.equal(row.tar_eur_kwh, tar);
@@ -202,11 +207,36 @@ describe('cobertura do seed', () => {
     check('evio-bt-hyundaiblue', 'VAZIO', 0.169, 0.0266, 0.1956);
     check('miio-bt-miiobihor', 'FORA_VAZIO', 0.24, 0.1192, 0.3592);
     check('miio-bt-miioonebi', 'VAZIO', 0.17, 0.0266, 0.1966);
+    check('miio-bt-miiobihor', 'FORA_VAZIO', 0.27, 0.1192, 0.3892, '2026-12-01');
+    check('miio-mt-miioonebi', 'VAZIO', 0.20, 0.0157, 0.2157, '2026-12-01');
     // Enable: energia 0,12 + TAR por período, no ciclo bi-horário semanal.
     check('enable-bt-tarifasimple', 'VAZIO', 0.12, 0.0266, 0.1466);
     check('enable-bt-tarifasimple', 'FORA_VAZIO', 0.12, 0.1192, 0.2392);
     check('enable-mt-tarifasimple', 'VAZIO', 0.12, 0.0157, 0.1357);
     check('enable-mt-tarifasimple', 'FORA_VAZIO', 0.12, 0.0812, 0.2012);
+  });
+
+  it('miio: 0,24 até 30/11 e 0,27 a partir de 01/12 (miio one 0,17 → 0,20), numa BD nova', async () => {
+    const db = await seeded();
+    // 22:09 é fora de vazio nos dois dias, no ciclo semanal e no diário.
+    const at = (day) => new Date(`${day}T22:09:00Z`);
+    const fv = (id, day) => quoteFromDb(db, id, { at: at(day) }).price.FORA_VAZIO;
+    for (const id of ['miio-bt-miiobihor', 'miio-bt-miiobihor-2']) {
+      assert.equal(fv(id, '2026-11-30'), 0.3592, `${id} a 30/11`);
+      assert.equal(fv(id, '2026-12-01'), 0.3892, `${id} a 01/12`);
+    }
+    assert.equal(fv('miio-mt-miiobihor', '2026-12-01'), 0.3512);
+    assert.equal(fv('miio-bt-miioonebi', '2026-11-30'), 0.2892);
+    assert.equal(fv('miio-bt-miioonebi-2', '2026-12-01'), 0.3192);
+    assert.equal(fv('miio-mt-miioonebi', '2026-12-01'), 0.2812);
+    // A activação e o IEC não mudam.
+    const nov = quoteFromDb(db, 'miio-bt-miiobihor', { at: at('2026-11-30') });
+    const dez = quoteFromDb(db, 'miio-bt-miiobihor', { at: at('2026-12-01') });
+    assert.deepEqual([dez.act, dez.iec], [nov.act, nov.iec]);
+    // Correr o seed outra vez não duplica nem mexe nas versões.
+    await reseed(db);
+    const n = db.prepare("SELECT COUNT(*) c FROM tariff_version WHERE tariff_id = 'miio-bt-miiobihor'").get().c;
+    assert.equal(n, 2);
   });
 
   it('Enable nas ilhas = energia 0,15 + TAR (linhas de região por cima do CONT)', async () => {
@@ -241,10 +271,11 @@ describe('cobertura do seed', () => {
   it('seed() é idempotente: arrancar duas vezes não duplica versões', async () => {
     const d1 = await seeded(); await reseed(d1); await reseed(d1);
     const versoes = d1.prepare('SELECT COUNT(*) c FROM tariff_version').get().c;
-    const porTarifario = d1.prepare('SELECT COUNT(*) c FROM (SELECT tariff_id FROM tariff_version GROUP BY tariff_id HAVING COUNT(*)>1)').get().c;
+    const porTarifario = d1.prepare('SELECT COUNT(*) c FROM (SELECT tariff_id FROM tariff_version GROUP BY tariff_id, valid_from HAVING COUNT(*)>1)').get().c;
     assert.equal(porTarifario, 0, 'há tarifários com mais de uma versão para a mesma data');
-    assert.equal(versoes, d1.prepare('SELECT COUNT(*) c FROM tariff').get().c,
-      'deve haver exatamente uma versão activa por tarifário');
+    const mudancas = Object.values(PRICE_CHANGES).reduce((n, cs) => n + cs.length, 0);
+    assert.equal(versoes, d1.prepare('SELECT COUNT(*) c FROM tariff').get().c + mudancas,
+      'deve haver uma versão por tarifário, mais uma por cada mudança de PRICE_CHANGES');
     // os componentes tem de acompanhar: nenhuma versão órfã (nem por região)
     const orfas = d1.prepare('SELECT COUNT(*) c FROM price_component pc WHERE NOT EXISTS (SELECT 1 FROM tariff_version v WHERE v.id=pc.tariff_version_id)').get().c;
     assert.equal(orfas, 0, `${orfas} price_component órfãos`);
@@ -259,8 +290,9 @@ describe('cobertura do seed', () => {
     // menos as campanhas e os lançados depois (`from`), cujas datas o CEME
     // publica.
     const dated = new Set(TARIFFS.filter(t => t.from).map(t => t.id));
-    const d = db.prepare('SELECT tariff_id FROM tariff_version WHERE campaign = 0 AND (valid_from != ? OR valid_from IS NULL)').all(PRICES_VERIFIED_ON)
-      .filter(r => !dated.has(r.tariff_id));
+    const changes = new Set(Object.entries(PRICE_CHANGES).flatMap(([id, cs]) => cs.map(c => `${id}@${c.from}`)));
+    const d = db.prepare('SELECT tariff_id, valid_from FROM tariff_version WHERE campaign = 0 AND (valid_from != ? OR valid_from IS NULL)').all(PRICES_VERIFIED_ON)
+      .filter(r => !dated.has(r.tariff_id) && !changes.has(`${r.tariff_id}@${r.valid_from}`));
     assert.equal(d.length, 0, `${d.length} versoes com data diferente de ${PRICES_VERIFIED_ON}`);
     const aberta = db.prepare("SELECT COUNT(*) c FROM tariff_version WHERE valid_to IS NOT NULL AND status='ACTIVE' AND campaign = 0").get();
     assert.equal(aberta.c, 0, 'uma versao ACTIVE nao pode ter valid_to, a nao ser numa campanha');
