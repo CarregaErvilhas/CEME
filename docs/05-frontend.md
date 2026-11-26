@@ -26,7 +26,7 @@ E ainda: as páginas **Sobre** e **Contactos** (texto, sem API), as **estatísti
 | `GET /tz.js` | conversão de horas de relógio por região |
 | `GET /api.js` | o cliente da API das páginas: sessão web, token partilhado no separador, nova tentativa num 401 |
 | `GET /pages.css` | estilo das páginas Sobre e Contactos |
-| `GET /manifest.webmanifest` (`/manifest.json`), `/sw.js` (`/service-worker.js`), `/pwa.js`, `/icon-*.png` | PWA |
+| `GET /manifest.webmanifest` (`/manifest.json`), `/sw.js` (`/service-worker.js`), `/pwa.js`, `/install.js`, `/install.css`, `/icon-*.png` | PWA |
 | `GET /favicon.ico` | o ícone de 32 px (PNG), para quem o pede sem ler o `<link rel="icon">` |
 | `GET /icon.svg` | o ícone das abas em SVG: traz as suas próprias regras `prefers-color-scheme`, por isso escurece com o tema escuro do browser (o Safari ignora-as e mostra o claro). Os PNG continuam a ser o desenho original |
 | `GET /.well-known/security.txt` | o contacto para problemas de segurança (RFC 9116), com o `Expires` sempre 180 dias à frente |
@@ -240,7 +240,7 @@ Testado em `backend/test/i18n.test.js`: casos fixos, marcas intactas, nenhum nom
 
 ## PWA
 
-O site pode ser instalado no telemóvel: `manifest.webmanifest`, `sw.js` (o service worker) e `pwa.js` (o banner "Instalar"). O service worker usa **rede primeiro** para tudo o que muda com um deploy (`strings.js`, `tz.js`, `api.js`, `pages.css`, manifest): a cópia guardada só serve sem rede. Os ícones, que não mudam, vão **cache primeiro**. Não guarda páginas nem `/v1/*`. Se mudares a estratégia ou a lista, sobe o nome da cache (`CACHE` em `sw.js`): o service worker novo apaga as caches antigas.
+O site pode ser instalado no telemóvel: `manifest.webmanifest`, `sw.js` (o service worker), `pwa.js` (regista o service worker e monta o aviso e o diálogo «Instalar app», com o texto `install*` do `common` nas duas línguas), `install.js` (o mesmo nos sites do grupo: vê o browser em uso e mostra os passos dele, ou abre o diálogo de instalação do Chrome quando este deixa) e `install.css`. Só o simulador e o assistente carregam o `install.js`; o botão «Instalar app» de cada página é qualquer elemento com `data-install-open`. A escolha de passos por browser testa-se em `install.test.js`, com user agents reais. O service worker usa **rede primeiro** para tudo o que muda com um deploy (`strings.js`, `tz.js`, `api.js`, `pages.css`, manifest): a cópia guardada só serve sem rede. Os ícones, que não mudam, vão **cache primeiro**. Não guarda páginas nem `/v1/*`. Se mudares a estratégia ou a lista, sobe o nome da cache (`CACHE` em `sw.js`): o service worker novo apaga as caches antigas.
 
 ## O que vem a seguir
 

@@ -72,9 +72,9 @@ function run(file, lang, html) {
   ctx.window = ctx.self = ctx.globalThis = ctx;
   vm.createContext(ctx);
   // Os scripts partilhados que a página carrega (strings.js, tz.js...), menos
-  // o da app instalável, que não escreve texto.
+  // os da app instalável (pwa.js, install.js), que não escrevem texto da página.
   for (const [, src] of html.matchAll(/<script src="\/([a-z]+\.js)"><\/script>/g)) {
-    if (src === 'pwa.js') continue;
+    if (src === 'pwa.js' || src === 'install.js') continue;
     vm.runInContext(readFileSync(new URL(src, FRONTEND), 'utf8'), ctx, { timeout: 500 });
   }
   for (const [, code] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {

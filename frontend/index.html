@@ -3,6 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/a11y.css">
+<link rel="stylesheet" href="/install.css">
 <script src="/a11y.js"></script>
 <title id="docTitle">Comparador CEME @ O Carro Elétrico</title>
 <meta name="description" content="Compare os tarifários CEME da rede Mobi.E: simule o custo de cada carregamento com tarifas OPC, CEME, TAR e IEC.">
@@ -343,6 +344,7 @@
 <script src="/tz.js"></script>
 <script src="/api.js"></script>
 <script src="/pwa.js"></script>
+<script src="/install.js"></script>
 <script>
 /* O simulador completo. Tudo vive neste ficheiro: CSS em cima, HTML mínimo
  * e este script, que desenha a página com template strings (sem framework).
@@ -494,7 +496,7 @@ function applyChrome() {
   ph('favSearch', i18n('fmPh'));
   const f = document.getElementById('foot');
   if (f) f.innerHTML = i18n('footScope') + ' <a href="https://www.mobie.pt/custo-do-carregamento" target="_blank" rel="noopener">' + (L === 'en' ? 'Official breakdown ↗' : 'Ver a estrutura oficial ↗') + '</a> · <a href="https://www.mobie.pt/pt/carregarveiculo/faq" target="_blank" rel="noopener">FAQ Mobi.E ↗</a><br><br>' + i18n('footRest') +
-    '<br><br><a href="/sobre">' + i18n('navSobre') + '</a> · <a href="/contactos">' + i18n('navContactos') + '</a> · <a href="/privacidade">' + i18n('navPriv') + '</a> · <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">GitHub Issues ↗</a><br><br>' + i18n('footSister');
+    '<br><br><a href="/sobre">' + i18n('navSobre') + '</a> · <a href="/contactos">' + i18n('navContactos') + '</a> · <a href="/privacidade">' + i18n('navPriv') + '</a> · <a href="https://github.com/CarregaErvilhas/CEME/issues" target="_blank" rel="noopener">GitHub Issues ↗</a><span class="install-sep"> · </span><button class="linkbtn" type="button" data-install-open>' + i18n('installOpen') + '</button><br><br>' + i18n('footSister');
 }
 
 /* ================= estado ================= */

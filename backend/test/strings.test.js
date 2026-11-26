@@ -117,7 +117,8 @@ describe('dicionário partilhado (strings.js)', () => {
   }
 
   it('nenhuma chave é declarada sem uso em nenhuma página', () => {
-    const tudo = Object.values(PAGES).join('\n');
+    // pwa.js monta o «Instalar app» com as chaves install* do `common`.
+    const tudo = Object.values(PAGES).join('\n') + read('pwa.js');
     const mortas = [];
     for (const ns of NS) {
       for (const k of chaves(ns, 'pt')) {

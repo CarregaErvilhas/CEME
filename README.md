@@ -152,7 +152,7 @@ Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
     tz.js                     # horas de relógio por região
     api.js                    # cliente da API das páginas (sessão web + pedidos)
     pages.css                 # estilo das páginas Sobre/Contactos
-    manifest.webmanifest, sw.js, pwa.js, icon-*.png   # PWA
+    manifest.webmanifest, sw.js, pwa.js, install.js, install.css, icon-*.png   # PWA
   docs/                       # vê a lista abaixo
   scripts/                    # extracção de dados (etl-*) e previews
   .github/                    # CI, dependabot, CODEOWNERS
