@@ -58,7 +58,7 @@ const STATIC = {
   // Um PNG servido neste caminho é aceite por todos os browsers actuais.
   '/favicon.ico': { file: 'icon-32.png', headers: ICON, missing: 404 },
   // As mascotes dos sites do grupo, na página /grupo. São marca de cada site.
-  ...Object.fromEntries(['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'ampere'].map(id =>
+  ...Object.fromEntries(['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'oop', 'pano', 'ampere'].map(id =>
     [`/grupo/${id}.svg`, { file: `grupo/${id}.svg`, headers: MASCOT, missing: 404 }])),
 };
 
