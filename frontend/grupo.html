@@ -9,10 +9,10 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Comparador CEME">
 <meta property="og:title" content="Os sites do grupo — Comparador CEME">
-<meta property="og:description" content="O Carro Elétrico, o ohmigo, o Voltaria, o Comparador CEME, o Postos PT e o AmpereArchive: o que faz cada um e onde está o código.">
+<meta property="og:description" content="O Carro Elétrico, o ohmigo, o Voltaria, o Comparador CEME, o Postos PT, o olh'o'posto, o Panoramax e o AmpereArchive: o que faz cada um e onde está o código.">
 <meta property="og:locale" content="pt_PT">
 <meta name="twitter:card" content="summary">
-<meta name="description" content="O Carro Elétrico, o ohmigo, o Voltaria, o Comparador CEME, o Postos PT e o AmpereArchive: o que faz cada um e onde está o código.">
+<meta name="description" content="O Carro Elétrico, o ohmigo, o Voltaria, o Comparador CEME, o Postos PT, o olh'o'posto, o Panoramax e o AmpereArchive: o que faz cada um e onde está o código.">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#22c55e">
 <meta name="mobile-web-app-capable" content="yes">
@@ -76,6 +76,12 @@ const SITES = () => [
     name: t('logoA'), desc: t('cemeDesc'), alt: t('cemeMascot') },
   { id: 'nap', host: 'nap.ocarroeletrico.com', site: 'https://nap.ocarroeletrico.com/', repo: GH + 'nap-dashboard', w: 212, h: 252,
     name: 'Postos PT', desc: t('napDesc'), alt: t('napMascot') },
+  { id: 'oop', host: 'olhaoposto.ocarroeletrico.com', site: 'https://olhaoposto.ocarroeletrico.com/', repo: GH + 'OlhaOPosto', w: 168, h: 168,
+    name: 'olh\'o\'posto', desc: t('oopDesc'), alt: t('oopMascot') },
+  // O servidor Panoramax do olh'o'posto, com o logótipo do Panoramax. A
+  // configuração vive no repositório do olh'o'posto.
+  { id: 'pano', host: 'panoramax.ocarroeletrico.com', site: 'https://panoramax.ocarroeletrico.com/', repo: GH + 'OlhaOPosto/tree/main/panoramax', w: 1297, h: 1297,
+    name: 'Panoramax', desc: t('panoDesc'), alt: t('panoMascot') },
   // Arquivo de dados, sem página: não tem botão do site, e o repositório é
   // privado por agora.
   { id: 'ampere', host: 'ohm-age.ocarroeletrico.com', private: true, repo: GH + 'AmpereArchive', w: 280, h: 300,

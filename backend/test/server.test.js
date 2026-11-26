@@ -473,7 +473,7 @@ it('HTML também leva nosniff', async () => {
       return { status: r.status, html: await r.text(), cookie: r.headers.get('set-cookie') || '', r };
     };
 
-    // A página do grupo: as seis mascotes vêm do próprio site, o comparador
+    // A página do grupo: as mascotes (e o logótipo do Panoramax) vêm do próprio site, o comparador
     // diz "Estás aqui" em vez do botão do site, e o AmpereArchive (sem página)
     // só tem o GitHub, com cadeado.
     it('/grupo e /group: os sites do grupo, com as mascotes locais', async () => {
@@ -484,7 +484,7 @@ it('HTML também leva nosniff', async () => {
         // O que vem já escrito no HTML (prerender), sem o script da página.
         const html = pagina.replace(/<script[\s\S]*?<\/script>/g, '');
         const imgs = [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)].map(m => m[1]).filter(u => u.startsWith('/grupo/'));
-        assert.deepEqual([...new Set(imgs)].sort(), ['ampere', 'carro', 'ceme', 'nap', 'ohmigo', 'voltaria'].map(id => `/grupo/${id}.svg`));
+        assert.deepEqual([...new Set(imgs)].sort(), ['ampere', 'carro', 'ceme', 'nap', 'ohmigo', 'oop', 'pano', 'voltaria'].map(id => `/grupo/${id}.svg`));
         assert.ok(html.includes(aqui), `${caminho} sem "${aqui}"`);
         assert.equal((html.match(/class="here"/g) || []).length, 1, 'só o comparador diz "Estás aqui"');
         assert.doesNotMatch(html, /href="https:\/\/ceme\.ocarroeletrico\.com\/"/, 'o comparador não se liga a si próprio');
@@ -493,7 +493,7 @@ it('HTML também leva nosniff', async () => {
         assert.doesNotMatch(html, /href="https:\/\/ohm-age\./, 'o AmpereArchive não tem página');
         assert.doesNotMatch(html, /<img\b[^>]*\bsrc="(https?:)?\/\//, 'imagens de outro domínio');
       }
-      for (const id of ['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'ampere']) {
+      for (const id of ['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'oop', 'pano', 'ampere']) {
         const r = await fetch(`${BASE}/grupo/${id}.svg`);
         assert.equal(r.status, 200, id);
         assert.match(r.headers.get('content-type'), /^image\/svg\+xml/);
