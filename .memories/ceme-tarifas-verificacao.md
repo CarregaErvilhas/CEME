@@ -1,8 +1,6 @@
 # Verificar as tarifas publicadas pelos CEME contra o seed
 
-Guia para um agente (ou para ti) confirmar que os preços do seed batem com o
-que cada CEME publica. Usado pelo comando `/ceme-check`
-(`.opencode/commands/ceme-check.md`). Caminhos relativos à raiz do repo.
+Guia para um agente (ou para ti) confirmar que os preços do seed batem com o que cada CEME publica. Usado pelo comando `/ceme-check` (`.opencode/commands/ceme-check.md`). Caminhos relativos à raiz do repo.
 
 Ficheiros-chave:
 - `backend/src/db/seed-data.js` — a única fonte: CEMES, SPLITS (energia+TAR), TARIFFS (um objecto por tarifário: `prices` finais c/ TAR, `act`, `url`…; legenda por cima de TARIFFS).
@@ -77,5 +75,5 @@ Sem valores a comparar (app-only/documentos): iberdrola (app), moeve (app GOW), 
      console.log(id, q.totalEur.toFixed(4), q.eurKwhNoIva.toFixed(4));
    }"
    ```
-   Regras do re-freeze: actualiza só as âncoras dos tarifários cujos valores mudaram; cenário regulatório (EGME) só leva tarifários com `act` acima do legal no seed — se o CEME passou a publicar o valor legal, sai da lista. Actualiza sempre os comentários dos testes.
+Regras do re-freeze: actualiza só as âncoras dos tarifários cujos valores mudaram; cenário regulatório (EGME) só leva tarifários com `act` acima do legal no seed — se o CEME passou a publicar o valor legal, sai da lista. Actualiza sempre os comentários dos testes.
 6. Relatório final: tabela batem certo / drift aplicado / sem publicação; nunca push (local apenas).

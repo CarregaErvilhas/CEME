@@ -1,8 +1,6 @@
 # Third-party notices — CEME
 
-O nosso código, documentação, motor de cálculo e seed são
-`PolyForm-Noncommercial-1.0.0` (vê `LICENSE`). Tudo o que está abaixo mantém
-as **suas próprias** licenças e termos e **não** está coberto pela PolyForm.
+O nosso código, documentação, motor de cálculo e seed são `PolyForm-Noncommercial-1.0.0` (vê `LICENSE`). Tudo o que está abaixo mantém as **suas próprias** licenças e termos e **não** está coberto pela PolyForm.
 
 ## Dados e fontes
 
@@ -20,11 +18,7 @@ as **suas próprias** licenças e termos e **não** está coberto pela PolyForm.
 
 ## Dependências de runtime
 
-**Uma:** `pg` (driver PostgreSQL, em `backend/package.json` + `package-lock.json`).
-O resto do backend usa só módulos do Node (`node:http`, `node:sqlite`,
-`node:test`, `node:crypto`) e o frontend é HTML/JS sem build. A `pg` é
-usada apenas quando `DATABASE_URL` está definida (produção); em dev/teste
-corre SQLite e a dependência não é exercitada.
+**Uma:** `pg` (driver PostgreSQL, em `backend/package.json` + `package-lock.json`). O resto do backend usa só módulos do Node (`node:http`, `node:sqlite`, `node:test`, `node:crypto`) e o frontend é HTML/JS sem build. A `pg` é usada apenas quando `DATABASE_URL` está definida (produção); em dev/teste corre SQLite e a dependência não é exercitada.
 
 ## O que NÃO está aqui, e porquê
 
@@ -40,5 +34,4 @@ Qualquer fonte nova que entre no projecto tem de:
 1. constar desta tabela, com origem e licença;
 2. ter a atribuição visível no sítio (rodapé ou ao lado do dado);
 3. continuar sob a sua própria licença, nunca re-licenciada sob a PolyForm;
-4. se a licença for ambígua ou estiver ausente, entrar como **referência
-   factual com link**, não como cópia — e sair se o titular pedir.
+4. se a licença for ambígua ou estiver ausente, entrar como **referência factual com link**, não como cópia — e sair se o titular pedir.

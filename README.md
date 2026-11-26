@@ -2,37 +2,21 @@
 
 Site: <https://ceme.ocarroeletrico.com> · Estatísticas OMIE: <https://omie.cocofree.dev> · Código: <https://github.com/CarregaErvilhas/CEME>
 
-Um projecto da comunidade, sem fins lucrativos. Dizes quanta energia vais
-carregar, onde e quando, e o simulador mostra-te quanto custa em cada
-tarifário de cada comercializador (CEME), do mais barato para o mais caro.
+Um projecto da comunidade, sem fins lucrativos. Dizes quanta energia vais carregar, onde e quando, e o simulador mostra-te quanto custa em cada tarifário de cada comercializador (CEME), do mais barato para o mais caro.
 
-**Novo na mobilidade eléctrica?** Lê primeiro o
-[glossário](docs/00-glossario.md): explica o que são CEME, OPC, TAR, OMIE,
-vazio, indexados e o resto do vocabulário que vais encontrar no código.
+**Novo na mobilidade eléctrica?** Lê primeiro o [glossário](docs/00-glossario.md): explica o que são CEME, OPC, TAR, OMIE, vazio, indexados e o resto do vocabulário que vais encontrar no código.
 
 ## O que o simulador calcula (e o que não calcula)
 
-Calcula **só a parcela de energia** de um carregamento na rede Mobi.E: o
-tarifário do CEME (com a TAR incluída) + IEC + IVA + taxa de activação
-(EGME).
+Calcula **só a parcela de energia** de um carregamento na rede Mobi.E: o tarifário do CEME (com a TAR incluída) + IEC + IVA + taxa de activação (EGME).
 
-**Não inclui a tarifa de utilização do posto (OPC).** Cada operador define
-a sua (€/kWh, €/min ou €/sessão) e publica-a no próprio posto. O valor que
-mostramos é o mínimo; a conta final vai ser maior. Vê
-[mobie.pt/custo-do-carregamento](https://www.mobie.pt/custo-do-carregamento)
-e a [FAQ da Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
+**Não inclui a tarifa de utilização do posto (OPC).** Cada operador define a sua (€/kWh, €/min ou €/sessão) e publica-a no próprio posto. O valor que mostramos é o mínimo; a conta final vai ser maior. Vê [mobie.pt/custo-do-carregamento](https://www.mobie.pt/custo-do-carregamento) e a [FAQ da Mobi.E](https://www.mobie.pt/pt/carregarveiculo/faq).
 
 ## O que tens no site
 
-- **Assistente** (`/assistente`, a página de entrada): três perguntas (onde,
-  quanto, quando) e mostra-te o tarifário mais barato.
-- **Simulador completo** (`/simulador`): o ranking de todos os tarifários,
-  com filtros (verde, populares, sem condições, favoritos, pesquisa), a
-  conta parcela a parcela de cada um e o comparador indexado vs fixo
-  (`#/comparar`).
-- **Estatísticas OMIE** (`/omie` e <https://omie.cocofree.dev>): médias
-  mensais do preço do mercado, os preços de hoje e de amanhã e uma previsão
-  do mês.
+- **Assistente** (`/assistente`, a página de entrada): três perguntas (onde, quanto, quando) e mostra-te o tarifário mais barato.
+- **Simulador completo** (`/simulador`): o ranking de todos os tarifários, com filtros (verde, populares, sem condições, favoritos, pesquisa), a conta parcela a parcela de cada um e o comparador indexado vs fixo (`#/comparar`).
+- **Estatísticas OMIE** (`/omie` e <https://omie.cocofree.dev>): médias mensais do preço do mercado, os preços de hoje e de amanhã e uma previsão do mês.
 - **Sobre**, **Contactos** e **Privacidade** (`/sobre`, `/contactos`, `/privacidade`).
 - **Guia da API** (`/api`, em inglês) para quem quer usar os dados noutra app.
 
@@ -40,18 +24,12 @@ Tudo em português e inglês, instalável como app no telemóvel (PWA).
 
 Algumas coisas que o simulador faz por ti:
 
-- **Três regiões**: Continente, Madeira e Açores, cada uma com o seu IVA,
-  fuso horário e horários de vazio ([docs/07](docs/07-ilhas.md)).
-- **Fixos e indexados**, simples e bi-horários (ciclo diário e semanal), em
-  baixa e média tensão.
-- **Indexados ao preço real**: cotados ao preço do OMIE do quarto de hora em
-  que carregas, com as perdas desse quarto.
-- **Hora do carregamento** escrita no relógio da região (escreves 22:00 nos
-  Açores e é 22:00 dos Açores, estejas onde estiveres).
-- **Energia em kWh ou pela bateria** (capacidade + percentagem inicial e
-  final).
-- **A conta linha a linha** em cada tarifário: energia e TAR, IEC, taxa de
-  activação, IVA e total.
+- **Três regiões**: Continente, Madeira e Açores, cada uma com o seu IVA, fuso horário e horários de vazio ([docs/07](docs/07-ilhas.md)).
+- **Fixos e indexados**, simples e bi-horários (ciclo diário e semanal), em baixa e média tensão.
+- **Indexados ao preço real**: cotados ao preço do OMIE do quarto de hora em que carregas, com as perdas desse quarto.
+- **Hora do carregamento** escrita no relógio da região (escreves 22:00 nos Açores e é 22:00 dos Açores, estejas onde estiveres).
+- **Energia em kWh ou pela bateria** (capacidade + percentagem inicial e final).
+- **A conta linha a linha** em cada tarifário: energia e TAR, IEC, taxa de activação, IVA e total.
 - **Favoritos** guardados no browser, sem conta.
 - **Pesquisa** que ignora acentos e funciona nas duas línguas.
 
@@ -67,18 +45,11 @@ browser ──► server.js ──► http/ (páginas, API) ──► tariffs.js
                                                             └─► dados.tiagofelicia.pt
 ```
 
-- **Backend:** Node.js 24, sem framework (`node:http`). A única dependência
-  é `pg`, o driver do PostgreSQL.
-- **Frontend:** HTML, CSS e JavaScript simples, sem build. O servidor serve
-  os ficheiros tal como estão em `frontend/`.
-- **Base de dados:** SQLite local em dev e testes; PostgreSQL em produção.
-  O código escreve o mesmo SQL para as duas ([docs/08](docs/08-sqlite-postgres.md)).
-- **Preços OMIE:** vão-se buscar ao omie.es (oficial) e ao
-  dados.tiagofelicia.pt, e ficam guardados na BD. Actualizam-se quando
-  alguém pede dados e os que lá estão têm mais de uma hora
-  ([docs/03](docs/03-omie-ingestao.md)).
-- **Autenticação:** toda a API pede um token. O browser pede um sozinho;
-  apps de terceiros usam uma API key ([docs/04](docs/04-api-auth.md)).
+- **Backend:** Node.js 24, sem framework (`node:http`). A única dependência é `pg`, o driver do PostgreSQL.
+- **Frontend:** HTML, CSS e JavaScript simples, sem build. O servidor serve os ficheiros tal como estão em `frontend/`.
+- **Base de dados:** SQLite local em dev e testes; PostgreSQL em produção. O código escreve o mesmo SQL para as duas ([docs/08](docs/08-sqlite-postgres.md)).
+- **Preços OMIE:** vão-se buscar ao omie.es (oficial) e ao dados.tiagofelicia.pt, e ficam guardados na BD. Actualizam-se quando alguém pede dados e os que lá estão têm mais de uma hora ([docs/03](docs/03-omie-ingestao.md)).
+- **Autenticação:** toda a API pede um token. O browser pede um sozinho; apps de terceiros usam uma API key ([docs/04](docs/04-api-auth.md)).
 
 ## Correr localmente
 
@@ -93,29 +64,19 @@ npm start       # http://localhost:3001/
 
 `npm run dev` é o `npm start` a reiniciar sozinho quando mudas um ficheiro.
 
-Sem a variável `DATABASE_URL`, a BD é um ficheiro SQLite em
-`backend/data/ceme.db`, criado e preenchido no arranque. Se quiseres
-começar do zero, apaga `backend/data/` e arranca outra vez. Com
-`DATABASE_URL` a apontar para um PostgreSQL, o mesmo código corre contra o
-Postgres.
+Sem a variável `DATABASE_URL`, a BD é um ficheiro SQLite em `backend/data/ceme.db`, criado e preenchido no arranque. Se quiseres começar do zero, apaga `backend/data/` e arranca outra vez. Com `DATABASE_URL` a apontar para um PostgreSQL, o mesmo código corre contra o Postgres.
 
-As variáveis de ambiente estão todas em `backend/.env.example`. As duas que
-importam em produção:
+As variáveis de ambiente estão todas em `backend/.env.example`. As duas que importam em produção:
 
-- `JWT_SECRET`: o segredo que assina os tokens. Em produção é obrigatório
-  (sem ele, `POST /v1/session` devolve 503). Gera um com
-  `openssl rand -hex 32`.
+- `JWT_SECRET`: o segredo que assina os tokens. Em produção é obrigatório (sem ele, `POST /v1/session` devolve 503). Gera um com `openssl rand -hex 32`.
 - `CEME_API_KEY`: opcional, uma API key para terceiros. Na BD só fica o hash.
 
 ## Por onde começar a ler o código
 
 1. [docs/00-glossario.md](docs/00-glossario.md) — o vocabulário.
-2. `backend/src/engine/quote.js` — como se calcula o custo de um tarifário
-   fixo. É curto e é o coração do simulador.
+2. `backend/src/engine/quote.js` — como se calcula o custo de um tarifário fixo. É curto e é o coração do simulador.
 3. `backend/src/engine/indexed.js` e `regions.js` — indexados e horários.
-4. `backend/src/server.js` — o ponto de entrada. Segue um pedido a partir
-   daí: `http/api.js` (as rotas da API) e `tariffs.js` (a ponte entre a BD
-   e o motor).
+4. `backend/src/server.js` — o ponto de entrada. Segue um pedido a partir daí: `http/api.js` (as rotas da API) e `tariffs.js` (a ponte entre a BD e o motor).
 5. `backend/src/db/seed-data.js` — os tarifários e preços.
 6. `frontend/index.html` — o simulador no browser.
 
@@ -123,12 +84,9 @@ Depois, os documentos em `docs/` aprofundam cada parte.
 
 ## API
 
-O guia completo, em inglês, está em
-<https://ceme.ocarroeletrico.com/api> (ou `/api` localmente).
+O guia completo, em inglês, está em <https://ceme.ocarroeletrico.com/api> (ou `/api` localmente).
 
-Todas as rotas `/v1/*` pedem `Authorization: Bearer <jwt>` ou
-`X-API-Key: <chave>`. A excepção é `POST /v1/session`, que é quem te dá o
-token. Detalhe em [docs/04](docs/04-api-auth.md).
+Todas as rotas `/v1/*` pedem `Authorization: Bearer <jwt>` ou `X-API-Key: <chave>`. A excepção é `POST /v1/session`, que é quem te dá o token. Detalhe em [docs/04](docs/04-api-auth.md).
 
 | Método | Rota | O que devolve |
 |---|---|---|
@@ -145,20 +103,13 @@ token. Detalhe em [docs/04](docs/04-api-auth.md).
 | GET | `/v1/omie/stats` | os dados da página de estatísticas OMIE |
 | GET | `/v1/indexed/quarters` | os quartos de hora de um dia para um indexado, e quem ganha contra um fixo |
 
-Os erros vêm em `{error: {code, message}}` e as datas em ISO UTC. Um
-tarifário com dados inconsistentes sai do ranking ("quarentena"), e os
-outros seguem.
+Os erros vêm em `{error: {code, message}}` e as datas em ISO UTC. Um tarifário com dados inconsistentes sai do ranking ("quarentena"), e os outros seguem.
 
 ## Deploy
 
-Produção no Zerops: um serviço `api` (Node.js 24, porta 3001) e um
-PostgreSQL gerido (`db`). A Cloudflare fica à frente. Os segredos
-(`JWT_SECRET`, `DATABASE_URL`) são variáveis do serviço, nunca estão no
-repositório.
+Produção no Zerops: um serviço `api` (Node.js 24, porta 3001) e um PostgreSQL gerido (`db`). A Cloudflare fica à frente. Os segredos (`JWT_SECRET`, `DATABASE_URL`) são variáveis do serviço, nunca estão no repositório.
 
-O GitHub Actions só corre os testes. O deploy é automático: cada push para
-`main` faz o Zerops puxar o código e publicá-lo. O `main` está protegido e
-só aceita merges com os testes verdes.
+O GitHub Actions só corre os testes. O deploy é automático: cada push para `main` faz o Zerops puxar o código e publicá-lo. O `main` está protegido e só aceita merges com os testes verdes.
 
 Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
 
@@ -225,35 +176,16 @@ Documentos em `docs/`:
 
 ## Licença
 
-O código, a documentação, o motor de cálculo e o seed estão sob
-**PolyForm Noncommercial 1.0.0** (`LICENSE`,
-`SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0`).
+O código, a documentação, o motor de cálculo e o seed estão sob **PolyForm Noncommercial 1.0.0** (`LICENSE`, `SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0`).
 
 > Required Notice: Copyright O Carro Elétrico / Fernando Miguel (https://ceme.ocarroeletrico.com/)
 
-- Uso **não comercial** livre (pessoas, investigação, escolas,
-  organizações de saúde ou de ambiente, entidades públicas): podes usar,
-  modificar e partilhar, desde que mantenhas o aviso e, onde fizer sentido,
-  apontes para o site.
-- Qualquer uso **comercial** (incluindo uso por uma empresa com vantagem
-  comercial, produtos ou serviços pagos, ou meter o software numa oferta
-  comercial) precisa de uma licença comercial à parte, combinada caso a
-  caso: <info@ocarroeletrico.com>.
-- A licença também proíbe usar o software para concorrer com o licenciador:
-  um comercializador não pode fazer fork e vender o simulador aos seus
-  clientes.
+- Uso **não comercial** livre (pessoas, investigação, escolas, organizações de saúde ou de ambiente, entidades públicas): podes usar, modificar e partilhar, desde que mantenhas o aviso e, onde fizer sentido, apontes para o site.
+- Qualquer uso **comercial** (incluindo uso por uma empresa com vantagem comercial, produtos ou serviços pagos, ou meter o software numa oferta comercial) precisa de uma licença comercial à parte, combinada caso a caso: <info@ocarroeletrico.com>.
+- A licença também proíbe usar o software para concorrer com o licenciador: um comercializador não pode fazer fork e vender o simulador aos seus clientes.
 
-Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não**
-estão sob a PolyForm: mantêm as suas licenças e créditos. Vê
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não** estão sob a PolyForm: mantêm as suas licenças e créditos. Vê [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-A mascote (a calculadora cor-de-rosa, em `frontend/icon.svg`, nos ícones
-`frontend/icon-*.png`, no `frontend/og.png` e em `frontend/grupo/ceme.svg`)
-faz parte da marca O Carro Elétrico, como as mascotes dos outros sites do
-grupo, e fica fora das licenças: não a uses noutro projecto sem autorização.
-As mascotes dos outros sites, na página `/grupo` (`frontend/grupo/`),
-pertencem a cada um desses sites e também ficam fora das licenças.
+A mascote (a calculadora cor-de-rosa, em `frontend/icon.svg`, nos ícones `frontend/icon-*.png`, no `frontend/og.png` e em `frontend/grupo/ceme.svg`) faz parte da marca O Carro Elétrico, como as mascotes dos outros sites do grupo, e fica fora das licenças: não a uses noutro projecto sem autorização. As mascotes dos outros sites, na página `/grupo` (`frontend/grupo/`), pertencem a cada um desses sites e também ficam fora das licenças.
 
-Queres contribuir? Antes do primeiro pull request entrar, assinas o
-[CLA](CLA.md) com um comentário no pull request: vê
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Queres contribuir? Antes do primeiro pull request entrar, assinas o [CLA](CLA.md) com um comentário no pull request: vê [CONTRIBUTING.md](CONTRIBUTING.md).
