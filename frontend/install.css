@@ -1,0 +1,49 @@
+/* «Instalar app» (pwa.js monta, install.js decide o que mostrar): o botão das
+ * páginas, o aviso nos telemóveis e o diálogo com os passos. Serve o simulador
+ * e o assistente, que têm variáveis de cor com nomes diferentes: daí os
+ * var(a, var(b)). */
+.linkbtn { font: inherit; color: var(--link, inherit); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+/* O botão e o seu separador só aparecem quando o install.js decide que há
+ * alguma coisa a oferecer (não aparece numa app já instalada). */
+.linkbtn[data-install-open], .install-sep { display: none; }
+:root[data-install="ready"] .linkbtn[data-install-open], :root[data-install="ready"] .install-sep { display: inline; }
+/* O texto vem nas duas línguas; fica o da língua do <html>. */
+:root[lang="en"] [data-l="pt"], :root:not([lang="en"]) [data-l="en"] { display: none !important; }
+.install-bar[hidden], .install-dlg [hidden] { display: none; }
+.install-btn { font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 16px; border-radius: 11px; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.install-btn.primary { background: #22c55e; border-color: #22c55e; color: #052e16; }
+.install-bar { position: fixed; z-index: 9999; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; padding: 10px 6px 10px 12px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .16); font-family: inherit; }
+.install-bar img { display: block; border-radius: 22%; }
+.install-bar p { margin: 0; font-size: 13px; line-height: 1.35; color: var(--mut, var(--mute)); }
+.install-bar strong { display: block; color: var(--ink); font-size: 15px; }
+.install-x { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--mut, var(--mute)); font-size: 24px; line-height: 1; cursor: pointer; }
+.install-x:hover { color: var(--ink); background: var(--soft); }
+.install-dlg { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 20px 22px 18px; border: 0; border-radius: 18px; background: var(--card); color: var(--ink); font-family: inherit; font-size: 15px; line-height: 1.45; }
+.install-dlg::backdrop { background: rgba(11, 17, 32, .5); }
+.install-dlg h2 { margin: 14px 0 6px; font-size: 20px; }
+/* Um bocado de ecrã principal: o ícone e o nome como o telemóvel os vai mostrar. */
+.install-tile { display: grid; justify-items: center; gap: 6px; padding: 18px 0 12px; border-radius: 12px; background: var(--hi, var(--soft)); }
+.install-tile img { border-radius: 22%; box-shadow: 0 6px 16px rgba(15, 23, 42, .18); }
+.install-tile span { font-size: 12px; font-weight: 600; }
+.install-lede { margin: 0 0 14px; color: var(--mut, var(--mute)); }
+.install-steps { list-style: none; counter-reset: step; margin: 0; padding: 0; display: grid; gap: 10px; }
+.install-steps li { counter-increment: step; position: relative; min-height: 28px; padding: 3px 0 0 38px; }
+.install-steps li::before { content: counter(step); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: #052e16; font-weight: 700; font-size: 14px; }
+.install-list { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; }
+.install-note { margin: 12px 0 0; font-size: 14px; color: var(--mut, var(--mute)); }
+.install-note:first-child { margin: 0 0 12px; }
+.install-glyph { width: 1.25em; height: 1.25em; vertical-align: -.25em; padding: 1px; border: 1px solid var(--line); border-radius: 5px; color: var(--link, var(--charge)); }
+.install-copy { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 0; }
+.install-copy code { flex: 1 1 12em; min-width: 0; overflow-wrap: anywhere; font-size: 13px; padding: 6px 8px; border-radius: 8px; background: var(--soft); }
+.install-actions { margin: 18px 0 0; display: flex; justify-content: flex-end; }
+/* Num telemóvel estreito o aviso fica com o título e o botão; o diálogo diz o resto. */
+@media (max-width: 420px) { .install-bar { gap: 10px; } .install-sub { display: none; } }
+@media (max-width: 600px) {
+  .install-dlg { width: 100%; max-width: 100%; margin: auto 0 0; border-radius: 18px 18px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .install-dlg[open] { transition: translate .22s ease-out; @starting-style { translate: 0 24px; } }
+}
+/* O botão de acessibilidade (a11y.css) também vive no canto de baixo: sobe
+ * enquanto o aviso está à vista, para não ficar tapado. */
+:root:has(#install-bar:not([hidden])) .a11ybtn.fab { bottom: calc(96px + env(safe-area-inset-bottom)); }

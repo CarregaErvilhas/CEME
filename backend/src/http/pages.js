@@ -27,10 +27,12 @@ const STATIC = {
   '/strings.js': { file: 'strings.js', headers: JS },
   '/tz.js': { file: 'tz.js', headers: JS },
   '/pwa.js': { file: 'pwa.js', headers: JS },
+  '/install.js': { file: 'install.js', headers: JS },
   '/api.js': { file: 'api.js', headers: JS },
   '/theme.js': { file: 'theme.js', headers: JS },
   '/a11y.js': { file: 'a11y.js', headers: JS },
   '/a11y.css': { file: 'a11y.css', headers: { 'content-type': 'text/css; charset=utf-8', ...NO_STORE } },
+  '/install.css': { file: 'install.css', headers: { 'content-type': 'text/css; charset=utf-8', ...NO_STORE } },
   '/pages.css': { file: 'pages.css', headers: { 'content-type': 'text/css; charset=utf-8', ...NO_STORE } },
   // PWA (app instalável): manifest, service worker e ícones.
   '/manifest.webmanifest': { file: 'manifest.webmanifest', headers: { 'content-type': 'application/manifest+json; charset=utf-8', ...NO_STORE } },

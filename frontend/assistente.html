@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="stylesheet" href="/a11y.css">
+<link rel="stylesheet" href="/install.css">
 <script src="/a11y.js"></script>
 <title>CEME — tarifário mais barato</title>
 <meta property="og:type" content="website">
@@ -249,6 +250,7 @@ h1 { font-size: 24px; line-height: 1.25; font-weight: 500; letter-spacing: -.01e
 <script src="/tz.js"></script>
 <script src="/api.js"></script>
 <script src="/pwa.js"></script>
+<script src="/install.js"></script>
 <script>
 'use strict';
 /* Assistente passo-a-passo: três perguntas (onde, quanto, quando) até ao
@@ -404,7 +406,7 @@ function vLanding() {
     <h1>${t('h1')}</h1>
     <p class="lede">${t('lede')}</p>
     <button class="btn" data-go="onde">${t('start')} ${ARROW}</button>
-    <p class="small">${t('community')}<br><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a><br>${t('footSister')}</p>
+    <p class="small">${t('community')}<br><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a><span class="install-sep"> · </span><button class="linkbtn" type="button" data-install-open>${t('installOpen')}</button><br>${t('footSister')}</p>
   </section>`;
 }
 function vWhere() {
@@ -514,7 +516,7 @@ function vResults() {
       : `<p class="empty">${t('none')}</p>`}
     ${sessionNote}
     <a class="go-full" href="${esc(fullHref())}"><div><b>${t('fullH')}</b><span>${t('fullP')}</span></div><span class="go-arr" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
-    <p class="full"><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a></p>
+    <p class="full"><a href="/simulador">${t('fullSim')}</a> · <a href="/sobre">${t('navSobre')}</a> · <a href="/contactos">${t('navContactos')}</a> · <a href="/privacidade">${t('navPriv')}</a><span class="install-sep"> · </span><button class="linkbtn" type="button" data-install-open>${t('installOpen')}</button></p>
     ${foot}
   </section>`;
 }
