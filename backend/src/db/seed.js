@@ -10,7 +10,7 @@
 // os dois percebem.
 import {
   CEMES, TARIFFS, SPLITS, REGION_SPLITS, regionFinal, NOTES, VERSIONS,
-  CAMPAIGN_END, PRICES_VERIFIED_ON, IEC, PROMOS, LEGACY_IDS,
+  CAMPAIGN_END, PRICES_VERIFIED_ON, IEC, PROMOS, LEGACY_IDS, PRICE_CHANGES,
 } from './seed-data.js';
 import { shiftDays } from '../time.js';
 
@@ -35,49 +35,17 @@ export async function seed(db) {
       ON CONFLICT (id) DO UPDATE SET ${updateAll(['ceme_id', 'name', 'kind', 'voltage', 'schedule', 'cycle', 'green', 'access', 'popular', 'bundle', 'regions', 'source_url', 'legacy_id', 'new_customers', 'audience'])}`,
       [t.id, t.ceme, name, t.kind, t.voltage, t.schedule, t.cycle, t.green ? 1 : 0, t.access, t.popular ? 1 : 0, t.bundle ? 1 : 0, t.regions ?? 'CONT', t.url ?? websites[t.ceme], LEGACY_IDS[t.id] ?? null, t.newCustomers ? 1 : 0, t.audience ?? null]);
 
-    // Uma versão por tarifário, a começar em PRICES_VERIFIED_ON. Numa
+    // Uma versão por tarifário, a começar em PRICES_VERIFIED_ON (mais uma por
+    // cada mudança anunciada em PRICE_CHANGES). Numa
     // versão que alguém fechou à mão (campaign = 0) o seed não mexe no
     // `valid_to`: não a reabre. Numa campanha (campaign = 1) as datas são do
     // seed, por isso seguem-no: um `to` adiado estende-a, e um `to` que sai
     // reabre-a e ela deixa de ser campanha. Uma campanha (`from`/`to`, inclusive) começa no seu `from` e
     // fecha no dia a seguir ao `to`, porque `valid_to` é exclusivo. `omie_aggregation` é SPLIT_VAZIO_FORA em todos, porque os
     // indexados do seed são todos bi-horários (vê docs/02).
-    const v = VERSIONS[t.id] || {};
-    const from = t.from ?? PRICES_VERIFIED_ON;
-    await db.run(`INSERT INTO tariff_version
-      (tariff_id, valid_from, valid_to, campaign, status, origin, k_index_eur_mwh, cgs_eur_mwh, omie_aggregation, notes)
-      VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, 'SPLIT_VAZIO_FORA', $8)
-      ON CONFLICT (tariff_id, valid_from) DO UPDATE SET ${updateAll(['status', 'origin', 'k_index_eur_mwh', 'cgs_eur_mwh', 'omie_aggregation', 'notes'])},
-        valid_to = CASE WHEN tariff_version.campaign = 1 THEN EXCLUDED.valid_to ELSE tariff_version.valid_to END,
-        campaign = CASE WHEN tariff_version.campaign = 1 THEN EXCLUDED.campaign ELSE tariff_version.campaign END`,
-      [t.id, from, t.to ? shiftDays(t.to, 1) : null, t.to ? 1 : 0, `SEED_${PRICES_VERIFIED_ON}`, v.k ?? null, v.cgs ?? null, NOTES[t.id] ?? null]);
-    const [{ id: vid }] = await db.query('SELECT id FROM tariff_version WHERE tariff_id = $1 AND valid_from = $2', [t.id, from]);
-
-    // Os preços do Continente, um por período. A activação, o apoio e o IEC
-    // são do tarifário e repetem-se em cada linha (vê db/components.js). Nos
-    // indexados o €/kWh calcula-se na hora, por isso há só uma linha VAZIO
-    // sem preço, para guardar esses três.
-    const fees = [t.act, t.support ?? 0, t.iec ?? IEC];
-    const split = SPLITS[t.id] || {};
-    const periods = t.prices ? Object.entries(t.prices) : [['VAZIO', null]];
-    for (const [period, price] of periods) {
-      const sp = split[period];
-      await db.run(`INSERT INTO price_component (tariff_version_id, period, ${PRICE_COLS.join(', ')})
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (tariff_version_id, period) DO UPDATE SET ${updateAll(PRICE_COLS)}`,
-        [vid, period, price, ...fees, sp?.energy ?? null, sp?.tar ?? null]);
-    }
-
-    // Preços próprios das ilhas (só onde há REGION_SPLITS), com a mesma
-    // activação, apoio e IEC do Continente.
-    for (const [region, perSplit] of Object.entries(REGION_SPLITS[t.id] || {})) {
-      for (const [period, s] of Object.entries(perSplit)) {
-        await db.run(`INSERT INTO price_component_region (tariff_version_id, region, period, ${PRICE_COLS.join(', ')})
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (tariff_version_id, region, period) DO UPDATE SET ${updateAll(PRICE_COLS)}`,
-          [vid, region, period, regionFinal(s.energy, s.tar), ...fees, s.energy, s.tar]);
-      }
-    }
+    await upsertVersion(db, t, t.from ?? PRICES_VERIFIED_ON, t.to, t.prices, SPLITS[t.id], REGION_SPLITS[t.id]);
+    // As mudanças de preço anunciadas (PRICE_CHANGES): uma versão cada.
+    for (const c of PRICE_CHANGES[t.id] || []) await upsertVersion(db, t, c.from, null, c.prices, c.split, null);
   }
 
   // As promoções (vê PROMOS). Só upserts: uma promoção que acabou fica na
@@ -95,6 +63,46 @@ export async function seed(db) {
   // o seed nunca reabre uma campanha fechada.
   for (const [id, end] of Object.entries(CAMPAIGN_END)) {
     await db.run(`UPDATE tariff_version SET valid_to = $1, campaign = 1, status = 'EXPIRED' WHERE tariff_id = $2`, [end, id]);
+  }
+}
+
+// Uma versão de um tarifário (a partir de `from`; `to` = último dia de uma
+// campanha) e os seus preços. `split` e `regionSplits` são as entradas de
+// SPLITS e REGION_SPLITS para esta versão.
+async function upsertVersion(db, t, from, to, prices, split, regionSplits) {
+  const v = VERSIONS[t.id] || {};
+  await db.run(`INSERT INTO tariff_version
+    (tariff_id, valid_from, valid_to, campaign, status, origin, k_index_eur_mwh, cgs_eur_mwh, omie_aggregation, notes)
+    VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $7, 'SPLIT_VAZIO_FORA', $8)
+    ON CONFLICT (tariff_id, valid_from) DO UPDATE SET ${updateAll(['status', 'origin', 'k_index_eur_mwh', 'cgs_eur_mwh', 'omie_aggregation', 'notes'])},
+      valid_to = CASE WHEN tariff_version.campaign = 1 THEN EXCLUDED.valid_to ELSE tariff_version.valid_to END,
+      campaign = CASE WHEN tariff_version.campaign = 1 THEN EXCLUDED.campaign ELSE tariff_version.campaign END`,
+    [t.id, from, to ? shiftDays(to, 1) : null, to ? 1 : 0, `SEED_${PRICES_VERIFIED_ON}`, v.k ?? null, v.cgs ?? null, NOTES[t.id] ?? null]);
+  const [{ id: vid }] = await db.query('SELECT id FROM tariff_version WHERE tariff_id = $1 AND valid_from = $2', [t.id, from]);
+
+  // Os preços do Continente, um por período. A activação, o apoio e o IEC
+  // são do tarifário e repetem-se em cada linha (vê db/components.js). Nos
+  // indexados o €/kWh calcula-se na hora, por isso há só uma linha VAZIO
+  // sem preço, para guardar esses três.
+  const fees = [t.act, t.support ?? 0, t.iec ?? IEC];
+  const periods = prices ? Object.entries(prices) : [['VAZIO', null]];
+  for (const [period, price] of periods) {
+    const sp = split?.[period];
+    await db.run(`INSERT INTO price_component (tariff_version_id, period, ${PRICE_COLS.join(', ')})
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (tariff_version_id, period) DO UPDATE SET ${updateAll(PRICE_COLS)}`,
+      [vid, period, price, ...fees, sp?.energy ?? null, sp?.tar ?? null]);
+  }
+
+  // Preços próprios das ilhas (só onde há REGION_SPLITS), com a mesma
+  // activação, apoio e IEC do Continente.
+  for (const [region, perSplit] of Object.entries(regionSplits || {})) {
+    for (const [period, s] of Object.entries(perSplit)) {
+      await db.run(`INSERT INTO price_component_region (tariff_version_id, region, period, ${PRICE_COLS.join(', ')})
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (tariff_version_id, region, period) DO UPDATE SET ${updateAll(PRICE_COLS)}`,
+        [vid, region, period, regionFinal(s.energy, s.tar), ...fees, s.energy, s.tar]);
+    }
   }
 }
 

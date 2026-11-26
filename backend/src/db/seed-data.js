@@ -284,6 +284,30 @@ export const NOTES = {
 // sabe sem perguntar a cada CEME.
 export const PRICES_VERIFIED_ON = '2026-10-15';
 
+// Mudanças de preço já anunciadas, com o dia em que começam:
+// { id do tarifário: [{ from, prices, split }] }. Cada uma dá uma versão nova,
+// sem fim e sem ser campanha; a versão de TARIFFS vale até à véspera (a
+// versão em vigor é a de `valid_from` mais recente). `split` faz o papel de
+// SPLITS nessa versão. A activação, o apoio e o IEC são os de TARIFFS.
+const priceChange = (from, energy, tarV, tarFV) => [{
+  from,
+  prices: { VAZIO: +(energy + tarV).toFixed(4), FORA_VAZIO: +(energy + tarFV).toFixed(4) },
+  split: { VAZIO: { energy, tar: tarV }, FORA_VAZIO: { energy, tar: tarFV } },
+}];
+export const PRICE_CHANGES = {
+  // miio: a energia passa de 0,24 a 0,27 €/kWh a 01/12 («A partir de 01/12 o
+  // preço fixo passa a 0,27 €/kWh», miio.com/pt/prices/charging). O miio one
+  // continua 0,07 abaixo, logo 0,20 (a página não o escreve).
+  'miio-bt-miiobihor': priceChange('2026-12-01', 0.27, 0.0266, 0.1192),
+  'miio-bt-miiobihor-2': priceChange('2026-12-01', 0.27, 0.0266, 0.1192),
+  'miio-mt-miiobihor': priceChange('2026-12-01', 0.27, 0.0157, 0.0812),
+  'miio-mt-miiobihor-2': priceChange('2026-12-01', 0.27, 0.0157, 0.0812),
+  'miio-bt-miioonebi': priceChange('2026-12-01', 0.20, 0.0266, 0.1192),
+  'miio-bt-miioonebi-2': priceChange('2026-12-01', 0.20, 0.0266, 0.1192),
+  'miio-mt-miioonebi': priceChange('2026-12-01', 0.20, 0.0157, 0.0812),
+  'miio-mt-miioonebi-2': priceChange('2026-12-01', 0.20, 0.0157, 0.0812),
+};
+
 // Parâmetros dos indexados, por tarifário (vê engine/indexed.js):
 //   k:       margem do CEME, €/kWh
 //   cgs:     custos de gestão do sistema, €/kWh

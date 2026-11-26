@@ -59,13 +59,15 @@ Um tarifário pode mudar de preço. Em vez de apagares o preço antigo, crias um
 - `valid_from`: o primeiro dia em que a versão vale;
 - `valid_to`: o dia em que deixa de valer (exclusivo), ou vazio se ainda vale.
 
-A versão em vigor num dia é a que tem `valid_from <= dia` e (`valid_to` vazio ou `dia < valid_to`). "Dia" é sempre o dia de calendário na região do carregamento, calculado pelo código (`civilDay()`), nunca o `CURRENT_DATE` da BD (que dá o dia em UTC).
+A versão em vigor num dia é a que tem `valid_from <= dia` e (`valid_to` vazio ou `dia < valid_to`); se houver mais do que uma, ganha a de `valid_from` mais recente. "Dia" é sempre o dia de calendário na região do carregamento, calculado pelo código (`civilDay()`), nunca o `CURRENT_DATE` da BD (que dá o dia em UTC).
 
 Uma **campanha** é uma versão com fim marcado (`campaign = 1`), que vem do `to` do tarifário no seed. As que já acabaram estão em `CAMPAIGN_END` (`seed-data.js`), ficam com `status = 'EXPIRED'` e desaparecem do simulador no dia a seguir ao fim. As datas de uma campanha são do seed: se o `to` muda, o próximo arranque muda o `valid_to`, e se o `to` sai a versão reabre e deixa de ser campanha. Numa versão que fechaste à mão (`campaign = 0`) o seed não mexe no `valid_to`.
 
 As versões do seed começam na data em que os preços foram verificados (`PRICES_VERIFIED_ON`): não sabemos quando cada contrato começou, e a interface mostra "preços verificados em", não "em vigor desde". A excepção são as campanhas e os tarifários lançados depois dessa data, que têm `from` no seed.
 
 Para corrigires um valor, mudas o seed e o próximo arranque actualiza a versão existente. Só crias uma versão nova quando interessa guardar o preço antigo com a sua validade (por exemplo, uma campanha).
+
+Quando um CEME anuncia um preço novo com data, não mexes em `TARIFFS`: juntas a mudança a `PRICE_CHANGES` (`seed-data.js`). O seed cria uma versão a começar nesse dia, sem fim, e a de `TARIFFS` continua a valer até à véspera, por ser a de `valid_from` mais antigo.
 
 ## Os preços (`price_component`)
 
