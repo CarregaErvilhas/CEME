@@ -1,19 +1,13 @@
 # 05 — Frontend
 
-Tudo o que corre no browser está em `frontend/`: HTML, CSS e JavaScript
-simples, sem framework e sem build. O servidor (`backend/src/http/pages.js`) serve os
-ficheiros tal como estão. Para mudares uma página, editas o ficheiro e recarregas.
+Tudo o que corre no browser está em `frontend/`: HTML, CSS e JavaScript simples, sem framework e sem build. O servidor (`backend/src/http/pages.js`) serve os ficheiros tal como estão. Para mudares uma página, editas o ficheiro e recarregas.
 
 Há duas interfaces para a mesma API:
 
-- o **assistente** (`assistente.html`): três perguntas até ao tarifário
-  mais barato. É a porta de entrada;
-- o **simulador completo** (`index.html`): o ranking com filtros, a conta
-  de cada tarifário e o comparador indexado vs fixo.
+- o **assistente** (`assistente.html`): três perguntas até ao tarifário mais barato. É a porta de entrada;
+- o **simulador completo** (`index.html`): o ranking com filtros, a conta de cada tarifário e o comparador indexado vs fixo.
 
-E ainda: as páginas **Sobre** e **Contactos** (texto, sem API), as
-**estatísticas OMIE** ([09](09-omie-estatisticas.md)) e o **guia da API**
-(`/api`, só em inglês).
+E ainda: as páginas **Sobre** e **Contactos** (texto, sem API), as **estatísticas OMIE** ([09](09-omie-estatisticas.md)) e o **guia da API** (`/api`, só em inglês).
 
 ## Rotas
 
@@ -37,78 +31,39 @@ E ainda: as páginas **Sobre** e **Contactos** (texto, sem API), as
 | `GET /icon.svg` | o ícone das abas em SVG: traz as suas próprias regras `prefers-color-scheme`, por isso escurece com o tema escuro do browser (o Safari ignora-as e mostra o claro). Os PNG continuam a ser o desenho original |
 | `GET /.well-known/security.txt` | o contacto para problemas de segurança (RFC 9116), com o `Expires` sempre 180 dias à frente |
 
-JS, CSS e HTML vão com `cache-control: no-store`, para o browser nunca
-ficar com uma versão antiga depois de um deploy. Os ícones vão com
-`immutable`.
+JS, CSS e HTML vão com `cache-control: no-store`, para o browser nunca ficar com uma versão antiga depois de um deploy. Os ícones vão com `immutable`.
 
-As páginas HTML levam ainda os cabeçalhos de segurança de `PAGE_SECURITY`
-(`backend/src/http/pages.js`): um CSP que só deixa carregar scripts, CSS e
-pedidos do próprio site, nada de iframes noutros sites, `Referrer-Policy` e
-`Permissions-Policy`. Os scripts inline só correm com o hash, que o servidor
-calcula em cada resposta: por isso não há `onclick=` no HTML. Um botão
-desenhado por um template leva `data-action` (e `data-id`, se precisar), e
-o listener único do simulador (`ACTIONS` no `index.html`) trata do resto. Se uma página passar a precisar de um CDN ou de outro
-domínio, acrescenta-o lá; o `server.test.js` falha antes de isso chegar à
-produção. O HSTS vem da Cloudflare.
+As páginas HTML levam ainda os cabeçalhos de segurança de `PAGE_SECURITY` (`backend/src/http/pages.js`): um CSP que só deixa carregar scripts, CSS e pedidos do próprio site, nada de iframes noutros sites, `Referrer-Policy` e `Permissions-Policy`. Os scripts inline só correm com o hash, que o servidor calcula em cada resposta: por isso não há `onclick=` no HTML. Um botão desenhado por um template leva `data-action` (e `data-id`, se precisar), e o listener único do simulador (`ACTIONS` no `index.html`) trata do resto. Se uma página passar a precisar de um CDN ou de outro domínio, acrescenta-o lá; o `server.test.js` falha antes de isso chegar à produção. O HSTS vem da Cloudflare.
 
 ### A escolha entre assistente e simulador
 
-Cada interface tem um link para a outra. Quando abres `/assistente` ou
-`/simulador`, o **servidor** grava a escolha num cookie (`ceme_ui`, 1 ano,
-`Path=/`, `SameSite=Lax`, e `Secure` quando o pedido veio por https). A
-rota `/` só **lê** o cookie, nunca o escreve, por isso quem chega pela
-primeira vez vê sempre o assistente.
+Cada interface tem um link para a outra. Quando abres `/assistente` ou `/simulador`, o **servidor** grava a escolha num cookie (`ceme_ui`, 1 ano, `Path=/`, `SameSite=Lax`, e `Secure` quando o pedido veio por https). A rota `/` só **lê** o cookie, nunca o escreve, por isso quem chega pela primeira vez vê sempre o assistente.
 
-Ser um cookie lido pelo servidor (e não `localStorage` lido por JS) faz com
-que `GET /` responda logo com a página certa, sem piscar nem redireccionar,
-e funcione mesmo sem JavaScript. Um valor desconhecido no cookie dá o
-assistente.
+Ser um cookie lido pelo servidor (e não `localStorage` lido por JS) faz com que `GET /` responda logo com a página certa, sem piscar nem redireccionar, e funcione mesmo sem JavaScript. Um valor desconhecido no cookie dá o assistente.
 
 ## O assistente
 
-Quatro ecrãs, navegados pelo hash do URL: `#/onde` → `#/quanto` →
-`#/quando` → `#/resultados`.
+Quatro ecrãs, navegados pelo hash do URL: `#/onde` → `#/quanto` → `#/quando` → `#/resultados`.
 
 - **onde:** a região, escolhida num mapa;
 - **quanto:** a bateria, em % e kWh, com duas pegas numa barra;
 - **quando:** agora, esta noite, amanhã ou uma data à escolha;
-- **resultados:** o mais barato em destaque e a lista dos outros, com os
-  mesmos filtros do simulador (populares, sem condições, verde) e um
-  "Mostrar todos". «Populares» vem ligado por omissão (`DEF`).
-  No fim há um cartão que abre o simulador completo com as mesmas
-  respostas na query (`fullHref()`: região, bateria, hora e filtros); o
-  completo lê-as em `applyQuery()`, sobrepõe-nas ao estado guardado e tira-as
-  do URL.
+- **resultados:** o mais barato em destaque e a lista dos outros, com os mesmos filtros do simulador (populares, sem condições, verde) e um "Mostrar todos". «Populares» vem ligado por omissão (`DEF`). No fim há um cartão que abre o simulador completo com as mesmas respostas na query (`fullHref()`: região, bateria, hora e filtros); o completo lê-as em `applyQuery()`, sobrepõe-nas ao estado guardado e tira-as do URL.
 
-As respostas ficam em `sessionStorage['ceme:wizard']` (sobrevivem a um
-reload, desaparecem quando fechas o separador), e o tema em
-`sessionStorage['ceme:theme']`.
+As respostas ficam em `sessionStorage['ceme:wizard']` (sobrevivem a um reload, desaparecem quando fechas o separador), e o tema em `sessionStorage['ceme:theme']`.
 
 ## O simulador completo
 
 Duas vistas, também pelo hash:
 
-- `#/` — o ranking (`POST /v1/simulate`): energia em kWh ou pela bateria,
-  região, data e hora do carregamento, pesquisa e filtros (verde,
-  populares, sem condições, favoritos), o aviso de âmbito e o detalhe da
-  conta de cada tarifário. «Populares» vem ligado por omissão; o estado
-  guardado em `localStorage['ceme:S']` só o desliga se fores tu a mexer-lhe
-  (`popularPicked`). Nas primeiras visitas o botão faz uma animação curta
-  quando aparece no ecrã, para mostrar que se pode desligar (`popHint`,
-  contador em `localStorage['ceme:popHint']`).
-- `#/comparar` — indexado vs fixo: o preço actual lado a lado, um gráfico
-  de 60 dias e a tabela de quartos de hora com o preço do indexado **e do
-  fixo**, marcando onde cada um ganha.
+- `#/` — o ranking (`POST /v1/simulate`): energia em kWh ou pela bateria, região, data e hora do carregamento, pesquisa e filtros (verde, populares, sem condições, favoritos), o aviso de âmbito e o detalhe da conta de cada tarifário. «Populares» vem ligado por omissão; o estado guardado em `localStorage['ceme:S']` só o desliga se fores tu a mexer-lhe (`popularPicked`). Nas primeiras visitas o botão faz uma animação curta quando aparece no ecrã, para mostrar que se pode desligar (`popHint`, contador em `localStorage['ceme:popHint']`).
+- `#/comparar` — indexado vs fixo: o preço actual lado a lado, um gráfico de 60 dias e a tabela de quartos de hora com o preço do indexado **e do fixo**, marcando onde cada um ganha.
 
-O comparador ignora a pesquisa e os filtros (verde, com condições,
-favoritos): é uma ferramenta para comparar dois tarifários quaisquer, não
-uma vista filtrada. A escolha guarda-se por `ceme|nome` e não por `id`,
-porque o `id` muda entre BT e MT e o tarifário é o mesmo.
+O comparador ignora a pesquisa e os filtros (verde, com condições, favoritos): é uma ferramenta para comparar dois tarifários quaisquer, não uma vista filtrada. A escolha guarda-se por `ceme|nome` e não por `id`, porque o `id` muda entre BT e MT e o tarifário é o mesmo.
 
 ### O que recalcula e o que só redesenha
 
-Uns controlos mudam o número (e têm de pedir ao servidor), outros só mudam
-o que se mostra. A regra, em `route()`:
+Uns controlos mudam o número (e têm de pedir ao servidor), outros só mudam o que se mostra. A regra, em `route()`:
 
 | controlo | acção | porquê |
 |---|---|---|
@@ -124,53 +79,20 @@ o que se mostra. A regra, em `route()`:
 
 ### Funcionalidades
 
-- **Energia:** kWh directo ou bateria (capacidade + % mínima e máxima). O
-  valor efectivo é `effKwh()`; é esse que aparece em todo o lado, nunca o
-  `S.kwh` cru. No ecrã sai sempre com **uma casa decimal** (`kwhTxt()`); o
-  valor bruto só vai para as contas. O campo de edição fica cru, para
-  poderes escrever `40` e não `40,0`.
-- **Data e hora:** formato `aaaa/mm/dd hh:mm` (24 h), escrito e mostrado no
-  **relógio da região** do carregamento (`frontend/tz.js`, funções
-  `fromWall`/`toWall`). Nos dias de mudança de hora, uma hora que não existe
-  passa para depois do salto e uma hora repetida fica na primeira passagem
-  (testes em `tz.test.js`). Por omissão é "agora"; se o relógio do browser
-  estiver desviado mais de 5 minutos, usa a hora do servidor. O assistente
-  usa as mesmas funções.
-- **OMIE de referência:** por omissão, as médias de vazio/fora de vazio por
-  ciclo do último dia **completo** de `/v1/omie/daily`. No ranking, em
-  automático, e sempre no assistente, a web manda também `useSpot` e cada
-  indexado é cotado ao quarto de hora do carregamento. O slider do
-  comparador desliga o automático e passa a valer para todos.
-- **Ramal (BT/MT):** a tensão escolhida no cartão de energia.
-  `dedupByRamal()` deixa uma entrada por `ceme|nome`, na variante dessa
-  tensão. É a mesma função no ranking, no modal de favoritos e no
-  comparador.
-- **A conta linha a linha:** o detalhe de cada tarifário mostra o `parts`
-  do motor: energia + TAR (separadas quando se sabe), IEC, activação, total
-  sem IVA, IVA e total ([02](02-motor-calculo.md)). O período usado na conta
-  vem assinalado.
-- **Favoritos:** a estrela nos cartões e o modal "Gerir favoritos",
-  agrupado por CEME, com pesquisa e filtros. Guardados em
-  `localStorage['ceme:favs']`, sem conta nem BD.
-- **Barra de preço com cor:** o comprimento é proporcional ao preço; a cor
-  vai de verde a vermelho numa escala **logarítmica** entre o mais barato e
-  o mais caro de **toda** a lista (`heatColor()`/`heatOf()`), por isso não
-  muda quando filtras. É logarítmica porque, com uma escala linear, quase
-  tudo ficava verde (os mais caros estão muito acima da mediana).
-- **Pesquisa:** ignora acentos (`deaccent()`: "luzigas" encontra
-  "LUZiGÁS") e procura nas duas línguas ao mesmo tempo (`searchText()`).
-- **Telemóvel:** abaixo de 520 px o layout fica compacto e o cabeçalho
-  passa a duas linhas (logo e bandeiras em cima, navegação por baixo, a
-  deslizar na horizontal).
-- **Sessão:** energia, região, favoritos, data e hora ficam em
-  `localStorage['ceme:S']`. Ao ler, cada campo é validado (`loadS()`), para
-  dados velhos ou editados à mão não partirem a página.
+- **Energia:** kWh directo ou bateria (capacidade + % mínima e máxima). O valor efectivo é `effKwh()`; é esse que aparece em todo o lado, nunca o `S.kwh` cru. No ecrã sai sempre com **uma casa decimal** (`kwhTxt()`); o valor bruto só vai para as contas. O campo de edição fica cru, para poderes escrever `40` e não `40,0`.
+- **Data e hora:** formato `aaaa/mm/dd hh:mm` (24 h), escrito e mostrado no **relógio da região** do carregamento (`frontend/tz.js`, funções `fromWall`/`toWall`). Nos dias de mudança de hora, uma hora que não existe passa para depois do salto e uma hora repetida fica na primeira passagem (testes em `tz.test.js`). Por omissão é "agora"; se o relógio do browser estiver desviado mais de 5 minutos, usa a hora do servidor. O assistente usa as mesmas funções.
+- **OMIE de referência:** por omissão, as médias de vazio/fora de vazio por ciclo do último dia **completo** de `/v1/omie/daily`. No ranking, em automático, e sempre no assistente, a web manda também `useSpot` e cada indexado é cotado ao quarto de hora do carregamento. O slider do comparador desliga o automático e passa a valer para todos.
+- **Ramal (BT/MT):** a tensão escolhida no cartão de energia. `dedupByRamal()` deixa uma entrada por `ceme|nome`, na variante dessa tensão. É a mesma função no ranking, no modal de favoritos e no comparador.
+- **A conta linha a linha:** o detalhe de cada tarifário mostra o `parts` do motor: energia + TAR (separadas quando se sabe), IEC, activação, total sem IVA, IVA e total ([02](02-motor-calculo.md)). O período usado na conta vem assinalado.
+- **Favoritos:** a estrela nos cartões e o modal "Gerir favoritos", agrupado por CEME, com pesquisa e filtros. Guardados em `localStorage['ceme:favs']`, sem conta nem BD.
+- **Barra de preço com cor:** o comprimento é proporcional ao preço; a cor vai de verde a vermelho numa escala **logarítmica** entre o mais barato e o mais caro de **toda** a lista (`heatColor()`/`heatOf()`), por isso não muda quando filtras. É logarítmica porque, com uma escala linear, quase tudo ficava verde (os mais caros estão muito acima da mediana).
+- **Pesquisa:** ignora acentos (`deaccent()`: "luzigas" encontra "LUZiGÁS") e procura nas duas línguas ao mesmo tempo (`searchText()`).
+- **Telemóvel:** abaixo de 520 px o layout fica compacto e o cabeçalho passa a duas linhas (logo e bandeiras em cima, navegação por baixo, a deslizar na horizontal).
+- **Sessão:** energia, região, favoritos, data e hora ficam em `localStorage['ceme:S']`. Ao ler, cada campo é validado (`loadS()`), para dados velhos ou editados à mão não partirem a página.
 
 ### O aviso de âmbito
 
-O custo de um carregamento Mobi.E tem várias parcelas e o simulador só
-calcula a **parte da energia**. Para ninguém se enganar, o aviso aparece em
-três sítios:
+O custo de um carregamento Mobi.E tem várias parcelas e o simulador só calcula a **parte da energia**. Para ninguém se enganar, o aviso aparece em três sítios:
 
 1. no topo da página, sempre visível, numa linha (clicar leva-te ao cartão);
 2. num cartão expansível no topo do ranking, com a tabela das parcelas:
@@ -186,8 +108,7 @@ três sítios:
    | Taxa cobrada pelo OPC | ❌ |
    | Outros serviços | ❌ |
 
-   com o aviso "o valor apresentado é o mínimo da parcela de energia" e
-   links para a Mobi.E;
+com o aviso "o valor apresentado é o mínimo da parcela de energia" e links para a Mobi.E;
 3. no rodapé, numa versão curta.
 
 O estado aberto/fechado do cartão fica em `localStorage['ceme:S'].scopeClosed`.
@@ -201,54 +122,33 @@ Marca duas coisas diferentes:
 | ★ | os 8 quartos com o OMIE mais baixo do dia (`cheap`, calculado no servidor) |
 | colunas **Fixo €/kWh** e **Melhor** | se o indexado ou o fixo é mais barato **nesse quarto** (`winner`) |
 
-`/v1/indexed/quarters` recebe `?fixed=<id>` (o fixo escolhido) e devolve
-`fixed` e `winner` por quarto. Sem `fixed`, a página esconde essas duas
-colunas: um vencedor calculado contra o tarifário errado engana mais do que
-nenhum.
+`/v1/indexed/quarters` recebe `?fixed=<id>` (o fixo escolhido) e devolve `fixed` e `winner` por quarto. Sem `fixed`, a página esconde essas duas colunas: um vencedor calculado contra o tarifário errado engana mais do que nenhum.
 
 As regras da comparação estão em `backend/src/engine/compare.js`:
 
-- cada tarifário é cotado **no seu período** (um bi-horário tem preço de
-  vazio e de fora de vazio, e os ciclos dos dois podem ser diferentes);
+- cada tarifário é cotado **no seu período** (um bi-horário tem preço de vazio e de fora de vazio, e os ciclos dos dois podem ser diferentes);
 - um fixo **simples** só tem `UNICO`, que vale para todos os períodos;
 - os dois lados arredondam a 4 casas **antes** de comparar;
 - a taxa de activação fica de fora (cobra-se uma vez, não por quarto);
 - um período sem preço no fixo dá `null`, nunca 0.
 
-As faixas de quartos seguidos ("10:30–12:30") calculam-se pelo instante
-(`ranges()`), por causa da hora repetida de Outubro.
+As faixas de quartos seguidos ("10:30–12:30") calculam-se pelo instante (`ranges()`), por causa da hora repetida de Outubro.
 
-O gráfico de 60 dias usa uma cópia da fórmula dos indexados escrita no
-browser (`idxPrice`). O `formula.test.js` garante que dá o mesmo que o
-motor: se mudares uma, muda a outra.
+O gráfico de 60 dias usa uma cópia da fórmula dos indexados escrita no browser (`idxPrice`). O `formula.test.js` garante que dá o mesmo que o motor: se mudares uma, muda a outra.
 
 ### Notas dos tarifários
 
-Alguns tarifários têm uma nota (`tariff_version.notes`). Chega do servidor
-como um **código** (ex.: `AC_DC_FLAT`) e é traduzida no browser
-(`NOTE_KEY`); um código desconhecido mostra-se tal e qual. A nota aparece em
-três sítios: tooltip no nome, um badge visível no cartão e uma linha no
-detalhe da conta. Tem de se ler sem passar o rato.
+Alguns tarifários têm uma nota (`tariff_version.notes`). Chega do servidor como um **código** (ex.: `AC_DC_FLAT`) e é traduzida no browser (`NOTE_KEY`); um código desconhecido mostra-se tal e qual. A nota aparece em três sítios: tooltip no nome, um badge visível no cartão e uma linha no detalhe da conta. Tem de se ler sem passar o rato.
 
-Hoje só os tarifários `myAtlante (AC)` da Atlante têm nota: o preço é o dos
-postos AC (corrente alternada); nos postos DC o CEME tem um preço com a
-tarifa do posto incluída, que o simulador não calcula.
+Hoje só os tarifários `myAtlante (AC)` da Atlante têm nota: o preço é o dos postos AC (corrente alternada); nos postos DC o CEME tem um preço com a tarifa do posto incluída, que o simulador não calcula.
 
 ### A etiqueta "média OMIE da sessão" (`billing`)
 
-Alguns indexados são facturados pela média do OMIE de todas as horas em que
-o carro esteve ligado, e não pelo quarto de hora de cada kWh (vê
-[02](02-motor-calculo.md)). O servidor marca-os com `billing:
-'MEDIA_SESSAO'`. O simulador e o assistente cotam um quarto de hora só, por
-isso esses tarifários levam a etiqueta `tagSession` com o aviso
-`sessionTip` no title (texto em `common`, em `strings.js`). O aviso aparece
-também numa linha do detalhe da conta, no simulador, e uma vez por baixo da
-lista, no assistente.
+Alguns indexados são facturados pela média do OMIE de todas as horas em que o carro esteve ligado, e não pelo quarto de hora de cada kWh (vê [02](02-motor-calculo.md)). O servidor marca-os com `billing: 'MEDIA_SESSAO'`. O simulador e o assistente cotam um quarto de hora só, por isso esses tarifários levam a etiqueta `tagSession` com o aviso `sessionTip` no title (texto em `common`, em `strings.js`). O aviso aparece também numa linha do detalhe da conta, no simulador, e uma vez por baixo da lista, no assistente.
 
 ### A etiqueta "com condições" (`bundle`)
 
-`tariff.bundle` é um booleano: o preço só vale se tiveres outra relação com
-o CEME. Na prática junta casos diferentes:
+`tariff.bundle` é um booleano: o preço só vale se tiveres outra relação com o CEME. Na prática junta casos diferentes:
 
 | exemplos | a condição |
 |---|---|
@@ -259,27 +159,20 @@ o CEME. Na prática junta casos diferentes:
 | EDP *Clientes energia*, EVIO *Hyundai Blue*, Galp Plano | desconto por já ser cliente |
 | Atlante *myAtlante Business (AC)* | ser cliente empresarial |
 
-Na interface chama-se, nos três sítios onde aparece (badge, filtro e modal
-de favoritos):
+Na interface chama-se, nos três sítios onde aparece (badge, filtro e modal de favoritos):
 
 | | |
 |---|---|
 | PT | **preço com condições** / *sem condições* / *com condições* |
 | EN | **conditional price** / *no conditions* / *conditional* |
 
-O filtro do modal de favoritos é independente do do ranking: `FM.bundle`
-quer dizer "mostrar os com condições".
+O filtro do modal de favoritos é independente do do ranking: `FM.bundle` quer dizer "mostrar os com condições".
 
 ## Arranque da página
 
-`init()` desenha logo com um OMIE por omissão e só depois vai buscar o OMIE
-de referência, em segundo plano (`loadOmieRef()`). Com a BD vazia esse
-pedido pode demorar dezenas de segundos, e a página não fica à espera.
+`init()` desenha logo com um OMIE por omissão e só depois vai buscar o OMIE de referência, em segundo plano (`loadOmieRef()`). Com a BD vazia esse pedido pode demorar dezenas de segundos, e a página não fica à espera.
 
-Se o **primeiro** `refresh()` falhar (servidor a arrancar, rede em baixo),
-aparece um cartão de erro com um botão para tentar outra vez. O `api()`
-trata o token expirado: num 401, pede uma sessão nova e repete o pedido uma
-vez. Os outros erros HTTP viram uma mensagem de erro, nunca uma lista vazia.
+Se o **primeiro** `refresh()` falhar (servidor a arrancar, rede em baixo), aparece um cartão de erro com um botão para tentar outra vez. O `api()` trata o token expirado: num 401, pede uma sessão nova e repete o pedido uma vez. Os outros erros HTTP viram uma mensagem de erro, nunca uma lista vazia.
 
 ## Línguas (PT / EN)
 
@@ -291,28 +184,13 @@ PT por omissão. Ordem de prioridade:
 
 Como funciona no browser:
 
-- **Um dicionário para todas as páginas**: `frontend/strings.js`. Cada
-  página pede o seu bloco com `CEME_STR('<página>')`, que devolve `{pt, en}`
-  já com o vocabulário **comum** (`common`: filtros, etiquetas, logo,
-  navegação) junto. `CEME_I18N.regions` tem o nome, o IVA e o fuso de cada
-  região (com um nome longo e um curto).
-- `i18n('chave', {vars})` no simulador e `t('chave', {vars})` no assistente
-  fazem a substituição e usam o PT se a chave faltar em EN. No simulador
-  chama-se `i18n` e os tarifários chamam-se `tf`, para nenhuma variável
-  tapar a função.
-- `setLang(id, persist)` (simulador) muda a língua, o `<html lang>`, as
-  bandeiras e as partes fixas da página (`applyChrome()`). O assistente
-  redesenha o ecrã.
-- No simulador as bandeiras são SVG (os emojis de bandeira não aparecem em
-  Windows); no assistente, `PT` / `EN` em texto.
-- O `backend/test/strings.test.js` garante que PT e EN têm as mesmas chaves
-  e os mesmos placeholders, que nenhuma página redefine uma chave de
-  `common`, que não há chaves usadas que não existam nem chaves que ninguém
-  usa, e que o mesmo texto não aparece em dois sítios (se duas páginas dizem
-  o mesmo, vai para `common`).
+- **Um dicionário para todas as páginas**: `frontend/strings.js`. Cada página pede o seu bloco com `CEME_STR('<página>')`, que devolve `{pt, en}` já com o vocabulário **comum** (`common`: filtros, etiquetas, logo, navegação) junto. `CEME_I18N.regions` tem o nome, o IVA e o fuso de cada região (com um nome longo e um curto).
+- `i18n('chave', {vars})` no simulador e `t('chave', {vars})` no assistente fazem a substituição e usam o PT se a chave faltar em EN. No simulador chama-se `i18n` e os tarifários chamam-se `tf`, para nenhuma variável tapar a função.
+- `setLang(id, persist)` (simulador) muda a língua, o `<html lang>`, as bandeiras e as partes fixas da página (`applyChrome()`). O assistente redesenha o ecrã.
+- No simulador as bandeiras são SVG (os emojis de bandeira não aparecem em Windows); no assistente, `PT` / `EN` em texto.
+- O `backend/test/strings.test.js` garante que PT e EN têm as mesmas chaves e os mesmos placeholders, que nenhuma página redefine uma chave de `common`, que não há chaves usadas que não existam nem chaves que ninguém usa, e que o mesmo texto não aparece em dois sítios (se duas páginas dizem o mesmo, vai para `common`).
 
-O inglês é **britânico** (`en-GB`). Os textos escrevem-se como um nativo
-diria, e não como tradução palavra a palavra. Exemplos:
+O inglês é **britânico** (`en-GB`). Os textos escrevem-se como um nativo diria, e não como tradução palavra a palavra. Exemplos:
 
 | PT | EN |
 |---|---|
@@ -325,12 +203,9 @@ diria, e não como tradução palavra a palavra. Exemplos:
 | Favoritos | saved |
 | Indexado vs fixo | Indexed to OMIE vs fixed tariff |
 
-`OPC` aparece como `OPC / CPO` (o site da Mobi.E em inglês usa *Charging
-Point Operator*).
+`OPC` aparece como `OPC / CPO` (o site da Mobi.E em inglês usa *Charging Point Operator*).
 
-O português é **europeu**, nunca do Brasil: `utilizador`, `ecrã`,
-`ficheiro`, `fatura`, `electricidade`. Nada de `usuário`, `tela`,
-`arquivo`, `celular`, `você`.
+O português é **europeu**, nunca do Brasil: `utilizador`, `ecrã`, `ficheiro`, `fatura`, `electricidade`. Nada de `usuário`, `tela`, `arquivo`, `celular`, `você`.
 
 ### O que não se traduz
 
@@ -339,20 +214,13 @@ O português é **europeu**, nunca do Brasil: `utilizador`, `ecrã`,
 - Topónimos: `Madeira` fica, `Açores` passa a `Azores`.
 - `IVA` passa a `VAT`; `€/kWh` e o formato de data `aaaa/mm/dd hh:mm` ficam.
 
-O que chega do servidor tem de vir **neutro ou como código**, nunca como
-frase numa língua: o aviso das ilhas (`OMIE_CONT_REF`), as notas dos
-tarifários (`notes`) e o rótulo das fontes do OMIE (`SOURCE_LABEL`). É o
-browser que traduz.
+O que chega do servidor tem de vir **neutro ou como código**, nunca como frase numa língua: o aviso das ilhas (`OMIE_CONT_REF`), as notas dos tarifários (`notes`) e o rótulo das fontes do OMIE (`SOURCE_LABEL`). É o browser que traduz.
 
 ### Nomes dos tarifários
 
-São os nomes que cada CEME publica, por isso **não se traduzem por
-inteiro**: ficavam irreconhecíveis e impossíveis de conferir na página do
-CEME. Traduz-se o vocabulário genérico e a marca fica.
+São os nomes que cada CEME publica, por isso **não se traduzem por inteiro**: ficavam irreconhecíveis e impossíveis de conferir na página do CEME. Traduz-se o vocabulário genérico e a marca fica.
 
-`NAME_RULES` (em `index.html`) é uma lista de substituições aplicada **por
-ordem**, as frases mais longas primeiro. Os nomes que são só marca ficam
-como estão (`NAME_KEEP`). Exemplos:
+`NAME_RULES` (em `index.html`) é uma lista de substituições aplicada **por ordem**, as frases mais longas primeiro. Os nomes que são só marca ficam como estão (`NAME_KEEP`). Exemplos:
 
 | original | em inglês |
 |---|---|
@@ -362,32 +230,17 @@ como estão (`NAME_KEEP`). Exemplos:
 | miio (Bi-Horário Diário) sem subscrição | miio (bi-hourly daily) no subscription |
 | ACP Electric by EVIO - não sócio ACP | ACP Electric by EVIO — not an ACP member |
 
-Repara que "Cartão" é prefixo em PT e sufixo em EN, por isso há regras por
-marca. A pesquisa procura nas duas formas: quem escreve "indexed tariff"
-com a interface em português encontra o tarifário.
+Repara que "Cartão" é prefixo em PT e sufixo em EN, por isso há regras por marca. A pesquisa procura nas duas formas: quem escreve "indexed tariff" com a interface em português encontra o tarifário.
 
-Testado em `backend/test/i18n.test.js`: casos fixos, marcas intactas,
-nenhum nome do seed por traduzir, e uma regra curta nunca antes da frase
-longa que a contém.
+Testado em `backend/test/i18n.test.js`: casos fixos, marcas intactas, nenhum nome do seed por traduzir, e uma regra curta nunca antes da frase longa que a contém.
 
 ## Testes do frontend
 
-`backend/test/frontend-smoke.test.js` corre o script do simulador num
-contexto isolado (sem browser, com um `document` falso) e chama as funções
-que desenham cada vista (`vHome()`, `vCmp()`, `badges()`, `detail()`,
-`renderFavModal()`). Apanha erros de JavaScript que os testes de texto não
-vêem. O `assistente-smoke.test.js` faz o mesmo para o assistente. Se
-criares um script partilhado novo, tens de o carregar também nesses testes.
+`backend/test/frontend-smoke.test.js` corre o script do simulador num contexto isolado (sem browser, com um `document` falso) e chama as funções que desenham cada vista (`vHome()`, `vCmp()`, `badges()`, `detail()`, `renderFavModal()`). Apanha erros de JavaScript que os testes de texto não vêem. O `assistente-smoke.test.js` faz o mesmo para o assistente. Se criares um script partilhado novo, tens de o carregar também nesses testes.
 
 ## PWA
 
-O site pode ser instalado no telemóvel: `manifest.webmanifest`, `sw.js` (o
-service worker) e `pwa.js` (o banner "Instalar"). O service worker usa
-**rede primeiro** para tudo o que muda com um deploy (`strings.js`,
-`tz.js`, `api.js`, `pages.css`, manifest): a cópia guardada só serve sem rede. Os
-ícones, que não mudam, vão **cache primeiro**. Não guarda páginas nem
-`/v1/*`. Se mudares a estratégia ou a lista, sobe o nome da cache (`CACHE`
-em `sw.js`): o service worker novo apaga as caches antigas.
+O site pode ser instalado no telemóvel: `manifest.webmanifest`, `sw.js` (o service worker) e `pwa.js` (o banner "Instalar"). O service worker usa **rede primeiro** para tudo o que muda com um deploy (`strings.js`, `tz.js`, `api.js`, `pages.css`, manifest): a cópia guardada só serve sem rede. Os ícones, que não mudam, vão **cache primeiro**. Não guarda páginas nem `/v1/*`. Se mudares a estratégia ou a lista, sobe o nome da cache (`CACHE` em `sw.js`): o service worker novo apaga as caches antigas.
 
 ## O que vem a seguir
 
