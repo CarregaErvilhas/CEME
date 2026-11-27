@@ -10,4 +10,4 @@ Um bot verifica cada pull request e regista a assinatura, portanto só assinas u
 
 Dados de terceiros (tarifas da ERSE, preços OMIE/MIBEL, ...) não são teus para licenciar: diz de onde vêm e em que termos, para irem para o [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-Como o código está organizado, as regras que segue e como correr os testes: [CLAUDE.md](CLAUDE.md) e [README.md](README.md).
+Como o código está organizado, as regras que segue e como correr os testes: [AGENTS.md](AGENTS.md) e [README.md](README.md).

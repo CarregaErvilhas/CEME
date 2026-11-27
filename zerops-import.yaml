@@ -1,6 +1,8 @@
 # Import de serviços para o projeto Zerops CEME (já existente).
 #
-#   zcli project service-import zerops-import.yaml -P 9n1HBsuHT72ZgP2XkXXAIA
+#   zcli project service-import zerops-import.yaml -P <project-id>
+#
+# O <project-id> aparece em `zcli project list`.
 #
 # Cria os serviços que o zerops.yml pressupõe: `db` (PostgreSQL) e `api`
 # (o runtime). Os hostnames não são decorativos: o zerops.yml puxa
