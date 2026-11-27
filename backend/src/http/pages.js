@@ -19,6 +19,9 @@ const ICON = { 'content-type': 'image/png', 'cache-control': 'public, max-age=86
 // As mascotes do /grupo podem mudar com um deploy (o endereço não leva hash),
 // por isso guardam-se um dia mas sem `immutable`.
 const MASCOT = { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' };
+// A fonte do grupo (Nunito, cópia do kit da marca). Como as mascotes, o
+// endereço não leva hash: guarda-se um dia, sem `immutable`.
+const FONT = { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400' };
 const JS = { 'content-type': 'text/javascript; charset=utf-8', ...NO_STORE };
 
 // Ficheiros estáticos: caminho pedido → ficheiro em frontend/ e cabeçalhos.
@@ -59,6 +62,9 @@ const STATIC = {
   // <link rel="icon"> das páginas. Sem esta rota caía na API e levava um 401.
   // Um PNG servido neste caminho é aceite por todos os browsers actuais.
   '/favicon.ico': { file: 'icon-32.png', headers: ICON, missing: 404 },
+  // A fonte Nunito, carregada pelo @font-face das páginas (licença OFL ao lado,
+  // em frontend/fonts/OFL-Nunito.txt).
+  '/fonts/nunito-latin.woff2': { file: 'fonts/nunito-latin.woff2', headers: FONT, missing: 404 },
   // As mascotes dos sites do grupo, na página /grupo. São marca de cada site.
   ...Object.fromEntries(['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'oop', 'pano', 'ampere'].map(id =>
     [`/grupo/${id}.svg`, { file: `grupo/${id}.svg`, headers: MASCOT, missing: 404 }])),

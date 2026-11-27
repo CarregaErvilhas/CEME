@@ -15,6 +15,7 @@ O nosso código, documentação, motor de cálculo e seed são `PolyForm-Noncomm
 | Texto do aviso de âmbito sobre a composição da factura | `https://mobie.pt/custo-do-carregamento` e `https://mobie.pt/pt/carregarveiculo/faq` | **© MOBI.E, todos os direitos reservados.** Sem licença explícita de reutilização. | **Só o link**, nunca o texto copiado. Linkificado no `README.md` e no rodapé do frontend. |
 | Nomes, marcas e URLs dos comercializadores | Cada comercializador, através da sua página pública de tarifas | Propriedade de cada operador. | Referidos apenas para identificar o que se está a comparar, com link para a fonte. Se um operador pedir a remoção do seu link, remove-se. |
 | Mascotes dos sites do grupo d'O Carro Elétrico (`frontend/grupo/*.svg`) | Cada site do grupo (O Carro Elétrico, ohmigo, Voltaria, Postos PT, olh'o'posto, AmpereArchive); o `pano.svg` é o logótipo do Panoramax, do projecto Panoramax | Marca de cada site, fora da PolyForm. | Mostradas só na página `/grupo`, ao lado do site a que pertencem, servidas pelo próprio comparador (sem pedidos a outros domínios). |
+| Fonte Nunito (`frontend/fonts/nunito-latin.woff2`, subconjunto latino) | Projecto Nunito, através do kit da marca do grupo d'O Carro Elétrico (`fonts/` no repositório Brand) | **SIL OFL 1.1** (texto da licença ao lado da fonte, em `frontend/fonts/OFL-Nunito.txt`). | Servida sem alterações, pelo próprio comparador (sem pedidos a outros domínios). |
 
 ## Dependências de runtime
 
