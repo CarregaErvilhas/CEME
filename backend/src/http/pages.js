@@ -4,7 +4,7 @@
 // servePage(req, res, url) devolve true se o pedido era para uma página ou
 // ficheiro daqui (e já respondeu), ou false para o router seguir para a API.
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fail } from './respond.js';
 import { prerender } from './prerender.js';
@@ -19,10 +19,16 @@ const ICON = { 'content-type': 'image/png', 'cache-control': 'public, max-age=86
 // As mascotes do /grupo podem mudar com um deploy (o endereço não leva hash),
 // por isso guardam-se um dia mas sem `immutable`.
 const MASCOT = { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' };
-// A fonte do grupo (Nunito, cópia do kit da marca). Como as mascotes, o
+// A fonte do grupo (Nunito, do kit da marca). Como as mascotes, o
 // endereço não leva hash: guarda-se um dia, sem `immutable`.
 const FONT = { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400' };
 const JS = { 'content-type': 'text/javascript; charset=utf-8', ...NO_STORE };
+
+// As mascotes que o scripts/brand.mjs copiou do kit da marca. Sem a pasta (um
+// clone onde ele ainda não correu) o site arranca e as mascotes dão 404.
+const MASCOTS = (() => {
+  try { return readdirSync(new URL('grupo/', FRONTEND)).filter(f => /^[a-z0-9]+\.svg$/.test(f)); } catch { return []; }
+})();
 
 // Ficheiros estáticos: caminho pedido → ficheiro em frontend/ e cabeçalhos.
 // Alguns têm dois caminhos (ex.: /sw.js e /service-worker.js).
@@ -30,6 +36,8 @@ const STATIC = {
   '/strings.js': { file: 'strings.js', headers: JS },
   '/tz.js': { file: 'tz.js', headers: JS },
   '/pwa.js': { file: 'pwa.js', headers: JS },
+  // Os sites do grupo, para a página /grupo (gerado por scripts/brand.mjs).
+  '/grupo.js': { file: 'grupo.js', headers: JS },
   '/install.js': { file: 'install.js', headers: JS },
   '/api.js': { file: 'api.js', headers: JS },
   '/theme.js': { file: 'theme.js', headers: JS },
@@ -62,12 +70,13 @@ const STATIC = {
   // <link rel="icon"> das páginas. Sem esta rota caía na API e levava um 401.
   // Um PNG servido neste caminho é aceite por todos os browsers actuais.
   '/favicon.ico': { file: 'icon-32.png', headers: ICON, missing: 404 },
-  // A fonte Nunito, carregada pelo @font-face das páginas (licença OFL ao lado,
-  // em frontend/fonts/OFL-Nunito.txt).
+  // A fonte Nunito, carregada pelo @font-face das páginas, com a licença OFL ao
+  // lado (quem serve a fonte serve a licença).
   '/fonts/nunito-latin.woff2': { file: 'fonts/nunito-latin.woff2', headers: FONT, missing: 404 },
+  '/fonts/OFL-Nunito.txt': { file: 'fonts/OFL-Nunito.txt', headers: { ...FONT, 'content-type': 'text/plain; charset=utf-8' }, missing: 404 },
   // As mascotes dos sites do grupo, na página /grupo. São marca de cada site.
-  ...Object.fromEntries(['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'oop', 'pano', 'ampere'].map(id =>
-    [`/grupo/${id}.svg`, { file: `grupo/${id}.svg`, headers: MASCOT, missing: 404 }])),
+  ...Object.fromEntries(MASCOTS.map(f =>
+    [`/grupo/${f}`, { file: `grupo/${f}`, headers: MASCOT, missing: 404 }])),
 };
 
 // Cabeçalhos de segurança de todas as páginas HTML (vê sendHtml).

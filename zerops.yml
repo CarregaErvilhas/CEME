@@ -17,6 +17,11 @@ zerops:
       # buildCommand funciona (é um shell), mas encadear num `-` mantém o
       # resto do build no mesmo shell.
       buildCommands:
+        # Mascotes, fonte e textos do grupo, do submódulo brand/ para
+        # frontend/ (o Zerops traz os submódulos públicos com o repositório).
+        # Antes do `cd`: os itens partilham a shell. Sem o submódulo o build
+        # falha e a versão anterior continua a servir.
+        - node scripts/brand.mjs
         - cd backend && npm ci
       # Sem `cache:`: o `npm ci` apaga sempre o node_modules, por isso guardá-lo
       # não serve de nada. A cache HTTP do npm (~/.npm) é preservada sozinha.

@@ -19,7 +19,7 @@ echo "==> Importar serviços db + api"
 # zcli project service-import /tmp/preview-import.yaml -P "$ZEROPS_PROJECT_ID"
 
 echo "==> Push do código da PR"
-# cd <worktree-da-pr> && zcli push api --setup api -P "$ZEROPS_PROJECT_ID"
+# cd <clone-limpo-da-pr-com-submodulos> && zcli push api --setup api --no-git -P "$ZEROPS_PROJECT_ID"
 
 if [ "$CEME_READONLY" = "1" ]; then
   echo "==> Modo READONLY: definir DATABASE_URL=prod (readonly) + CEME_READONLY=1 no serviço api"

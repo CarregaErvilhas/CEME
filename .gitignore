@@ -39,3 +39,8 @@ Thumbs.db
 # Notas de sessão e artefactos de trabalho que vivem no directório do utilizador,
 # não no projecto.
 ADVERSARIAL_REVIEW_*.md
+
+# Vindos do kit da marca (submódulo brand/), postos aqui por scripts/brand.mjs.
+frontend/grupo/
+frontend/fonts/
+frontend/grupo.js

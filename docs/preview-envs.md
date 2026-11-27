@@ -85,12 +85,15 @@ zcli project service-import /tmp/preview-import.yaml -P "$ZEROPS_PROJECT_ID"
 
 ### 3. Push do código da PR
 
-Fazer checkout da branch da PR num worktree, depois:
+Clonar a branch da PR com os submódulos, depois:
 
 ```sh
-cd <worktree>
-zcli push api --setup api -P "$ZEROPS_PROJECT_ID"
+git clone --recurse-submodules --branch <branch-da-pr> https://github.com/CarregaErvilhas/CEME.git /tmp/ceme-preview
+cd /tmp/ceme-preview
+zcli push api --setup api --no-git -P "$ZEROPS_PROJECT_ID"
 ```
+
+O `--no-git` envia a pasta tal como está, com o submódulo `brand/`, que o `git archive` do `zcli push` não leva. Por isso o push sai de um clone limpo, sem dados nem segredos locais.
 
 O `zerops.yml` do repo já define build/run. O serviço arranca com seed por omissão (a menos que `CEME_SKIP_SEED=1` ou `CEME_READONLY=1`).
 
