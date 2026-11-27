@@ -477,6 +477,7 @@ it('HTML também leva nosniff', async () => {
     // diz "Estás aqui" em vez do botão do site, e o AmpereArchive (sem página)
     // só tem o GitHub, com cadeado.
     it('/grupo e /group: os sites do grupo, com as mascotes locais', async () => {
+      const kit = JSON.parse(readFileSync(new URL('../../brand/group.json', import.meta.url), 'utf8'));
       for (const [caminho, lingua, aqui] of [['/grupo', 'pt', 'Estás aqui'], ['/group', 'en', 'You are here']]) {
         const { status, html: pagina } = await abrir(caminho, { 'accept-language': lingua });
         assert.equal(status, 200, caminho);
@@ -484,7 +485,9 @@ it('HTML também leva nosniff', async () => {
         // O que vem já escrito no HTML (prerender), sem o script da página.
         const html = pagina.replace(/<script[\s\S]*?<\/script>/g, '');
         const imgs = [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)].map(m => m[1]).filter(u => u.startsWith('/grupo/'));
-        assert.deepEqual([...new Set(imgs)].sort(), ['ampere', 'carro', 'ceme', 'nap', 'ohmigo', 'oop', 'pano', 'voltaria'].map(id => `/grupo/${id}.svg`));
+        // A ordem dos balões é a do kit (o primeiro <img> é a mascote do topo).
+        assert.deepEqual(imgs.slice(1), kit.sites.map(s => `/grupo/${s.id}.svg`));
+        for (const s of kit.sites) assert.ok(html.includes(s.mascot.alt[lingua].replace(/"/g, '&quot;')), `${caminho}: falta o texto de ${s.id}`);
         assert.ok(html.includes(aqui), `${caminho} sem "${aqui}"`);
         assert.equal((html.match(/class="here"/g) || []).length, 1, 'só o comparador diz "Estás aqui"');
         assert.doesNotMatch(html, /href="https:\/\/ceme\.ocarroeletrico\.com\/"/, 'o comparador não se liga a si próprio');
@@ -493,7 +496,7 @@ it('HTML também leva nosniff', async () => {
         assert.doesNotMatch(html, /href="https:\/\/ohm-age\./, 'o AmpereArchive não tem página');
         assert.doesNotMatch(html, /<img\b[^>]*\bsrc="(https?:)?\/\//, 'imagens de outro domínio');
       }
-      for (const id of ['carro', 'ohmigo', 'voltaria', 'ceme', 'nap', 'oop', 'pano', 'ampere']) {
+      for (const { id } of kit.sites) {
         const r = await fetch(`${BASE}/grupo/${id}.svg`);
         assert.equal(r.status, 200, id);
         assert.match(r.headers.get('content-type'), /^image\/svg\+xml/);

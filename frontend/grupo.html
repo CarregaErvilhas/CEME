@@ -45,6 +45,7 @@
 <footer id="foot"></footer>
 <script>window.__LANG__=null;</script>
 <script src="/strings.js"></script>
+<script src="/grupo.js"></script>
 <script src="/pwa.js"></script>
 <script>
 'use strict';
@@ -52,9 +53,10 @@
  * balão ao lado da sua mascote, com a descrição e as ligações para o site e
  * para o GitHub. O próprio comparador aparece no seu lugar, com "Estás aqui".
  *
- * Os textos vivem em strings.js (namespace "grupo"); as mascotes são
- * ficheiros locais em frontend/grupo/ (servidos em /grupo/<id>.svg). A ordem e
- * os endereços seguem a página igual do ocarroeletrico.com. */
+ * A voz da página vive em strings.js (namespace "grupo"). Os sites, a ordem,
+ * os textos de cada um e as ligações vêm do kit da marca (brand/group.json,
+ * que scripts/brand.mjs passa a /grupo.js), tal como as mascotes
+ * (/grupo/<id>.svg). */
 const STR = CEME_STR('grupo');
 let LANG = (function () {
   try { const s = localStorage.getItem('ceme:lang'); if (s === 'pt' || s === 'en') return s; } catch (e) {}
@@ -64,30 +66,15 @@ const t = (k) => STR[LANG][k] ?? STR.pt[k] ?? k;
 const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
 const attr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
-const GH = 'https://github.com/CarregaErvilhas/';
+// Os textos do group.json são texto simples: vão para o HTML com escape.
+const KIT = window.CEME_GRUPO;
+const label = (k) => KIT.labels[k][LANG];
 // w/h: o tamanho do viewBox de cada SVG, para a imagem não saltar ao carregar.
-const SITES = () => [
-  { id: 'carro', host: 'ocarroeletrico.com', site: 'https://ocarroeletrico.com/', repo: GH + 'OCarroEletrico', w: 270, h: 300,
-    name: t('carroName'), desc: t('carroDesc'), alt: t('carroMascot') },
-  { id: 'ohmigo', host: 'ohmigo.ocarroeletrico.com', site: 'https://ohmigo.ocarroeletrico.com/', repo: GH + 'ohmigo-mcp', w: 260, h: 300,
-    name: 'ohmigo', desc: t('ohmigoDesc'), alt: t('ohmigoMascot') },
-  { id: 'voltaria', host: 'voltaria.ocarroeletrico.com', site: 'https://voltaria.ocarroeletrico.com/', repo: GH + 'voltaria', w: 260, h: 300,
-    name: 'Voltaria', desc: t('voltariaDesc'), alt: t('voltariaMascot') },
-  { id: 'ceme', host: 'ceme.ocarroeletrico.com', here: true, repo: GH + 'CEME', w: 260, h: 300,
-    name: t('logoA'), desc: t('cemeDesc'), alt: t('cemeMascot') },
-  { id: 'nap', host: 'nap.ocarroeletrico.com', site: 'https://nap.ocarroeletrico.com/', repo: GH + 'nap-dashboard', w: 212, h: 252,
-    name: 'Postos PT', desc: t('napDesc'), alt: t('napMascot') },
-  { id: 'oop', host: 'olhaoposto.ocarroeletrico.com', site: 'https://olhaoposto.ocarroeletrico.com/', repo: GH + 'OlhaOPosto', w: 168, h: 168,
-    name: 'olh\'o\'posto', desc: t('oopDesc'), alt: t('oopMascot') },
-  // O servidor Panoramax do olh'o'posto, com o logótipo do Panoramax. A
-  // configuração vive no repositório do olh'o'posto.
-  { id: 'pano', host: 'panoramax.ocarroeletrico.com', site: 'https://panoramax.ocarroeletrico.com/', repo: GH + 'OlhaOPosto/tree/main/panoramax', w: 1297, h: 1297,
-    name: 'Panoramax', desc: t('panoDesc'), alt: t('panoMascot') },
-  // Arquivo de dados, sem página: não tem botão do site, e o repositório é
-  // privado por agora.
-  { id: 'ampere', host: 'ohm-age.ocarroeletrico.com', private: true, repo: GH + 'AmpereArchive', w: 280, h: 300,
-    name: 'AmpereArchive', desc: t('ampereDesc'), alt: t('ampereMascot'), note: t('ampereNote') },
-];
+const SITES = () => KIT.sites.map(s => ({
+  id: s.id, host: s.host, here: s.id === 'ceme', site: s.url, repo: s.repo, private: s.private,
+  src: '/' + s.mascot.file, w: s.mascot.width, h: s.mascot.height, alt: s.mascot.alt[LANG],
+  name: attr(s.name[LANG]), desc: attr(s.desc[LANG]), note: s.note ? attr(s.note[LANG]) : '',
+}));
 const ICON = {
   code: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 3 12l5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>',
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>',
@@ -106,12 +93,12 @@ function chrome() {
 }
 
 function mate(g) {
-  const go = g.here ? `<span class="here">${t('here')}</span>`
-    : g.site ? `<a class="go" href="${g.site}" target="_blank" rel="noopener">${t('open')} →</a>` : '';
-  const code = `<a class="gh" href="${g.repo}" target="_blank" rel="noopener">${g.private ? ICON.lock + t('private') : ICON.code + t('code')}</a>`;
+  const go = g.here ? `<span class="here">${label('here')}</span>`
+    : g.site ? `<a class="go" href="${g.site}" target="_blank" rel="noopener">${label('open')} →</a>` : '';
+  const code = `<a class="gh" href="${g.repo}" target="_blank" rel="noopener">${g.private ? ICON.lock + label('private') : ICON.code + label('code')}</a>`;
   return `
       <li class="mate m-${g.id}">
-        <div class="mate-pic"><img src="/grupo/${g.id}.svg" alt="${attr(g.alt)}" width="${g.w}" height="${g.h}" loading="lazy"></div>
+        <div class="mate-pic"><img src="${g.src}" alt="${attr(g.alt)}" width="${g.w}" height="${g.h}" loading="lazy"></div>
         <div class="mate-bubble">
           <p class="mate-host">${g.host}</p>
           <h2>${g.name}</h2>
@@ -123,6 +110,8 @@ function mate(g) {
 
 function render() {
   chrome();
+  const sites = SITES();
+  const me = sites.find(g => g.here);
   set('hero', `
     <div class="grupo-text">
       <span class="eyebrow">${t('eyebrow')}</span>
@@ -130,10 +119,10 @@ function render() {
       <p>${t('lede')}</p>
     </div>
     <div class="stage">
-      <img class="mascot" src="/grupo/ceme.svg" alt="${attr(t('cemeMascot'))}" width="260" height="300">
+      <img class="mascot" src="${me.src}" alt="${attr(me.alt)}" width="${me.w}" height="${me.h}">
       <p class="bubble">${t('bubble')}</p>
     </div>`);
-  set('app', `<ol class="mates">${SITES().map(mate).join('')}
+  set('app', `<ol class="mates">${sites.map(mate).join('')}
     </ol>`);
   set('foot', `${t('footNote')} <a href="/simulador">${t('navSim')}</a><span class="sep">·</span><a href="/sobre">${t('navSobre')}</a><span class="sep">·</span><a href="/contactos">${t('navContactos')}</a><span class="sep">·</span><a href="/privacidade">${t('navPriv')}</a>`);
 }

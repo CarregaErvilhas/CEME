@@ -6,7 +6,7 @@ CEME v2: a simulator for the **energy part** of an EV charge on the Portuguese M
 
 ## Commands
 
-All from `backend/` (Node 24, no build step; the only dependency is `pg`):
+All from `backend/` (Node 24; the only dependency is `pg`). Run `git submodule update --init` once: `brand/` is the group's brand kit, and `scripts/brand.mjs` copies it into `frontend/` (run by `pretest`, `prestart`, `predev`, the Zerops build and CI; run it by hand before calling `node --test` directly on a fresh clone).
 
 ```sh
 npm ci
@@ -28,7 +28,7 @@ There's no linter or formatter config. Without `DATABASE_URL` the DB is SQLite (
 - **Pricing** (`backend/src/tariffs.js`): `loadPricing(region)` loads versions, prices, brand colours and TAR in a few queries per request; `quoteOne` is synchronous on top of it. Don't add per-tariff queries.
 - **Engine** (`backend/src/engine/`): pure functions. `quoteFixed` (fixed tariffs: final price already includes TAR; ROUNDUP per component, returns `parts` that sum to the total), `indexedPrice` (OMIE-indexed; two formulas selected by `VERSIONS[id].formula`), `periodForRegion` (vazio/fora by region timezone and cycle), `compareWithFixed`.
 - **OMIE pipeline** (`backend/src/omie/`): omie.es (primary price, conditional GET) + Tiago Felícia files (period classification, gaps, FPB D futures), reconciled **by UTC instant** in `omie_spot`. No cron by decision — any OMIE read calls `ensureFresh`, which refreshes in the background under a DB lock in `omie_meta`. `stats.js` builds the `/omie` page payload (stored in `omie_meta`).
-- **Frontend** (`frontend/`): vanilla HTML/JS, no build. `index.html` (full simulator) and `assistente.html` (wizard) share `strings.js` (all PT/EN text, namespaced per page; `strings.test.js` checks key/placeholder parity and dead keys) and `tz.js` (region wall-clock ↔ instant); every page that calls the API does it through `api.js` (web session shared in the tab, one retry on 401, server message on errors). Smoke tests evaluate the pages' last `<script>` in a `vm` context — new shared scripts must also be loaded there.
+- **Frontend** (`frontend/`): vanilla HTML/JS, no bundling. `frontend/grupo/`, `frontend/fonts/` and `frontend/grupo.js` are generated and gitignored: change them in the Brand repo. The `/grupo` page keeps only its own voice in `strings.js`; sites, order and texts come from `brand/group.json`. `index.html` (full simulator) and `assistente.html` (wizard) share `strings.js` (all PT/EN text, namespaced per page; `strings.test.js` checks key/placeholder parity and dead keys) and `tz.js` (region wall-clock ↔ instant); every page that calls the API does it through `api.js` (web session shared in the tab, one retry on 401, server message on errors). Smoke tests evaluate the pages' last `<script>` in a `vm` context — new shared scripts must also be loaded there.
 
 ## Time is the main bug source
 
@@ -45,7 +45,7 @@ There's no linter or formatter config. Without `DATABASE_URL` the DB is SQLite (
 - Golden anchors in `golden.test.js` change only when a published price changes, and are re-frozen by running the engine, never by hand.
 - Tariff verification against CEME websites: follow `.opencode/commands/ceme-check.md` and the cookbook `.memories/ceme-tarifas-verificacao.md` (values change only with explicit approval; backup DB first).
 - `CEME_READONLY=1` must never write (guarded in `db.js` `run()`/`exec()`); `CEME_SKIP_SEED=1` skips the seed (previews: `docs/preview-envs.md`).
-- Deploy is the Zerops webhook on push to `main` (no Zerops credential in GitHub); CI only runs `npm test` (`.github/workflows/ci.yml`); `cla.yml` checks every PR author signed `CLA.md` (signatures on the `cla-signatures` branch; it calls the shared workflow in CarregaErvilhas/OCarroEletrico, so the group keeps one copy). Infra is documented only in `infra.md`.
+- Deploy is the Zerops webhook on push to `main` (no Zerops credential in GitHub); CI runs the brand copy and its check, then `npm test` (`.github/workflows/ci.yml`); `cla.yml` checks every PR author signed `CLA.md` (signatures on the `cla-signatures` branch; it calls the shared workflow in CarregaErvilhas/OCarroEletrico, so the group keeps one copy). Infra is documented only in `infra.md`.
 - Third-party data (ERSE sheet dumps, OMIE files) never goes into the repo; `backend/seed/` and `backend/data/` are gitignored.
 
 Deeper references: `docs/00` (glossary of EV/energy terms, start here if the domain is new), `docs/02` (engine), `docs/03` (OMIE ingestion), `docs/04` (API/auth), `docs/06` (roadmap — only open work), `docs/07` (islands), `docs/08` (SQLite/Postgres), `docs/09` (OMIE stats page).

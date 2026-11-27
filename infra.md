@@ -38,7 +38,7 @@ Todos os serviços estão na mesma rede privada do projecto. O `api` chega ao `d
 
 Para criares os serviços de raiz: `zcli project service-import zerops-import.yaml -P <project-id>`. O `JWT_SECRET` do `api` é gerado nesse import (`<@generateRandomString(<32>)>`, precisa de `#yamlPreprocessor=on`).
 
-Deploy à mão, só em último recurso: `zcli push api --setup api` na raiz do repo (vê a secção 4 para o deploy normal). O `zcli push` usa `git archive`, por isso faz commit antes de fazer push.
+Deploy à mão, só em último recurso: `zcli push api --setup api` na raiz do repo (vê a secção 4 para o deploy normal). O `zcli push` usa `git archive`, por isso faz commit antes de fazer push. O `git archive` não leva submódulos e o build falha sem o `brand/`: faz o push de um clone limpo com os submódulos (`git clone --recurse-submodules`), com `--no-git`.
 
 ### Recursos (autoscaling)
 
@@ -69,6 +69,7 @@ Regras da API do Zerops que convém saberes:
 ### Cuidados com o `zerops.yml`
 
 - **`run.start` corre sem shell** (`exec`). `start: cd backend && npm start` falha com `exec: cd: not found`. A pasta vai em `startCommands[].workingDir`; o código, com `deployFiles: [backend, frontend]`, fica em `/var/www/backend`.
+- **O build precisa do submódulo `brand/`.** O primeiro `buildCommand` (`node scripts/brand.mjs`) copia as mascotes, a fonte e os textos do `/grupo` para `frontend/`. O Zerops traz os submódulos públicos com o repositório; sem ele o build falha e a versão anterior continua a servir.
 - **O health check tem de apontar a uma rota sem auth.** `/v1/health` responde 401 sem token e marcaria o serviço como avariado para sempre. Usa `/healthz` (health check) e `/readyz` (readiness check).
 
 ### Deploy sem interrupção (rolling)
@@ -327,7 +328,7 @@ O valor só é de confiança com a [Access Policy](https://github.com/CarregaErv
 
 ### 4.1 CI — `.github/workflows/ci.yml`
 
-Um único job, `test`, em cada push para `main` e em cada PR: `npm ci` + `npm test`, em Node 24 (a mesma versão da produção). Tem `permissions: contents: read` e `concurrency` com `cancel-in-progress` (um push novo cancela a corrida anterior do mesmo ramo).
+Um único job, `test`, em cada push para `main` e em cada PR: checkout com submódulos, `npm ci`, a cópia do kit da marca e a sua confirmação (`brand/check.py`) e `npm test`, em Node 24 (a mesma versão da produção). Tem `permissions: contents: read` e `concurrency` com `cancel-in-progress` (um push novo cancela a corrida anterior do mesmo ramo).
 
 ### 4.2 Deploy — webhook do Zerops
 

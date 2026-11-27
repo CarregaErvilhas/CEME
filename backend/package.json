@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pretest": "node ../scripts/brand.mjs",
+    "predev": "node ../scripts/brand.mjs",
+    "prestart": "node ../scripts/brand.mjs",
     "test": "node --test test/*.test.js",
     "dev": "node --watch src/server.js",
     "start": "node src/server.js"

@@ -1,6 +1,8 @@
 # 05 — Frontend
 
-Tudo o que corre no browser está em `frontend/`: HTML, CSS e JavaScript simples, sem framework e sem build. O servidor (`backend/src/http/pages.js`) serve os ficheiros tal como estão. Para mudares uma página, editas o ficheiro e recarregas.
+Tudo o que corre no browser está em `frontend/`: HTML, CSS e JavaScript simples, sem framework e sem empacotador. O servidor (`backend/src/http/pages.js`) serve os ficheiros tal como estão. Para mudares uma página, editas o ficheiro e recarregas.
+
+Há três coisas em `frontend/` que não se editam aí: as mascotes (`grupo/`), a fonte (`fonts/`) e o `grupo.js`. Vêm do [kit da marca do grupo](https://github.com/CarregaErvilhas/Brand), o submódulo `brand/`, e o `scripts/brand.mjs` põe-nas lá (no build do Zerops, no CI e antes do `npm test`, do `npm start` e do `npm run dev`). Na página `/grupo`, o `strings.js` só tem a voz do comparador; os sites, a ordem, os textos de cada um e as ligações vêm do `brand/group.json`. Para os mudares, mudas o kit e sobes o submódulo para a versão nova (o Dependabot abre o PR).
 
 Há duas interfaces para a mesma API:
 

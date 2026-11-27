@@ -46,16 +46,17 @@ browser ──► server.js ──► http/ (páginas, API) ──► tariffs.js
 ```
 
 - **Backend:** Node.js 24, sem framework (`node:http`). A única dependência é `pg`, o driver do PostgreSQL.
-- **Frontend:** HTML, CSS e JavaScript simples, sem build. O servidor serve os ficheiros tal como estão em `frontend/`.
+- **Frontend:** HTML, CSS e JavaScript simples. O servidor serve os ficheiros tal como estão em `frontend/`. O único passo antes disso é o `scripts/brand.mjs`, que copia para lá as mascotes, a fonte e os textos da página `/grupo`, do [kit da marca do grupo](https://github.com/CarregaErvilhas/Brand) (submódulo `brand/`).
 - **Base de dados:** SQLite local em dev e testes; PostgreSQL em produção. O código escreve o mesmo SQL para as duas ([docs/08](docs/08-sqlite-postgres.md)).
 - **Preços OMIE:** vão-se buscar ao omie.es (oficial) e ao dados.tiagofelicia.pt, e ficam guardados na BD. Actualizam-se quando alguém pede dados e os que lá estão têm mais de uma hora ([docs/03](docs/03-omie-ingestao.md)).
 - **Autenticação:** toda a API pede um token. O browser pede um sozinho; apps de terceiros usam uma API key ([docs/04](docs/04-api-auth.md)).
 
 ## Correr localmente
 
-Precisas do Node.js 24.
+Precisas do Node.js 24 e do submódulo `brand/`.
 
 ```sh
+git submodule update --init
 cd backend
 npm ci
 npm test
@@ -141,6 +142,8 @@ Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
     test/                     # testes (`npm test`)
     tools/cores.mjs           # mede as paletas de cor da página OMIE
     data/                     # gerado: SQLite + cache dos CSV (fora do git)
+  brand/                      # submódulo: kit da marca do grupo
+  scripts/brand.mjs           # copia o kit para frontend/
   frontend/
     assistente.html           # o assistente (três perguntas)
     index.html                # o simulador completo
@@ -187,8 +190,8 @@ O código, a documentação, o motor de cálculo e o seed estão sob **PolyForm 
 
 Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não** estão sob a PolyForm: mantêm as suas licenças e créditos. Vê [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-A fonte Nunito, servida pelo site, tem a sua licença: [SIL OFL 1.1](frontend/fonts/OFL-Nunito.txt).
+A fonte Nunito, servida pelo site, tem a sua licença: [SIL OFL 1.1](https://github.com/CarregaErvilhas/Brand/blob/main/fonts/OFL-Nunito.txt), servida ao lado da fonte.
 
-A mascote (a calculadora cor-de-rosa, em `frontend/icon.svg`, nos ícones `frontend/icon-*.png`, no `frontend/og.png` e em `frontend/grupo/ceme.svg`) faz parte da marca O Carro Elétrico, como as mascotes dos outros sites do grupo, e fica fora das licenças: não a uses noutro projecto sem autorização. As mascotes dos outros sites, na página `/grupo` (`frontend/grupo/`), pertencem a cada um desses sites e também ficam fora das licenças.
+A mascote (a calculadora cor-de-rosa, em `frontend/icon.svg`, nos ícones `frontend/icon-*.png`, no `frontend/og.png` e em `frontend/grupo/ceme.svg`) faz parte da marca O Carro Elétrico, como as mascotes dos outros sites do grupo, e fica fora das licenças: não a uses noutro projecto sem autorização. As mascotes dos outros sites, na página `/grupo` (`brand/grupo/`, copiadas para `frontend/grupo/`), pertencem a cada um desses sites e também ficam fora das licenças.
 
 Queres contribuir? Antes do primeiro pull request entrar, assinas o [CLA](CLA.md) com um comentário no pull request: vê [CONTRIBUTING.md](CONTRIBUTING.md).

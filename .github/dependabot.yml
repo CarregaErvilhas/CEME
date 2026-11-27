@@ -42,3 +42,15 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  - package-ecosystem: "gitsubmodule"  # o kit da marca do grupo (brand/); segue as tags de versão
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 1
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(submodules)"
