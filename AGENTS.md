@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents working with code in this repository.
 
 CEME v2: a simulator for the **energy part** of an EV charge on the Portuguese Mobi.E network (CEME tariff incl. TAR + IEC + VAT + EGME; the charge point's OPC fee is out of scope). Code, comments, docs and commit messages are in **European Portuguese**, with pre-reform spelling ("actual", "activação") — match it.
 
