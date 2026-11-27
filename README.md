@@ -152,6 +152,7 @@ Tudo o que é infra (Zerops, DNS, CI) está em [infra.md](infra.md).
     tz.js                     # horas de relógio por região
     api.js                    # cliente da API das páginas (sessão web + pedidos)
     pages.css                 # estilo das páginas Sobre/Contactos
+    fonts/                    # a fonte Nunito (do kit da marca do grupo) e a licença OFL
     manifest.webmanifest, sw.js, pwa.js, install.js, install.css, icon-*.png   # PWA
   docs/                       # vê a lista abaixo
   scripts/                    # extracção de dados (etl-*) e previews
@@ -185,6 +186,8 @@ O código, a documentação, o motor de cálculo e o seed estão sob **PolyForm 
 - A licença também proíbe usar o software para concorrer com o licenciador: um comercializador não pode fazer fork e vender o simulador aos seus clientes.
 
 Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não** estão sob a PolyForm: mantêm as suas licenças e créditos. Vê [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+A fonte Nunito, servida pelo site, tem a sua licença: [SIL OFL 1.1](frontend/fonts/OFL-Nunito.txt).
 
 A mascote (a calculadora cor-de-rosa, em `frontend/icon.svg`, nos ícones `frontend/icon-*.png`, no `frontend/og.png` e em `frontend/grupo/ceme.svg`) faz parte da marca O Carro Elétrico, como as mascotes dos outros sites do grupo, e fica fora das licenças: não a uses noutro projecto sem autorização. As mascotes dos outros sites, na página `/grupo` (`frontend/grupo/`), pertencem a cada um desses sites e também ficam fora das licenças.
 

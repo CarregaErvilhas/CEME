@@ -502,6 +502,18 @@ it('HTML também leva nosniff', async () => {
       assert.match((await abrir('/sobre')).html, /href="\/grupo"/, 'o rodapé liga ao /grupo');
     });
 
+    it('a fonte Nunito é servida pelo próprio site e todas as páginas a pré-carregam', async () => {
+      const r = await fetch(`${BASE}/fonts/nunito-latin.woff2`);
+      assert.equal(r.status, 200);
+      assert.equal(r.headers.get('content-type'), 'font/woff2');
+      assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(Buffer.from(await r.arrayBuffer()).subarray(0, 4).toString('latin1'), 'wOF2');
+      for (const caminho of ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/grupo', '/api', '/omie', '/tabela']) {
+        const { html } = await abrir(caminho);
+        assert.match(html, /<link rel="preload" href="\/fonts\/nunito-latin\.woff2" as="font" type="font\/woff2" crossorigin>/, caminho);
+      }
+    });
+
     it('/sobre e /about servem a mesma página', async () => {
       for (const caminho of ['/sobre', '/about']) {
         const { status, html, cookie } = await abrir(caminho);

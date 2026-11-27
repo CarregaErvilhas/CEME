@@ -7,14 +7,14 @@
  * o dicionário velho até o próprio sw.js mudar. A cópia em cache só serve
  * quando não há rede.
  *
- * Os ícones são imutáveis (o servidor manda `immutable`): esses sim, cache
- * primeiro.
+ * Os ícones são imutáveis (o servidor manda `immutable`) e a fonte quase não
+ * muda: esses sim, cache primeiro. Se a fonte mudar, sobe o CACHE.
  *
  * Mudar a estratégia ou a lista? Subir o CACHE: o `activate` apaga as caches
  * com outro nome. */
-const CACHE = 'ceme-v8';
+const CACHE = 'ceme-v9';
 const OFFLINE = ['/strings.js', '/tz.js', '/api.js', '/theme.js', '/a11y.js', '/a11y.css', '/pages.css', '/manifest.webmanifest'];
-const IMMUTABLE = ['/icon-180.png', '/icon-192.png', '/icon-512.png', '/icon-32.png', '/icon-64.png', '/icon-96.png', '/icon-maskable-512.png', '/icon.svg'];
+const IMMUTABLE = ['/icon-180.png', '/icon-192.png', '/icon-512.png', '/icon-32.png', '/icon-64.png', '/icon-96.png', '/icon-maskable-512.png', '/icon.svg', '/fonts/nunito-latin.woff2'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
