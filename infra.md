@@ -1,6 +1,6 @@
 # Infra — CEME v2 no Zerops + Cloudflare
 
-Este é o único sítio onde está documentada a infraestrutura: onde corre o serviço, como chega lá o código, o DNS e o CI.
+Aqui está a infraestrutura do CEME: onde corre o serviço, como chega lá o código, o DNS e o CI. O que é comum aos projectos do grupo está no repositório [Architecture](https://github.com/CarregaErvilhas/Architecture), em inglês: [como se expõe um serviço Zerops](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md) e [as regras da zona Cloudflare](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/cloudflare-zone.md).
 
 Visão geral:
 
@@ -111,11 +111,11 @@ Porque não usar o mesmo check para os dois: com um só container, um health che
 
 De fora da máquina, `/readyz` responde 200 com `db: unknown` e não toca na BD: ninguém de fora precisa dele, e um `SELECT 1` por pedido era uma forma de esgotar as ligações. É 200 (e não 403) para um pedido vindo de outro sítio nunca chumbar um deploy.
 
-Notas: o Zerops aceita como bons os códigos `[200, 400)` (3xx passa; 401/404/503 chumbam). Os dois checks correm de dentro do container (`127.0.0.1:3001/...`). Docs: <https://docs.zerops.io/guides/readiness-health-checks> e <https://docs.zerops.io/guides/deployment-lifecycle>.
+Os dois checks correm de dentro do container (`127.0.0.1:3001/...`). Os códigos que o Zerops aceita e o resto do padrão estão em [Readiness and health checks](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md#readiness-and-health-checks).
 
 ### Privilégios do processo
 
-O processo da API corre como `cocofree`, um utilizador de sistema criado nos `prepareCommands`, sem shell, sem casa e **sem sudo**. O utilizador por omissão do Zerops (`zerops`) tem sudo, e é isso que queremos longe do processo: quem conseguisse executar código na app ficava root no container.
+O processo da API corre como `cocofree`, um utilizador de sistema criado nos `prepareCommands`, sem shell, sem casa e **sem sudo** ([porquê e como](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md#non-root-process)).
 
 O que o `cocofree` pode e não pode:
 
@@ -128,7 +128,7 @@ O que isto **não** resolve: a `DATABASE_APP_URL` e o `JWT_SECRET` estão no amb
 Depois de um deploy que mexa nisto, confirma na consola do Zerops (terminal do container):
 
 ```bash
-ps -o user,pid,args -C node   # user = cocofree
+ps -o user,pid,args | grep node   # user = cocofree
 curl -s localhost:3001/readyz # 200
 ```
 
@@ -201,7 +201,7 @@ Tem de acabar com `privilégios de ceme_app aplicados`.
 
    ```bash
    curl -s localhost:3001/readyz                  # 200, db: ok
-   ps -o user,pid,args -C node                    # user = cocofree
+   ps -o user,pid,args | grep node                # user = cocofree
    tr '\0' '\n' < /proc/$(pgrep -n node)/environ | cut -d= -f1 | grep -c DATABASE_MIGRATE_URL   # 0
    ```
 
@@ -288,86 +288,23 @@ Domínios em produção:
 - **`https://ceme.ocarroeletrico.com`** — o site e a API.
 - **`https://omie.cocofree.dev`** — a página de estatísticas OMIE (`docs/09-omie-estatisticas.md`). Mesmo balanceador e mesmo serviço `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a página OMIE.
 
-Nos dois: na Cloudflare, **só um registo `AAAA`** para o IPv6 dedicado do projecto, com **proxy activo**; no Zerops, o domínio registado no balanceador L7 (`public-http-routing`) com certificado Let's Encrypt. As zonas têm `ssl: strict`, `ipv6: on` e `always_use_https: on`, e a Cloudflare acrescenta o HSTS (`Strict-Transport-Security`) às respostas. Os outros cabeçalhos de segurança das páginas (CSP e companhia) põe-nos o servidor (`PAGE_SECURITY` em `backend/src/http/pages.js`).
+O procedimento é o comum, em [How a Zerops service is exposed](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md): um só registo `AAAA` com proxy, o registo do domínio no balanceador L7 (a ordem conta), o certificado Let's Encrypt, a *Access Policy* só para a Cloudflare, como verificar e como consultar o IP da origem (que **nunca** vai para o repositório). Os valores do CEME:
 
-O CSP só deixa correr scripts do próprio domínio e os inline cujo hash vai no cabeçalho. O que a Cloudflare faz hoje às páginas passa: a *Email Address Obfuscation* injecta um script de `/cdn-cgi/` (do próprio domínio) e não mexe nos scripts inline, e o link do *AI Labyrinth* é só um link. Uma funcionalidade que injecte scripts inline ou de outro domínio (Rocket Loader, Zaraz, Web Analytics automático, as *JS detections* do Bot Fight Mode) fica bloqueada pelo CSP: se ligares alguma, acrescenta-a lá primeiro.
+| | |
+|---|---|
+| Rota no balanceador | `/` → `api`, porta 3001 |
+| Região do Zerops (host da API) | `prg1` |
+| Caminho para verificar | `/healthz` |
 
-### O IP da origem
+As duas zonas têm `ssl: strict`, `ipv6: on` e `always_use_https: on`, e a Cloudflare acrescenta o HSTS (`Strict-Transport-Security`) às respostas. As regras da zona `ocarroeletrico.com` que afectam outros projectos estão em [Cloudflare: zone-wide rules](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/cloudflare-zone.md). Os outros cabeçalhos de segurança das páginas (CSP e companhia) põe-nos o servidor (`PAGE_SECURITY` em `backend/src/http/pages.js`).
 
-**O IP da origem está só na Cloudflare e na consola do Zerops, nunca no repositório.** Para o consultares:
+### O CSP e o que a Cloudflare injecta
 
-```bash
-TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/Library/Application Support/zerops/cli.data'))['LoginSession']['AccessToken'])")
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.app-prg1.zerops.io/api/rest/public/project/<project-id>" | python3 -c "import sys,json;print(json.load(sys.stdin)['publicIpV6'])"
-```
-
-### Acrescentar um domínio (a ordem conta)
-
-São dois registos em sistemas diferentes, e o Zerops vem primeiro:
-
-1. **Zerops: registar o domínio no balanceador.** Sem isto, o balanceador responde **404** a qualquer `Host` que não conheça.
-
-Se o projecto ainda não tem nenhum routing:
-
-   ```bash
-   POST /api/rest/public/project/<project-id>/public-http-routing
-   {
-     "domains": ["ceme.ocarroeletrico.com"],
-     "locations": [{ "path": "/", "port": 3001, "serviceStackId": "<api-service-id>" }],
-     "sslEnabled": true,
-     "cdnEnabled": false
-   }
-   ```
-
-Para juntar um domínio a um routing que já existe, usa o **PUT** desse routing (o `POST` falha com `publicHttpRoutingDuplicateDomainNameInAnotherRouting`):
-
-   ```bash
-   PUT /api/rest/public/public-http-routing/<routing-id>
-   { "domains": [...], "locations": [...], "sslEnabled": true, "cdnEnabled": false }
-   ```
-
-Copia o `locations` tal como está (é lá que vive o `accessPolicy`, vê abaixo). Depois do `PUT` o routing fica `isSynced: false` e só entra em vigor com `PUT /api/rest/public/project/<project-id>/sync-public-http-routing` (sem body). Sem esse sync, o domínio novo continua a dar 404.
-
-No fim deste passo fica `dnsCheckStatus: PENDING` e `sslStatus: WAITING_FOR_DNS`: o Zerops espera pelo DNS para emitir o certificado.
-
-2. **Cloudflare: o registo DNS.**
-
-   ```
-   <domínio>  AAAA  <IPv6 do projecto>  proxy: ON
-   ```
-
-3. **Zerops: validar o DNS.** `PUT /api/rest/public/public-http-routing/<id>/trigger-domains-dns-check` (body: `{"domains": [...]}`). Passa a `dnsCheckStatus: OK` e o certificado é emitido (`sslStatus: ACTIVE`).
-
-### Porquê só `AAAA` (e não também o `A` partilhado)
-
-O IPv4 partilhado do Zerops descobre a que projecto pertence um pedido olhando para o `AAAA` do domínio. Com o proxy da Cloudflare activo, esse `AAAA` aponta para a Cloudflare e o encaminhamento falha. A própria documentação diz para não usar um `A` com proxy no IPv4 partilhado.
-
-Com proxy activo e origem só em IPv6, a Cloudflare trata da tradução: os clientes IPv4 chegam à mesma origem.
-
-### Só aceitar tráfego da Cloudflare
-
-Esconder o IP é uma camada extra, não uma defesa. A defesa é o `accessPolicy` do balanceador do Zerops, que **só aceita pedidos vindos da Cloudflare**. Se o IP vazar, quem tentar ir directo é recusado.
-
-```json
-"config": {
-  "accessPolicy": {
-    "enabled": true,
-    "defaultPolicy": "deny",
-    "cidr": [ "<ranges IPv4 da Cloudflare>", "<ranges IPv6 da Cloudflare>" ],
-    "realIpHeader": "CF-Connecting-IP",
-    "setRealIpFrom": [ "<ranges da Cloudflare>" ]
-  }
-}
-```
-
-As listas oficiais estão em `https://www.cloudflare.com/ips-v4` e `https://www.cloudflare.com/ips-v6` e mudam de vez em quando: revê-as.
-
-> **Cuidado:** um `accessPolicy` mal configurado corta também o tráfego legítimo. Depois de mexeres, confirma que o site responde 200.
+O CSP só deixa correr scripts do próprio domínio e os inline cujo hash vai no cabeçalho. A *Email Address Obfuscation* (ligada na zona do domínio OMIE, desligada na `ocarroeletrico.com`) passa: injecta um script de `/cdn-cgi/` (do próprio domínio) e não mexe nos scripts inline. O link do *AI Labyrinth* é só um link. Uma funcionalidade que injecte scripts inline ou de outro domínio (Rocket Loader, Zaraz, Web Analytics automático, as *JS detections* do Bot Fight Mode) fica bloqueada pelo CSP: se ligares alguma, acrescenta-a lá primeiro.
 
 ### O IP do cliente
 
-Os rate limits por IP (`docs/04-api-auth.md`) precisam do IP real do cliente, e a ligação TCP chega sempre do balanceador. Há dois proxies à frente: a Cloudflare acrescenta o IP do cliente ao `X-Forwarded-For`, e o balanceador L7 do Zerops acrescenta o de quem lhe ligou (a Cloudflare, ou o cliente, se o `realIpHeader` acima estiver em efeito). A entrada que a Cloudflare escreveu é a 2.ª a contar da direita nos dois casos, por isso o `zerops.yml` define `CEME_TRUST_PROXY: 2`.
+Os rate limits por IP (`docs/04-api-auth.md`) precisam do IP real do cliente, e a ligação TCP chega sempre do balanceador. Há dois proxies à frente: a Cloudflare acrescenta o IP do cliente ao `X-Forwarded-For`, e o balanceador L7 do Zerops acrescenta o de quem lhe ligou (a Cloudflare). A entrada que a Cloudflare escreveu é a 2.ª a contar da direita, por isso o `zerops.yml` define `CEME_TRUST_PROXY: 2`.
 
 Se o valor estiver errado, todos os visitantes partilham um contador e um só cliente com chaves erradas bloqueia as API keys de todos:
 
@@ -382,31 +319,7 @@ curl -s -o /dev/null -D - -X POST https://ceme.ocarroeletrico.com/v1/session | g
 
 O primeiro pedido de cada rede tem de mostrar `9`. Se o segundo mostrar `8`, o contador é partilhado e o valor está errado.
 
-O valor só é de confiança com o `accessPolicy` acima activo (`defaultPolicy: deny`): sem ele, quem vá directo à origem escreve o `X-Forwarded-For` que quiser. E se a variável estiver também definida na GUI do serviço, as duas têm de dizer o mesmo.
-
-### SSL e o certificado
-
-`ssl: strict` e `ipv6: on` são o que o Zerops pede. Com `always_use_https: on`, a validação HTTP-01 do Let's Encrypt pode falhar; se o certificado não for emitido, cria uma Configuration Rule na Cloudflare que desligue o *Automatic HTTPS Rewrites* em `/.well-known/acme-challenge/`.
-
-### Ferramentas
-
-```bash
-TOKEN=$(python3 -c "import json;print(json.load(open('$HOME/Library/Application Support/zerops/cli.data'))['LoginSession']['AccessToken'])")
-API=https://api.app-prg1.zerops.io/api/rest/public
-# ver as rotas
-curl -s -H "Authorization: Bearer $TOKEN" "$API/project/<project-id>/public-http-routing"
-```
-
-A especificação completa da API está em `GET $API/swagger/openapi.yml`.
-
-Diagnóstico rápido:
-
-```bash
-# a origem responde com o Host certo? (usa o IP obtido pela API)
-curl -sk -H "Host: ceme.ocarroeletrico.com" "https://[<IPv6 do projecto>]/" -o /dev/null -w '%{http_code}\n'
-# 200 = origem OK; 404 = domínio não registado no balanceador; 502 = certificado/origem
-# 403 = accessPolicy a bloquear (o pedido não veio da Cloudflare)
-```
+O valor só é de confiança com a [Access Policy](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md#access-policy) activa (`defaultPolicy: deny`): sem ele, quem vá directo à origem escreve o `X-Forwarded-For` que quiser. E se a variável estiver também definida na GUI do serviço, as duas têm de dizer o mesmo.
 
 ---
 
