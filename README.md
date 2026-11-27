@@ -190,7 +190,7 @@ O código, a documentação, o motor de cálculo e o seed estão sob **PolyForm 
 
 Os dados de terceiros (lista de CEME da ERSE, preços OMIE/MIBEL) **não** estão sob a PolyForm: mantêm as suas licenças e créditos. Vê [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-A fonte Nunito, servida pelo site, tem a sua licença: [SIL OFL 1.1](https://github.com/CarregaErvilhas/Brand/blob/main/fonts/OFL-Nunito.txt), servida ao lado da fonte.
+A fonte Nunito, servida pelo site, tem a sua licença: [SIL OFL 1.1](https://ceme.ocarroeletrico.com/fonts/OFL-Nunito.txt), servida ao lado da fonte.
 
 A mascote (a calculadora cor-de-rosa, em `frontend/icon.svg`, nos ícones `frontend/icon-*.png`, no `frontend/og.png` e em `frontend/grupo/ceme.svg`) faz parte da marca O Carro Elétrico, como as mascotes dos outros sites do grupo, e fica fora das licenças: não a uses noutro projecto sem autorização. As mascotes dos outros sites, na página `/grupo` (`brand/grupo/`, copiadas para `frontend/grupo/`), pertencem a cada um desses sites e também ficam fora das licenças.
 

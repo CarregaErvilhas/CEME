@@ -511,6 +511,9 @@ it('HTML também leva nosniff', async () => {
       assert.equal(r.headers.get('content-type'), 'font/woff2');
       assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
       assert.equal(Buffer.from(await r.arrayBuffer()).subarray(0, 4).toString('latin1'), 'wOF2');
+      const licenca = await fetch(`${BASE}/fonts/OFL-Nunito.txt`);
+      assert.equal(licenca.status, 200);
+      assert.match(await licenca.text(), /SIL OPEN FONT LICENSE/);
       for (const caminho of ['/', '/simulador', '/sobre', '/contactos', '/privacidade', '/grupo', '/api', '/omie', '/tabela']) {
         const { html } = await abrir(caminho);
         assert.match(html, /<link rel="preload" href="\/fonts\/nunito-latin\.woff2" as="font" type="font\/woff2" crossorigin>/, caminho);

@@ -70,9 +70,10 @@ const STATIC = {
   // <link rel="icon"> das páginas. Sem esta rota caía na API e levava um 401.
   // Um PNG servido neste caminho é aceite por todos os browsers actuais.
   '/favicon.ico': { file: 'icon-32.png', headers: ICON, missing: 404 },
-  // A fonte Nunito, carregada pelo @font-face das páginas (licença OFL ao lado,
-  // em frontend/fonts/OFL-Nunito.txt).
+  // A fonte Nunito, carregada pelo @font-face das páginas, com a licença OFL ao
+  // lado (quem serve a fonte serve a licença).
   '/fonts/nunito-latin.woff2': { file: 'fonts/nunito-latin.woff2', headers: FONT, missing: 404 },
+  '/fonts/OFL-Nunito.txt': { file: 'fonts/OFL-Nunito.txt', headers: { ...FONT, 'content-type': 'text/plain; charset=utf-8' }, missing: 404 },
   // As mascotes dos sites do grupo, na página /grupo. São marca de cada site.
   ...Object.fromEntries(MASCOTS.map(f =>
     [`/grupo/${f}`, { file: `grupo/${f}`, headers: MASCOT, missing: 404 }])),
