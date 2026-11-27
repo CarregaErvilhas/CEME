@@ -135,7 +135,7 @@ Se quiseres `pr-<N>.ceme.ocarroeletrico.com` em vez do URL default do Zerops:
 2. Criar registo `AAAA` no Cloudflare para `pr-<N>...` → IPv6 do projecto preview, proxy activo.
 3. Validar DNS (`PUT .../trigger-domains-dns-check`).
 
-A sequência exacta (Zerops primeiro, depois Cloudflare, depois validar) está em [Add a domain](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/zerops-exposure.md#add-a-domain-the-order-matters).
+A sequência exacta (Zerops primeiro, depois Cloudflare, depois validar) está em [Add a domain](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md#add-a-domain-the-order-matters).
 
 ### 7. Comentar a PR com o URL
 
@@ -154,7 +154,7 @@ Ou manualmente no GitHub.
 #    Cloudflare: apagar o AAAA de pr-<N>...
 
 # 2. Remover hostname do L7 balancer (se foi registado)
-#    API Zerops: DELETE/PUT conforme a rota (ver https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/zerops-exposure.md)
+#    API Zerops: DELETE/PUT conforme a rota (ver https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md)
 
 # 3. Destruir o projecto
 zcli project delete "$ZEROPS_PROJECT_ID" --confirm

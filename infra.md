@@ -1,6 +1,6 @@
 # Infra — CEME v2 no Zerops + Cloudflare
 
-Aqui está a infraestrutura do CEME: onde corre o serviço, como chega lá o código, o DNS e o CI. O que é comum aos projectos do grupo está no repositório [OCarroEletrico](https://github.com/CarregaErvilhas/OCarroEletrico), em inglês: [como se expõe um serviço Zerops](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/zerops-exposure.md) e [as regras da zona Cloudflare](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/cloudflare-zone.md).
+Aqui está a infraestrutura do CEME: onde corre o serviço, como chega lá o código, o DNS e o CI. O que é comum aos projectos do grupo está no repositório [Architecture](https://github.com/CarregaErvilhas/Architecture), em inglês: [como se expõe um serviço Zerops](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md) e [as regras da zona Cloudflare](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/cloudflare-zone.md).
 
 Visão geral:
 
@@ -111,11 +111,11 @@ Porque não usar o mesmo check para os dois: com um só container, um health che
 
 De fora da máquina, `/readyz` responde 200 com `db: unknown` e não toca na BD: ninguém de fora precisa dele, e um `SELECT 1` por pedido era uma forma de esgotar as ligações. É 200 (e não 403) para um pedido vindo de outro sítio nunca chumbar um deploy.
 
-Os dois checks correm de dentro do container (`127.0.0.1:3001/...`). Os códigos que o Zerops aceita e o resto do padrão estão em [Readiness and health checks](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/zerops-exposure.md#readiness-and-health-checks).
+Os dois checks correm de dentro do container (`127.0.0.1:3001/...`). Os códigos que o Zerops aceita e o resto do padrão estão em [Readiness and health checks](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md#readiness-and-health-checks).
 
 ### Privilégios do processo
 
-O processo da API corre como `cocofree`, um utilizador de sistema criado nos `prepareCommands`, sem shell, sem casa e **sem sudo** ([porquê e como](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/zerops-exposure.md#non-root-process)).
+O processo da API corre como `cocofree`, um utilizador de sistema criado nos `prepareCommands`, sem shell, sem casa e **sem sudo** ([porquê e como](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md#non-root-process)).
 
 O que o `cocofree` pode e não pode:
 
@@ -288,7 +288,7 @@ Domínios em produção:
 - **`https://ceme.ocarroeletrico.com`** — o site e a API.
 - **`https://omie.cocofree.dev`** — a página de estatísticas OMIE (`docs/09-omie-estatisticas.md`). Mesmo balanceador e mesmo serviço `api`: o servidor lê o cabeçalho `Host` e, neste domínio, a raiz é a página OMIE.
 
-O procedimento é o comum, em [How a Zerops service is exposed](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/zerops-exposure.md): um só registo `AAAA` com proxy, o registo do domínio no balanceador L7 (a ordem conta), o certificado Let's Encrypt, a *Access Policy* só para a Cloudflare, como verificar e como consultar o IP da origem (que **nunca** vai para o repositório). Os valores do CEME:
+O procedimento é o comum, em [How a Zerops service is exposed](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md): um só registo `AAAA` com proxy, o registo do domínio no balanceador L7 (a ordem conta), o certificado Let's Encrypt, a *Access Policy* só para a Cloudflare, como verificar e como consultar o IP da origem (que **nunca** vai para o repositório). Os valores do CEME:
 
 | | |
 |---|---|
@@ -296,7 +296,7 @@ O procedimento é o comum, em [How a Zerops service is exposed](https://github.c
 | Região do Zerops (host da API) | `prg1` |
 | Caminho para verificar | `/healthz` |
 
-As duas zonas têm `ssl: strict`, `ipv6: on` e `always_use_https: on`, e a Cloudflare acrescenta o HSTS (`Strict-Transport-Security`) às respostas. As regras da zona `ocarroeletrico.com` que afectam outros projectos estão em [Cloudflare: zone-wide rules](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/cloudflare-zone.md). Os outros cabeçalhos de segurança das páginas (CSP e companhia) põe-nos o servidor (`PAGE_SECURITY` em `backend/src/http/pages.js`).
+As duas zonas têm `ssl: strict`, `ipv6: on` e `always_use_https: on`, e a Cloudflare acrescenta o HSTS (`Strict-Transport-Security`) às respostas. As regras da zona `ocarroeletrico.com` que afectam outros projectos estão em [Cloudflare: zone-wide rules](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/cloudflare-zone.md). Os outros cabeçalhos de segurança das páginas (CSP e companhia) põe-nos o servidor (`PAGE_SECURITY` em `backend/src/http/pages.js`).
 
 ### O CSP e o que a Cloudflare injecta
 
@@ -319,7 +319,7 @@ curl -s -o /dev/null -D - -X POST https://ceme.ocarroeletrico.com/v1/session | g
 
 O primeiro pedido de cada rede tem de mostrar `9`. Se o segundo mostrar `8`, o contador é partilhado e o valor está errado.
 
-O valor só é de confiança com a [Access Policy](https://github.com/CarregaErvilhas/OCarroEletrico/blob/main/docs/zerops-exposure.md#access-policy) activa (`defaultPolicy: deny`): sem ele, quem vá directo à origem escreve o `X-Forwarded-For` que quiser. E se a variável estiver também definida na GUI do serviço, as duas têm de dizer o mesmo.
+O valor só é de confiança com a [Access Policy](https://github.com/CarregaErvilhas/Architecture/blob/main/Docs/zerops-exposure.md#access-policy) activa (`defaultPolicy: deny`): sem ele, quem vá directo à origem escreve o `X-Forwarded-For` que quiser. E se a variável estiver também definida na GUI do serviço, as duas têm de dizer o mesmo.
 
 ---
 
